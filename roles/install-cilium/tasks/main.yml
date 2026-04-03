@@ -1,0 +1,30 @@
+# Install Cilium CNI via Helm on localhost (requires kubeconfig already fetched)
+# Cilium replaces kube-proxy (--disable-kube-proxy was set on K3s server)
+
+- name: Add Cilium Helm repository
+  kubernetes.core.helm_repository:
+    name: cilium
+    repo_url: https://helm.cilium.io/
+  changed_when: false
+
+- name: Install or upgrade Cilium
+  kubernetes.core.helm:
+    name: cilium
+    chart_ref: cilium/cilium
+    chart_version: "{{ cilium_version }}"
+    release_namespace: "{{ cilium_namespace }}"
+    create_namespace: false
+    wait: true
+    timeout: "5m0s"
+    values:
+      kubeProxyReplacement: "true"
+      k8sServiceHost: "{{ k3s_api_server_host }}"
+      k8sServicePort: "{{ k3s_api_server_port }}"
+      # Raspberry Pi CM4 (ARM64) — enable BPF masquerade
+      bpf:
+        masquerade: true
+      # Needed for ARM when hardware offload not available
+      loadBalancer:
+        acceleration: disabled
+      operator:
+        replicas: 1

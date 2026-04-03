@@ -7,18 +7,12 @@
   roles:
     #    - create-partition
     - install-k3s
-#- name: Get kubeconfig from server and install Gateway API, Cilium, Cert Manager, and ArgoCD
-- name: Get kubeconfig from server
+
+- name: Get kubeconfig from server and install CNI
   hosts: localhost
   roles:
     - get-kubeconfig
+    - install-cilium
 #    - install-gateway-api-crds
-#    - install-cilium
 #    - install-cert-manager
 #    - install-argocd
-
-#- name: Debugging
-#  hosts: localhost
-#  roles:
-#    - install-cert-manager
-#  tags: debug
