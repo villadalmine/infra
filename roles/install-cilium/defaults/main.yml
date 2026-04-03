@@ -1,4 +1,4 @@
-cilium_version: "1.17.3"
+cilium_version: "1.19.2"
 cilium_namespace: kube-system
 # API server address used by Cilium's kube-proxy replacement
 # Must match the K3s server node IP
