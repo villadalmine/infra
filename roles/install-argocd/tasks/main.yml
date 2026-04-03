@@ -1,0 +1,50 @@
+# Install ArgoCD via Helm on localhost
+# Requires: kubeconfig fetched, Cilium ready, MetalLB ready (for LoadBalancer IP)
+# ArgoCD server exposed via MetalLB LoadBalancer at 192.168.178.200 (HTTP)
+
+- name: Add Argo Helm repository
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+  changed_when: false
+
+- name: Create ArgoCD namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ argocd_namespace }}"
+    state: present
+
+- name: Install or upgrade ArgoCD
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: argo/argo-cd
+    chart_version: "{{ argocd_version }}"
+    release_namespace: "{{ argocd_namespace }}"
+    create_namespace: false
+    wait: true
+    timeout: "5m0s"
+    values:
+      # Single-node cluster — one replica per component is sufficient
+      controller:
+        replicas: 1
+      server:
+        replicas: 1
+        service:
+          type: LoadBalancer   # MetalLB assigns 192.168.178.200
+      repoServer:
+        replicas: 1
+      applicationSet:
+        replicas: 1
+      # Disable Dex (OIDC/SSO broker) — not needed for single-user homelab
+      dex:
+        enabled: false
+      # Disable Redis HA — single-node, HA adds no value
+      redis-ha:
+        enabled: false
+      configs:
+        params:
+          # Serve plain HTTP — TLS termination deferred to future Ingress/Gateway + cert-manager
+          server.insecure: "true"
