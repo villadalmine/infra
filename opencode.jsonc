@@ -1,0 +1,17 @@
+{
+  // OpenCode project config — ~/projects/infra
+  // Overrides global ~/.config/opencode/opencode.jsonc for this repo
+  // Edit this file directly (it's a repo source file, not a deployed file)
+
+  "$schema": "https://opencode.ai/config.json",
+
+  "model": "anthropic/claude-sonnet-4-5",
+
+  "mcp": {
+    // context7 via local npx to avoid Zscaler SSE blocking
+    "context7": {
+      "type": "local",
+      "command": ["npx", "-y", "@upstash/context7-mcp"]
+    }
+  }
+}
