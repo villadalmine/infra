@@ -6,4 +6,4 @@ Initiate the install:
 
 # Removal
 
-To remove K3s and contents of `/mnt/data` run `ansible-playbook ./playbooks/uninstall.yml -i ./inventory/hosts.ini`
+To remove K3s and contents run `ansible-playbook ./playbooks/uninstall.yml -i ./inventory/hosts.ini`
