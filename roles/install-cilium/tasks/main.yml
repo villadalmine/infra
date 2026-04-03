@@ -1,5 +1,11 @@
 # Install Cilium CNI via Helm on localhost (requires kubeconfig already fetched)
 # Cilium replaces kube-proxy (--disable-kube-proxy was set on K3s server)
+#
+# rollOutCiliumPods / operator.rollOutPods / envoy.rollOutPods:
+#   Causes the chart to hash the cilium-config ConfigMap and inject it as a
+#   pod template annotation. Any config change triggers an automatic rolling
+#   restart of agent, operator, and envoy pods, so Helm's --wait reliably
+#   blocks until all pods are running with the new config.
 
 - name: Add Cilium Helm repository
   kubernetes.core.helm_repository:
@@ -14,20 +20,25 @@
     chart_version: "{{ cilium_version }}"
     release_namespace: "{{ cilium_namespace }}"
     create_namespace: false
-    wait: false
+    wait: true
     timeout: "10m0s"
     values:
       kubeProxyReplacement: "true"
       k8sServiceHost: "{{ k3s_api_server_host }}"
       k8sServicePort: "{{ k3s_api_server_port }}"
+      # Automatically roll out pods when cilium-config ConfigMap changes
+      rollOutCiliumPods: true
+      operator:
+        replicas: 1
+        rollOutPods: true
+      envoy:
+        rollOutPods: true
       # Raspberry Pi CM4 (ARM64) — enable BPF masquerade
       bpf:
         masquerade: true
       # Needed for ARM when hardware offload not available
       loadBalancer:
         acceleration: disabled
-      operator:
-        replicas: 1
       # Gateway API support — CRDs must be installed before this is applied
       gatewayAPI:
         enabled: "{{ cilium_gateway_api_enabled }}"
@@ -35,73 +46,3 @@
       ingressController:
         enabled: "{{ cilium_ingress_controller_enabled }}"
         loadbalancerMode: shared
-  register: cilium_helm_result
-
-# When gatewayAPI or ingressController is enabled, the operator must be restarted
-# to register the Envoy CRDs (ciliumenvoyconfigs, ciliumclusterwideenvoyconfigs).
-# Helm only restarts pods when the pod template spec changes; a ConfigMap-only
-# update leaves old pods running with stale config, causing the agent to hang.
-- name: Restart Cilium operator to register Envoy CRDs
-  kubernetes.core.k8s:
-    api_version: v1
-    kind: Pod
-    namespace: "{{ cilium_namespace }}"
-    label_selectors:
-      - io.cilium/app=operator
-    state: absent
-  when: cilium_helm_result.changed
-
-- name: Wait for Cilium operator to be ready
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: cilium-operator
-    namespace: "{{ cilium_namespace }}"
-  register: operator_deploy
-  until: >
-    operator_deploy.resources | length > 0 and
-    (operator_deploy.resources[0].status.readyReplicas | default(0)) >= 1
-  retries: 30
-  delay: 5
-  when: cilium_helm_result.changed
-
-- name: Wait for Envoy CRDs to be established
-  kubernetes.core.k8s_info:
-    api_version: apiextensions.k8s.io/v1
-    kind: CustomResourceDefinition
-    name: "{{ item }}"
-  register: envoy_crd
-  until: >
-    envoy_crd.resources | length > 0 and
-    (envoy_crd.resources[0].status.conditions | selectattr('type', 'equalto', 'Established') | selectattr('status', 'equalto', 'True') | list | length > 0)
-  retries: 20
-  delay: 5
-  loop:
-    - ciliumenvoyconfigs.cilium.io
-    - ciliumclusterwideenvoyconfigs.cilium.io
-  when: cilium_gateway_api_enabled or cilium_ingress_controller_enabled
-
-- name: Restart Cilium agent pods to pick up new config
-  kubernetes.core.k8s:
-    api_version: v1
-    kind: Pod
-    namespace: "{{ cilium_namespace }}"
-    label_selectors:
-      - k8s-app=cilium
-    state: absent
-  when: cilium_helm_result.changed
-
-- name: Wait for Cilium DaemonSet to be ready
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: DaemonSet
-    name: cilium
-    namespace: "{{ cilium_namespace }}"
-  register: cilium_ds
-  until: >
-    cilium_ds.resources | length > 0 and
-    (cilium_ds.resources[0].status.numberReady | default(0)) ==
-    (cilium_ds.resources[0].status.desiredNumberScheduled | default(1))
-  retries: 30
-  delay: 10
-  when: cilium_helm_result.changed
