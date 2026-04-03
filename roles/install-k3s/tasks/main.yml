@@ -49,7 +49,7 @@
 
 - name: Ensure server node has worker role label
   ansible.builtin.command:
-    cmd: k3s kubectl label node --selector kubernetes.io/hostname={{ ansible_hostname }} node-role.kubernetes.io/worker=worker --overwrite
+    cmd: k3s kubectl label node --selector kubernetes.io/hostname={{ ansible_facts['hostname'] }} node-role.kubernetes.io/worker=worker --overwrite
   become: true
   when: "'server_nodes' in group_names"
   changed_when: false
