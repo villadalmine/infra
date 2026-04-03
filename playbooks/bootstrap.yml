@@ -12,8 +12,8 @@
   hosts: localhost
   roles:
     - get-kubeconfig
+    - install-gateway-api-crds
     - install-cilium
     - install-metallb
     - install-argocd
-#    - install-gateway-api-crds
 #    - install-cert-manager
