@@ -1,4 +1,4 @@
-# Installs the cluster as well as core system components like Cilium, Gateway API, and ArgoCD
+# Installs the cluster as well as core system components like Cilium, MetalLB, and ArgoCD
 # After which, handover.yml is used to delegate the management of these components to ArgoCD
 
 - name: Create partitions and install K3s
@@ -8,11 +8,12 @@
     #    - create-partition
     - install-k3s
 
-- name: Get kubeconfig from server and install CNI
+- name: Get kubeconfig from server and install core components
   hosts: localhost
   roles:
     - get-kubeconfig
     - install-cilium
+    - install-metallb
+    - install-argocd
 #    - install-gateway-api-crds
 #    - install-cert-manager
-#    - install-argocd

@@ -1,0 +1,72 @@
+# Install MetalLB load balancer via Helm on localhost
+# Requires: kubeconfig fetched, K3s running with --disable servicelb
+# Provides: LoadBalancer IPs for services (L2 mode, LAN range 192.168.178.200-210)
+
+- name: Add MetalLB Helm repository
+  kubernetes.core.helm_repository:
+    name: metallb
+    repo_url: https://metallb.github.io/metallb
+  changed_when: false
+
+- name: Create metallb-system namespace with privileged pod security labels
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ metallb_namespace }}"
+        labels:
+          # Required for MetalLB speaker DaemonSet (needs raw network access)
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
+    state: present
+
+- name: Install or upgrade MetalLB
+  kubernetes.core.helm:
+    name: metallb
+    chart_ref: metallb/metallb
+    chart_version: "{{ metallb_version }}"
+    release_namespace: "{{ metallb_namespace }}"
+    create_namespace: false
+    wait: true
+    timeout: "3m0s"
+
+- name: Wait for MetalLB controller webhook to be ready
+  # Must wait before applying CRD resources (IPAddressPool, L2Advertisement)
+  # to avoid race condition with the validating webhook
+  kubernetes.core.k8s_info:
+    kind: Deployment
+    namespace: "{{ metallb_namespace }}"
+    name: metallb-controller
+    wait: true
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 120
+
+- name: Configure MetalLB IP address pool
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: "{{ metallb_ip_pool_name }}"
+        namespace: "{{ metallb_namespace }}"
+      spec:
+        addresses:
+          - "{{ metallb_ip_range }}"
+    state: present
+
+- name: Configure MetalLB L2 advertisement
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: default
+        namespace: "{{ metallb_namespace }}"
+      spec:
+        ipAddressPools:
+          - "{{ metallb_ip_pool_name }}"
+    state: present
