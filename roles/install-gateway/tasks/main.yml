@@ -27,9 +27,8 @@
 #           port: <port>
 #
 # ── IP pinning ────────────────────────────────────────────────────────────────
-# The Gateway's LoadBalancer Service gets its IP from MetalLB.
-# Pin it to .200 via the metallb.universe.tf/loadBalancerIPs annotation.
-# This is set on the Gateway resource via Cilium's annotation passthrough.
+# The Gateway's LoadBalancer Service gets its IP from Cilium LB-IPAM.
+# Pin it to .200 via the lbipam.cilium.io/ips annotation passthrough.
 
 - name: Ensure gateway namespace exists
   kubernetes.core.k8s:
@@ -49,8 +48,8 @@
         name: "{{ gateway_name }}"
         namespace: "{{ gateway_namespace }}"
         annotations:
-          # Pin MetalLB IP to .200 for all *.cluster.home traffic
-          metallb.universe.tf/loadBalancerIPs: "{{ gateway_ip }}"
+          # Pin Cilium LB-IPAM IP to .200 for all *.cluster.home traffic
+          lbipam.cilium.io/ips: "{{ gateway_ip }}"
       spec:
         gatewayClassName: cilium
         listeners:
