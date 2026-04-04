@@ -64,6 +64,9 @@
     values:
       crds:
         enabled: true   # install cert-manager CRDs as part of the Helm release
+  when: >
+    cm_release_info.status.status is not defined or
+    cm_release_info.status.status != 'deployed'
 
 - name: Wait for cert-manager controller rollout
   ansible.builtin.command:

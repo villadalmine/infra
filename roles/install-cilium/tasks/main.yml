@@ -100,6 +100,9 @@
         loadbalancerMode: "{{ cilium_ingress_loadbalancer_mode }}"
         service:
           externalTrafficPolicy: "{{ cilium_ingress_external_traffic_policy }}"
+  when: >
+    cilium_release_info.status.status is not defined or
+    cilium_release_info.status.status != 'deployed'
 
 # Wait for Cilium DaemonSet and operator rollout to complete.
 # Uses kubectl rollout status — idempotent, re-runnable, never corrupts Helm state.

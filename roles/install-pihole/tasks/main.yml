@@ -114,14 +114,21 @@
       DNS2: "8.8.4.4"
 
       # Pi-hole 6.x FTL needs >110s on first boot (loading gravity blocklists).
-      # Chart default: initialDelaySeconds:60 + failureThreshold:10 × 5s = 110s → kills pod.
+      # initialDelaySeconds=30 (not 120): on subsequent boots FTL starts in ~15s from PVC,
+      # so we'd waste 90s waiting for nothing. failureThreshold=18 × periodSeconds=10 = 180s
+      # of failure tolerance after initial delay → total 210s window, enough for first boot.
       probes:
         liveness:
-          initialDelaySeconds: 120
-          failureThreshold: 15
+          initialDelaySeconds: 30
+          failureThreshold: 18
+          periodSeconds: 10
         readiness:
-          initialDelaySeconds: 120
-          failureThreshold: 15
+          initialDelaySeconds: 30
+          failureThreshold: 18
+          periodSeconds: 10
+  when: >
+    pihole_release_info.status.status is not defined or
+    pihole_release_info.status.status != 'deployed'
 
 - name: Wait for Pi-hole deployment rollout
   ansible.builtin.command:

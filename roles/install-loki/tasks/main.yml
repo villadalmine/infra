@@ -96,6 +96,9 @@
         replicas: 0
       bloomGateway:
         replicas: 0
+  when: >
+    loki_release_info.status.status is not defined or
+    loki_release_info.status.status != 'deployed'
 
 - name: Wait for Loki rollout
   ansible.builtin.command:
