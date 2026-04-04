@@ -39,6 +39,8 @@
       serviceMonitor:
         enabled: true
         namespace: "{{ version_checker_namespace }}"
+        additionalLabels:
+          release: kube-prometheus-stack
   when: not vc_deployed
 
 - name: Wait for version-checker rollout
