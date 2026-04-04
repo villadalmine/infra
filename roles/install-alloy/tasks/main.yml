@@ -1,0 +1,67 @@
+# Install Grafana Alloy via Helm on localhost
+# Alloy is the OpenTelemetry-native telemetry pipeline (replaces Grafana Agent).
+# This deployment configures Alloy as an OTLP receiver that forwards traces to Tempo.
+# Chart: grafana/alloy (official, not deprecated)
+#
+# OTLP ports exposed on the Alloy Service:
+#   4317 — gRPC (instrumented apps send traces here)
+#   4318 — HTTP (alternative OTLP endpoint)
+#
+# To instrument an app: point OTEL_EXPORTER_OTLP_ENDPOINT to alloy.monitoring:4317
+
+- name: Add grafana Helm repository
+  kubernetes.core.helm_repository:
+    name: grafana
+    repo_url: https://grafana.github.io/helm-charts
+  changed_when: false
+
+- name: Install or upgrade Alloy
+  kubernetes.core.helm:
+    name: alloy
+    chart_ref: grafana/alloy
+    chart_version: "{{ alloy_version }}"
+    release_namespace: "{{ alloy_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      alloy:
+        stabilityLevel: generally-available
+
+        extraPorts:
+          - name: otlp-grpc
+            port: 4317
+            targetPort: 4317
+            protocol: TCP
+          - name: otlp-http
+            port: 4318
+            targetPort: 4318
+            protocol: TCP
+
+        configMap:
+          create: true
+          content: |
+            // ── OTLP receiver — accepts traces from instrumented apps ──────────
+            otelcol.receiver.otlp "default" {
+              grpc { endpoint = "0.0.0.0:4317" }
+              http { endpoint = "0.0.0.0:4318" }
+              output {
+                traces = [otelcol.exporter.otlp.tempo.input]
+              }
+            }
+
+            // ── Forward traces to Tempo ────────────────────────────────────────
+            otelcol.exporter.otlp "tempo" {
+              client {
+                endpoint = "http://tempo.{{ alloy_namespace }}.svc.cluster.local:4317"
+                tls { insecure = true }
+              }
+            }
+
+- name: Wait for Alloy rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/alloy -n {{ alloy_namespace }} --timeout=180s
+  register: alloy_rollout
+  until: alloy_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false

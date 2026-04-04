@@ -1,0 +1,4 @@
+kube_prometheus_stack_version: "82.17.0"
+kube_prometheus_stack_namespace: monitoring
+kube_prometheus_stack_hostname: grafana.cluster.home
+kube_prometheus_stack_admin_password: admin

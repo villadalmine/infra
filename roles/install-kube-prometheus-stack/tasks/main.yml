@@ -1,0 +1,135 @@
+# Install kube-prometheus-stack via Helm on localhost
+# Provides: Prometheus, Grafana, AlertManager, node-exporter, kube-state-metrics
+# Grafana exposed via HTTPRoute at grafana.cluster.home (shared Cilium Gateway)
+#
+# k3s-specific: kubeControllerManager, kubeScheduler, kubeEtcd, kubeProxy disabled
+# (these are embedded in the k3s server process and do not expose metrics endpoints)
+#
+# wait:false + kubectl rollout status — avoids Helm timeout on ARM64 slow pulls.
+
+- name: Add prometheus-community Helm repository
+  kubernetes.core.helm_repository:
+    name: prometheus-community
+    repo_url: https://prometheus-community.github.io/helm-charts
+  changed_when: false
+
+- name: Create monitoring namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ kube_prometheus_stack_namespace }}"
+    state: present
+
+- name: Install or upgrade kube-prometheus-stack
+  kubernetes.core.helm:
+    name: kube-prometheus-stack
+    chart_ref: prometheus-community/kube-prometheus-stack
+    chart_version: "{{ kube_prometheus_stack_version }}"
+    release_namespace: "{{ kube_prometheus_stack_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      # ── Disabled: k3s embeds these, no metrics endpoint exposed ──────────
+      kubeControllerManager:
+        enabled: false
+      kubeScheduler:
+        enabled: false
+      kubeEtcd:
+        enabled: false
+      kubeProxy:
+        enabled: false
+
+      # ── Grafana ───────────────────────────────────────────────────────────
+      grafana:
+        adminPassword: "{{ kube_prometheus_stack_admin_password }}"
+        service:
+          type: ClusterIP   # exposed via HTTPRoute on shared Gateway
+        sidecar:
+          dashboards:
+            enabled: true   # auto-load dashboards from ConfigMaps
+          datasources:
+            enabled: true
+        grafana.ini:
+          server:
+            root_url: "https://{{ kube_prometheus_stack_hostname }}"
+        additionalDataSources:
+          - name: Tempo
+            type: tempo
+            url: http://tempo.{{ kube_prometheus_stack_namespace }}:3200
+            access: proxy
+            isDefault: false
+            jsonData:
+              tracesToMetrics:
+                datasourceUid: prometheus
+                spanStartTimeShift: "-1h"
+                spanEndTimeShift: "1h"
+              serviceMap:
+                datasourceUid: prometheus
+              nodeGraph:
+                enabled: true
+
+      # ── Prometheus ────────────────────────────────────────────────────────
+      prometheus:
+        prometheusSpec:
+          replicas: 1
+          storageSpec:
+            volumeClaimTemplate:
+              spec:
+                storageClassName: local-path
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: 20Gi
+
+      # ── AlertManager ─────────────────────────────────────────────────────
+      alertmanager:
+        alertmanagerSpec:
+          replicas: 1
+          storage:
+            volumeClaimTemplate:
+              spec:
+                storageClassName: local-path
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: 2Gi
+
+- name: Wait for Grafana rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/kube-prometheus-stack-grafana -n {{ kube_prometheus_stack_namespace }} --timeout=180s
+  register: grafana_rollout
+  until: grafana_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Wait for Prometheus operator rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/kube-prometheus-stack-operator -n {{ kube_prometheus_stack_namespace }} --timeout=180s
+  register: operator_rollout
+  until: operator_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create Grafana HTTPRoute
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: grafana
+        namespace: "{{ kube_prometheus_stack_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ kube_prometheus_stack_hostname }}"
+        rules:
+          - backendRefs:
+              - name: kube-prometheus-stack-grafana
+                port: 80
+    state: present
