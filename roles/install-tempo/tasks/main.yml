@@ -1,0 +1,62 @@
+# Install Grafana Tempo via Helm on localhost
+# Single-binary mode — appropriate for single-node homelab.
+# Chart: grafana-community/tempo (NOT grafana/tempo which is deprecated)
+# Repo: https://grafana-community.github.io/helm-charts
+#
+# IMPORTANT: Use chart >= 1.26.x — v2.0.0 has a template bug that generates
+# overrides.defaults:{} which Tempo 2.10.x rejects (field not found in legacyConfig).
+#
+# metricsGenerator: generates RED metrics from traces → remote_write to Prometheus.
+# Processors: service-graphs, span-metrics (enabled via overrides.defaults).
+
+- name: Add grafana-community Helm repository
+  kubernetes.core.helm_repository:
+    name: grafana-community
+    repo_url: https://grafana-community.github.io/helm-charts
+  changed_when: false
+
+- name: Install or upgrade Tempo
+  kubernetes.core.helm:
+    name: tempo
+    chart_ref: grafana-community/tempo
+    chart_version: "{{ tempo_version }}"
+    release_namespace: "{{ tempo_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      replicas: 1
+
+      tempo:
+        reportingEnabled: false
+        retention: "{{ tempo_retention }}"
+
+        metricsGenerator:
+          enabled: true
+          remoteWriteUrl: "http://kube-prometheus-stack-prometheus.{{ tempo_namespace }}:9090/api/v1/write"
+          processor:
+            service_graphs:
+              wait: 10s
+              max_items: 10000
+            span_metrics:
+              enable_target_info: true
+
+        overrides:
+          defaults:
+            metrics_generator:
+              processors:
+                - service-graphs
+                - span-metrics
+
+      persistence:
+        enabled: true
+        storageClassName: local-path
+        size: "{{ tempo_storage_size }}"
+
+- name: Wait for Tempo rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status statefulset/tempo -n {{ tempo_namespace }} --timeout=180s
+  register: tempo_rollout
+  until: tempo_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false

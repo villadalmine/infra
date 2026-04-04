@@ -25,3 +25,6 @@
     - install-gateway
     - install-pihole
     - install-argocd
+    - install-kube-prometheus-stack
+    - install-tempo
+    - install-alloy
