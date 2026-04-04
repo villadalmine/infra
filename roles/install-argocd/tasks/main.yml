@@ -75,8 +75,9 @@
         params:
           # Serve plain HTTP internally — TLS terminated at the Gateway
           server.insecure: "true"
-  failed_when: false
-  register: argocd_helm_result
+  when: >
+    argocd_release_info.status.status is not defined or
+    argocd_release_info.status.status != 'deployed'
 
 - name: Wait for ArgoCD server rollout
   ansible.builtin.command:

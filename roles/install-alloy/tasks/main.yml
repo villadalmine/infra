@@ -72,6 +72,9 @@
                 tls { insecure = true }
               }
             }
+  when: >
+    alloy_release_info.status.status is not defined or
+    alloy_release_info.status.status != 'deployed'
 
 - name: Wait for Alloy rollout
   ansible.builtin.command:

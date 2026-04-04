@@ -67,6 +67,9 @@
         enabled: true
         storageClassName: local-path
         size: "{{ tempo_storage_size }}"
+  when: >
+    tempo_release_info.status.status is not defined or
+    tempo_release_info.status.status != 'deployed'
 
 - name: Wait for Tempo rollout
   ansible.builtin.command:

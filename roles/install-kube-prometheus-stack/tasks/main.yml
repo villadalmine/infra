@@ -94,32 +94,9 @@
               httpHeaderName1: X-Scope-OrgId
             secureJsonData:
               httpHeaderValue1: fake
-
-      # ── Prometheus ────────────────────────────────────────────────────────
-      prometheus:
-        prometheusSpec:
-          replicas: 1
-          storageSpec:
-            volumeClaimTemplate:
-              spec:
-                storageClassName: local-path
-                accessModes: ["ReadWriteOnce"]
-                resources:
-                  requests:
-                    storage: 20Gi
-
-      # ── AlertManager ─────────────────────────────────────────────────────
-      alertmanager:
-        alertmanagerSpec:
-          replicas: 1
-          storage:
-            volumeClaimTemplate:
-              spec:
-                storageClassName: local-path
-                accessModes: ["ReadWriteOnce"]
-                resources:
-                  requests:
-                    storage: 2Gi
+  when: >
+    kps_release_info.status.status is not defined or
+    kps_release_info.status.status != 'deployed'
 
 - name: Wait for Grafana rollout
   ansible.builtin.command:
