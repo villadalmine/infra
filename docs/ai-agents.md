@@ -76,6 +76,7 @@ Los skills del cluster:
 | `k3s` | Flags del servidor, kubeconfig, upgrades |
 | `pihole` | DNS wildcard, Pi-hole 6 gotchas, integración |
 | `argocd` | GitOps, ApplicationSets, sync waves |
+| `monitoring` | Prometheus, Grafana, Tempo, Alloy — stack completo de observabilidad |
 | `metallb` | OBSOLETO — reemplazado por Cilium LB-IPAM |
 | `k8s-debug` | Debug sistemático de pods, red, nodos |
 | `platform-engineering` | Helm, Terraform, CI/CD best practices |
@@ -215,11 +216,15 @@ permisos RBAC configurados. No aplica cambios — solo lee y analiza.
 
 ## Próximos pasos / ideas
 
+- [x] Desplegar kube-prometheus-stack (Prometheus + Grafana + AlertManager) — ✅ hecho
+- [x] Desplegar Grafana Tempo (tracing backend) — ✅ hecho
+- [x] Desplegar Grafana Alloy (OTLP pipeline) — ✅ hecho
 - [ ] Desplegar HolmesGPT como ArgoCD Application (in-cluster, Operator mode)
-- [ ] Conectar HolmesGPT con Prometheus + Alertmanager (cuando se despliegue kube-prometheus-stack)
+- [ ] Conectar HolmesGPT con Prometheus + Alertmanager — prerequisito cumplido ✅
 - [ ] Probar Ollama in-cluster como LLM backend local (sin costos de API, datos privados)
 - [ ] Conectar HolmesGPT Slack integration para alertas con análisis automático
 - [ ] Explorar toolset de Cilium en HolmesGPT para diagnóstico de red
+- [ ] ArgoCD app-of-apps / GitOps handover (`handover.yml`)
 
 ---
 
