@@ -11,7 +11,7 @@
 #   networking    → gateway-api-crds + cilium + cilium-pools  (requires core)
 #   ingress       → cert-manager + gateway                    (requires networking)
 #   services      → pihole + argocd                           (requires ingress)
-#   observability → prometheus + tempo + loki + alloy         (requires networking)
+#   observability → prometheus + tempo + loki + alloy + version-checker  (requires networking)
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -55,4 +55,8 @@
     - role: install-loki
       tags: [observability]
     - role: install-alloy
+      tags: [observability]
+    - role: install-version-checker
+      tags: [observability]
+    - role: install-version-checker
       tags: [observability]

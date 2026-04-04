@@ -1,0 +1,66 @@
+# Install jetstack/version-checker via Helm on localhost
+# Scans all container images in the cluster and compares against latest upstream.
+# Exposes Prometheus metrics for Grafana dashboard #12833.
+
+- name: Add jetstack Helm repository
+  kubernetes.core.helm_repository:
+    name: jetstack
+    repo_url: https://charts.jetstack.io
+  changed_when: false
+
+- name: Check if version-checker release exists
+  ansible.builtin.command:
+    cmd: helm list -n {{ version_checker_namespace }} -o json --filter version-checker
+  register: vc_helm_list
+  changed_when: false
+  failed_when: false
+
+- name: Set version-checker release status fact
+  ansible.builtin.set_fact:
+    vc_deployed: "{{ (vc_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: vc_helm_list.stdout | default('') | length > 0
+
+- name: Set version-checker release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    vc_deployed: false
+  when: vc_helm_list.stdout | default('') | length == 0
+
+- name: Install or upgrade version-checker
+  kubernetes.core.helm:
+    name: version-checker
+    chart_ref: jetstack/version-checker
+    chart_version: "{{ version_checker_version }}"
+    release_namespace: "{{ version_checker_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      extraArgs:
+        - "--test-all-containers"
+      serviceMonitor:
+        enabled: true
+        namespace: "{{ version_checker_namespace }}"
+  when: not vc_deployed
+
+- name: Wait for version-checker rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/version-checker -n {{ version_checker_namespace }} --timeout=180s
+  register: vc_rollout
+  until: vc_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create Grafana dashboard ConfigMap for version-checker
+  ansible.builtin.command:
+    cmd: >
+      kubectl create configmap grafana-dashboard-version-checker
+      -n {{ version_checker_namespace }}
+      --from-file=version-checker.json={{ role_path }}/templates/grafana-dashboard.json.j2
+      --dry-run=client -o yaml
+  register: vc_cm_manifest
+  changed_when: false
+
+- name: Apply Grafana dashboard ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ vc_cm_manifest.stdout | from_yaml }}"

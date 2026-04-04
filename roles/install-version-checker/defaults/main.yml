@@ -1,0 +1,3 @@
+version_checker_version: "0.10.0"
+version_checker_namespace: monitoring
+version_checker_test_all_containers: true
