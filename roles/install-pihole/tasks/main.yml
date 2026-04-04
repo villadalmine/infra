@@ -113,6 +113,16 @@
       DNS1: "8.8.8.8"
       DNS2: "8.8.4.4"
 
+      # Pi-hole 6.x FTL needs >110s on first boot (loading gravity blocklists).
+      # Chart default: initialDelaySeconds:60 + failureThreshold:10 × 5s = 110s → kills pod.
+      probes:
+        liveness:
+          initialDelaySeconds: 120
+          failureThreshold: 15
+        readiness:
+          initialDelaySeconds: 120
+          failureThreshold: 15
+
 - name: Wait for Pi-hole deployment rollout
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/pihole -n {{ pihole_namespace }} --timeout=180s

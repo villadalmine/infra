@@ -94,15 +94,6 @@
               httpHeaderName1: X-Scope-OrgId
             secureJsonData:
               httpHeaderValue1: fake
-          - name: Loki
-            type: loki
-            url: http://loki-gateway.{{ kube_prometheus_stack_namespace }}:80
-            access: proxy
-            isDefault: false
-            jsonData:
-              httpHeaderName1: X-Scope-OrgId
-            secureJsonData:
-              httpHeaderValue1: fake
 
       # ── Prometheus ────────────────────────────────────────────────────────
       prometheus:

@@ -49,6 +49,7 @@ Access via `kubectl port-forward` or from within the cluster using the internal 
 | AlertManager | `kube-prometheus-stack-alertmanager.monitoring:9093` | Routes alerts |
 | Tempo | `tempo.monitoring:3200` | Distributed tracing backend |
 | Alloy | `alloy.monitoring:4317` (gRPC) / `alloy.monitoring:4318` (HTTP) | OTLP pipeline — receives traces from apps |
+| Loki | `loki-gateway.monitoring:80` | Log aggregation backend |
 
 ---
 
