@@ -19,6 +19,9 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 # Full bootstrap (idempotent — safe to re-run)
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
 
+# Selective bootstrap with tags
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
+
 # Resume from a specific role
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini \
   --start-at-task "Add prometheus-community Helm repository"
@@ -32,6 +35,39 @@ install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-pihole → install-argocd
 → install-kube-prometheus-stack → install-tempo → install-alloy
 ```
+
+## Bootstrap Tags
+
+Each role is tagged for selective deployment. Tags are cumulative — include
+all tags up to the layer you need.
+
+| Tag | Roles | Requires |
+|-----|-------|----------|
+| `core` | k3s + kubeconfig | — |
+| `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
+| `ingress` | cert-manager + gateway | `networking` |
+| `services` | pihole + argocd | `ingress` |
+| `observability` | prometheus + tempo + alloy | `networking` |
+
+```bash
+# Minimal cluster (kubectl works, no networking)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
+
+# Cluster with networking (deploy ClusterIPs, internal services)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
+
+# Full stack with public URLs (HTTPS + DNS + GitOps)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
+
+# Add observability to an existing cluster
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
+
+# Full bootstrap (all roles)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
+```
+
+Roles are idempotent — running `--tags observability` on a cluster that already
+has `core` + `networking` will skip those roles automatically.
 
 ## Service pattern (all HTTP services)
 
