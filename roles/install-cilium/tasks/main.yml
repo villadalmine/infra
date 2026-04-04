@@ -25,9 +25,8 @@
 # re-runnable without corrupting Helm state.
 #
 # ── externalTrafficPolicy ─────────────────────────────────────────────────────
-# Both gatewayAPI and ingressController create LoadBalancer Services via MetalLB.
-# Default chart value is "Cluster" (SNAT, client IP is lost).
-# Use "Local" on single-node / MetalLB L2 to preserve the real client source IP.
+# Cilium L2 Announcements are incompatible with externalTrafficPolicy: Local.
+# Must use "Cluster" — Cilium handles load balancing entirely in BPF.
 #
 # ── ztunnel — NOT for Cilium ──────────────────────────────────────────────────
 # ztunnel is the Istio Ambient Mesh L4 proxy. Do NOT install alongside Cilium.
@@ -60,22 +59,22 @@
       envoy:
         rollOutPods: true
 
-      # ── ARM64 / Raspberry Pi CM4 ─────────────────────────────────────────────
-      bpf:
-        masquerade: true
-      loadBalancer:
-        acceleration: disabled
-
-      # ── Hubble observability ─────────────────────────────────────────────────
-      hubble:
-        enabled: "{{ cilium_hubble_enabled }}"
-        relay:
-          enabled: "{{ cilium_hubble_relay_enabled }}"
-
       # ── Gateway API ──────────────────────────────────────────────────────────
       gatewayAPI:
         enabled: "{{ cilium_gateway_api_enabled }}"
         externalTrafficPolicy: "{{ cilium_gateway_external_traffic_policy }}"
+        hostNetwork:
+          enabled: "{{ cilium_gateway_host_network_enabled }}"
+
+      # ── L2 Announcements (replaces MetalLB) ─────────────────────────────────
+      l2announcements:
+        enabled: "{{ cilium_l2announcements_enabled }}"
+        leaseDuration: "{{ cilium_l2announcements_lease_duration }}"
+        leaseRenewDeadline: "{{ cilium_l2announcements_renew_deadline }}"
+        leaseRetryPeriod: "{{ cilium_l2announcements_retry_period }}"
+      k8sClientRateLimit:
+        qps: "{{ cilium_k8s_client_rate_limit_qps }}"
+        burst: "{{ cilium_k8s_client_rate_limit_burst }}"
 
       # ── Classic Ingress ───────────────────────────────────────────────────────
       ingressController:

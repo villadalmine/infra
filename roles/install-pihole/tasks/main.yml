@@ -52,21 +52,22 @@
         size: "{{ pihole_storage_size }}"
 
       # DNS Service: own LoadBalancer at .203 (port 53 cannot share the HTTP Gateway)
-      # TCP and UDP get separate Services by the chart — use allow-shared-ip so
-      # MetalLB assigns the same IP to both.
+      # TCP and UDP get separate Services by the chart — use lbipam sharing-key so
+      # Cilium LB-IPAM assigns the same IP to both.
+      # externalTrafficPolicy must be Cluster — L2 Announcements incompatible with Local.
       serviceDns:
         type: LoadBalancer
         annotations:
-          metallb.universe.tf/loadBalancerIPs: "{{ pihole_dns_ip }}"
-          metallb.universe.tf/allow-shared-ip: "pihole-dns"
-        externalTrafficPolicy: Local
+          lbipam.cilium.io/ips: "{{ pihole_dns_ip }}"
+          lbipam.cilium.io/sharing-key: "pihole-dns"
+        externalTrafficPolicy: Cluster
 
       serviceDnsTCP:
         type: LoadBalancer
         annotations:
-          metallb.universe.tf/loadBalancerIPs: "{{ pihole_dns_ip }}"
-          metallb.universe.tf/allow-shared-ip: "pihole-dns"
-        externalTrafficPolicy: Local
+          lbipam.cilium.io/ips: "{{ pihole_dns_ip }}"
+          lbipam.cilium.io/sharing-key: "pihole-dns"
+        externalTrafficPolicy: Cluster
 
       # Web UI: ClusterIP — exposed via HTTPRoute on the shared Gateway
       serviceWeb:
