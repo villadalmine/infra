@@ -32,6 +32,9 @@ Target: single-node cluster `srv-rk1-01` (192.168.178.133), expandable to multi-
     ├── install-gateway/             ← shared Cilium Gateway at .200 (all HTTP/HTTPS services)
     ├── install-pihole/              ← Pi-hole DNS at .203 + *.cluster.home → .200 wildcard
     ├── install-argocd/              ← ArgoCD via Helm (ClusterIP + HTTPRoute, not LoadBalancer)
+    ├── install-kube-prometheus-stack/ ← Prometheus + Grafana + AlertManager
+    ├── install-tempo/               ← Grafana Tempo distributed tracing
+    ├── install-alloy/               ← Grafana Alloy OTLP pipeline
     └── uninstall/                   ← K3s uninstall script + cleanup
 ```
 
@@ -70,11 +73,47 @@ install-k3s              (remote SSH)
   → install-gateway             # shared Gateway at .200 — needs cert-manager wildcard
   → install-pihole              # HTTPRoute needs the Gateway to exist
   → install-argocd              # ClusterIP + HTTPRoute at argocd.cluster.home
+  → install-kube-prometheus-stack ← Prometheus + Grafana + AlertManager
+  → install-tempo               ← Grafana Tempo distributed tracing
+  → install-alloy               ← Grafana Alloy OTLP pipeline
 ```
 
 Do NOT reorder. Cilium's operator will error if Gateway API CRDs are missing
 when `gatewayAPI.enabled=true`. `install-cilium-pools` CRDs only exist after
 the Cilium operator is running.
+
+## Bootstrap Tags
+
+Each role is tagged for selective deployment. Tags are cumulative — include
+all tags up to the layer you need.
+
+| Tag | Roles | Requires |
+|-----|-------|----------|
+| `core` | k3s + kubeconfig | — |
+| `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
+| `ingress` | cert-manager + gateway | `networking` |
+| `services` | pihole + argocd | `ingress` |
+| `observability` | prometheus + tempo + alloy | `networking` |
+
+```bash
+# Minimal cluster (kubectl works, no networking)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
+
+# Cluster with networking (deploy ClusterIPs, internal services)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
+
+# Full stack with public URLs (HTTPS + DNS + GitOps)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
+
+# Add observability to an existing cluster
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
+
+# Full bootstrap (all roles)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
+```
+
+Roles are idempotent — running `--tags observability` on a cluster that already
+has `core` + `networking` will skip those roles automatically.
 
 ## Ansible Workflow
 
@@ -84,7 +123,10 @@ cd ~/projects/infra
 # Full bootstrap from scratch
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
 
-# Resume from Cilium pools onwards (e.g. after tweaking IP pool)
+# Selective bootstrap with tags (see Bootstrap Tags section above)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
+
+# Resume from a specific role (e.g. after tweaking IP pool)
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini \
   --start-at-task "Create CiliumLoadBalancerIPPool"
 

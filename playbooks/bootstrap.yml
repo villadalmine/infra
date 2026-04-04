@@ -5,26 +5,50 @@
 # Summary: CRDs before Cilium, Cilium before cilium-pools (LB-IPAM CRDs only exist after Cilium),
 #          cert-manager before gateway (wildcard TLS cert must exist),
 #          gateway before pihole (HTTPRoute needs gateway to exist).
+#
+# Tags (cumulative — include all tags up to the layer you need):
+#   core          → k3s + kubeconfig
+#   networking    → gateway-api-crds + cilium + cilium-pools  (requires core)
+#   ingress       → cert-manager + gateway                    (requires networking)
+#   services      → pihole + argocd                           (requires ingress)
+#   observability → prometheus + tempo + alloy                (requires networking)
+#
+# Examples:
+#   ansible-playbook bootstrap.yml --tags core
+#   ansible-playbook bootstrap.yml --tags core,networking
+#   ansible-playbook bootstrap.yml --tags core,networking,ingress,services
 
 - name: Create partitions and install K3s
   hosts: all
   become: true
   roles:
     #    - create-partition
-    - install-k3s
+    - role: install-k3s
+      tags: [core]
 
 - name: Get kubeconfig from server and install core components
   hosts: localhost
   gather_facts: true
   roles:
-    - get-kubeconfig
-    - install-gateway-api-crds
-    - install-cilium
-    - install-cilium-pools
-    - install-cert-manager
-    - install-gateway
-    - install-pihole
-    - install-argocd
-    - install-kube-prometheus-stack
-    - install-tempo
-    - install-alloy
+    - role: get-kubeconfig
+      tags: [core]
+    - role: install-gateway-api-crds
+      tags: [networking]
+    - role: install-cilium
+      tags: [networking]
+    - role: install-cilium-pools
+      tags: [networking]
+    - role: install-cert-manager
+      tags: [ingress]
+    - role: install-gateway
+      tags: [ingress]
+    - role: install-pihole
+      tags: [services]
+    - role: install-argocd
+      tags: [services]
+    - role: install-kube-prometheus-stack
+      tags: [observability]
+    - role: install-tempo
+      tags: [observability]
+    - role: install-alloy
+      tags: [observability]
