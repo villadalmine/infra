@@ -1,8 +1,8 @@
-# Installs the cluster as well as core system components like Cilium, MetalLB, and ArgoCD
+# Installs the cluster as well as core system components like Cilium, ArgoCD, etc.
 # After which, handover.yml is used to delegate the management of these components to ArgoCD
 #
 # Role order is CRITICAL — see AGENTS.md for full explanation.
-# Summary: CRDs before Cilium, Cilium before MetalLB (node must be Ready),
+# Summary: CRDs before Cilium, Cilium before cilium-pools (LB-IPAM CRDs only exist after Cilium),
 #          cert-manager before gateway (wildcard TLS cert must exist),
 #          gateway before pihole (HTTPRoute needs gateway to exist).
 
@@ -20,7 +20,7 @@
     - get-kubeconfig
     - install-gateway-api-crds
     - install-cilium
-    - install-metallb
+    - install-cilium-pools
     - install-cert-manager
     - install-gateway
     - install-pihole

@@ -1,0 +1,51 @@
+# Configure Cilium LB-IPAM and L2 Announcements.
+#
+# This role must run AFTER install-cilium because the CRDs
+# (CiliumLoadBalancerIPPool, CiliumL2AnnouncementPolicy) are registered
+# by the Cilium operator, not by Helm install itself.
+#
+# ── LB-IPAM ────────────────────────────────────────────────────────────────────
+# LB-IPAM is always enabled in Cilium but dormant until the first IP pool is
+# created. It replaces MetalLB's IPAddressPool + L2Advertisement CRDs.
+# Specific IPs are requested via the lbipam.cilium.io/ips annotation on services.
+#
+# ── L2 Announcements ──────────────────────────────────────────────────────────
+# CiliumL2AnnouncementPolicy selects which services to announce via ARP.
+# Requires externalTrafficPolicy: Cluster on services (incompatible with Local).
+# Leader election via Kubernetes Leases — one node holds the lease per service.
+
+- name: Create CiliumLoadBalancerIPPool
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: "cilium.io/v2"
+      kind: CiliumLoadBalancerIPPool
+      metadata:
+        name: "{{ cilium_lb_pool_name }}"
+      spec:
+        blocks:
+          - start: "{{ cilium_lb_pool_start }}"
+            stop: "{{ cilium_lb_pool_stop }}"
+
+- name: Create CiliumL2AnnouncementPolicy
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: "cilium.io/v2alpha1"
+      kind: CiliumL2AnnouncementPolicy
+      metadata:
+        name: "{{ cilium_l2_policy_name }}"
+      spec:
+        interfaces:
+          - "{{ cilium_l2_policy_interface }}"
+        externalIPs: false
+        loadBalancerIPs: true
+
+- name: Verify IP pool is active
+  ansible.builtin.command:
+    cmd: kubectl get ciliumloadbalancerippool {{ cilium_lb_pool_name }} -o jsonpath='{.metadata.name}'
+  register: pool_check
+  until: pool_check.rc == 0
+  retries: 10
+  delay: 5
+  changed_when: false

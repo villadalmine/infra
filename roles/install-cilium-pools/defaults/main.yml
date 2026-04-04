@@ -1,0 +1,11 @@
+cilium_lb_pool_name: "default-pool"
+# IP range for LoadBalancer services.
+# .200 = shared Gateway (HTTP/HTTPS)
+# .203 = Pi-hole DNS port 53
+# Keep range tight — only allocate what's needed.
+cilium_lb_pool_start: "192.168.178.200"
+cilium_lb_pool_stop: "192.168.178.210"
+
+cilium_l2_policy_name: "default"
+# Interface regex — matches eth0, eth1, etc.
+cilium_l2_policy_interface: "^eth[0-9]+"
