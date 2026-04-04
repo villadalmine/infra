@@ -3,7 +3,7 @@
 ## Project Purpose
 
 Ansible-managed K3s cluster bootstrap on Raspberry Pi CM4 nodes.
-Target: single-node cluster `srv-rk1-01` (192.168.178.133), expandable to multi-node.
+Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-super6-cm4-emmc-01` (agent, 192.168.178.105).
 
 **Stack:** K3s + Cilium CNI + cert-manager + Gateway API + Pi-hole + ArgoCD
 
@@ -18,7 +18,7 @@ Target: single-node cluster `srv-rk1-01` (192.168.178.133), expandable to multi-
 ├── opencode.jsonc                   ← OpenCode project config (context7 local)
 ├── ansible.cfg
 ├── inventory/
-│   └── hosts.ini                    ← srv-rk1-01 @ 192.168.178.133
+│   └── hosts.ini                    ← srv-rk1-01 @ .133, srv-super6-cm4-emmc-01 @ .105
 └── playbooks/
     ├── bootstrap.yml                ← full cluster bootstrap (order matters — see below)
     └── uninstall.yml                ← full teardown
@@ -42,8 +42,10 @@ Target: single-node cluster `srv-rk1-01` (192.168.178.133), expandable to multi-
 
 | Key | Value |
 |-----|-------|
-| Node | `srv-rk1-01` / `cm4-unknow-3` |
-| IP | `192.168.178.133` |
+| Node (server) | `srv-rk1-01` / `cm4-unknow-3` |
+| Node (agent) | `srv-super6-cm4-emmc-01` |
+| IP (server) | `192.168.178.133` |
+| IP (agent) | `192.168.178.105` |
 | OS | Ubuntu 24.04.3 LTS (ARM64) |
 | K3s | `v1.35.1+k3s1` |
 | Cilium | `1.19.2` (helm chart) |

@@ -25,7 +25,7 @@ cómo se integran con el stack, y el rol de cada uno.
                 │                                │
                 ▼                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  K3s cluster (srv-rk1-01)                        │
+│                  K3s cluster (srv-rk1-01 + srv-super6-cm4-emmc-01)     │
 │                                                                  │
 │   Cilium · cert-manager · Gateway · Pi-hole · ArgoCD            │
 └──────────────────────────────────────────────────────────────────┘

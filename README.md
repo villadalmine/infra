@@ -1,6 +1,6 @@
 # infra-ai — Homelab K3s Cluster
 
-Single-node K3s on Raspberry Pi CM4 (ARM64, Ubuntu 24.04), managed entirely via Ansible.
+Multi-node K3s on Raspberry Pi CM4 (ARM64, Ubuntu 24.04), managed entirely via Ansible.
 This repo is the single source of truth — never apply changes manually.
 
 ## Quick Start
@@ -56,7 +56,8 @@ Access via `kubectl port-forward` or from within the cluster using the internal 
 
 | IP | What it is |
 |---|---|
-| `192.168.178.133` | K3s node (`srv-rk1-01`) |
+| `192.168.178.133` | K3s server (`srv-rk1-01`) |
+| `192.168.178.105` | K3s agent (`srv-super6-cm4-emmc-01`) |
 | `192.168.178.200` | Shared Gateway (all HTTP/HTTPS via Cilium LB-IPAM) |
 | `192.168.178.203` | Pi-hole DNS — wildcard `*.cluster.home → .200` |
 
