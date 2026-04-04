@@ -386,5 +386,6 @@ Load these when working on the relevant component:
 - `k3s` — K3s server flags, service management, node operations
 - `cilium` — CNI operations, upgrades, BPF/kube-proxy replacement, Gateway API, LB-IPAM, L2 Announcements
 - `argocd` — ApplicationSets, sync waves, app management, GitOps patterns
+- `monitoring` — Prometheus + Grafana + Tempo + Loki + Alloy full observability stack
 - `k8s-debug` — systematic pod/network/node debugging (global skill)
 - `platform-engineering` — Helm, Terraform, CI/CD best practices (global skill)
