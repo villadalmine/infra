@@ -5,7 +5,7 @@
 - Node: `srv-rk1-01` at `192.168.178.133`, ARM64, Ubuntu 24.04
 - K3s: `v1.35.1+k3s1`
 - Cilium: `1.19.2`
-- ArgoCD admin password: `79YpdVIZByWW75dy`
+- ArgoCD admin password: (rotated — retrieve from cluster with `argocd admin initial-password -n argocd`)
 - All services verified working: HTTP ✅ HTTPS ✅ DNS ✅ ARP ✅
 - Last bootstrap run: `failed=0`, `changed=3`
 
