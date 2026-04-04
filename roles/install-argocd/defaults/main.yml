@@ -1,2 +1,3 @@
 argocd_version: "9.4.17"   # ArgoCD app version v3.3.6, supports K8s v1.35
 argocd_namespace: argocd
+argocd_hostname: "argocd.cluster.home"

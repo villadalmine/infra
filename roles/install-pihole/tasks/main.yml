@@ -1,0 +1,126 @@
+# Install Pi-hole via Helm as the cluster's DNS resolver.
+#
+# ── Design ────────────────────────────────────────────────────────────────────
+# Pi-hole serves two roles:
+#   1. LAN DNS server (set Mac/Linux DNS to .203 — handled separately)
+#   2. Wildcard *.cluster.home → .200 so every new service needs zero DNS config
+#
+# DNS (port 53) gets its own LoadBalancer at .203 — cannot share the HTTP Gateway.
+# Web UI (port 80) uses ClusterIP + HTTPRoute → shared Gateway at .200.
+#
+# ── Wildcard DNS ──────────────────────────────────────────────────────────────
+# Uses dnsmasq.customDnsEntries in the chart values — no extra ConfigMap or
+# volume mounts needed. The chart renders this into /etc/dnsmasq.d natively.
+#
+# ── Storage ───────────────────────────────────────────────────────────────────
+# Pi-hole persists /etc/pihole via local-path-provisioner PVC.
+# Requires K3s without --disable local-storage.
+#
+# wait:false + kubectl rollout status — see install-cilium/tasks/main.yml for rationale.
+
+- name: Add Pi-hole Helm repository
+  kubernetes.core.helm_repository:
+    name: mojo2600
+    repo_url: https://mojo2600.github.io/pihole-kubernetes/
+  changed_when: false
+
+- name: Create pihole namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ pihole_namespace }}"
+    state: present
+
+- name: Install or upgrade Pi-hole
+  kubernetes.core.helm:
+    name: pihole
+    chart_ref: mojo2600/pihole
+    chart_version: "{{ pihole_chart_version }}"
+    release_namespace: "{{ pihole_namespace }}"
+    create_namespace: false
+    wait: false   # deliberately no --wait — see install-cilium for rationale
+    values:
+      replicaCount: 1
+
+      adminPassword: "{{ pihole_admin_password }}"
+
+      persistentVolumeClaim:
+        enabled: true
+        storageClass: "{{ pihole_storage_class }}"
+        size: "{{ pihole_storage_size }}"
+
+      # DNS Service: own LoadBalancer at .203 (port 53 cannot share the HTTP Gateway)
+      # TCP and UDP get separate Services by the chart — use allow-shared-ip so
+      # MetalLB assigns the same IP to both.
+      serviceDns:
+        type: LoadBalancer
+        annotations:
+          metallb.universe.tf/loadBalancerIPs: "{{ pihole_dns_ip }}"
+          metallb.universe.tf/allow-shared-ip: "pihole-dns"
+        externalTrafficPolicy: Local
+
+      serviceDnsTCP:
+        type: LoadBalancer
+        annotations:
+          metallb.universe.tf/loadBalancerIPs: "{{ pihole_dns_ip }}"
+          metallb.universe.tf/allow-shared-ip: "pihole-dns"
+        externalTrafficPolicy: Local
+
+      # Web UI: ClusterIP — exposed via HTTPRoute on the shared Gateway
+      serviceWeb:
+        type: ClusterIP
+        http:
+          enabled: true
+          port: 80
+
+      dnsmasq:
+        # Wildcard: *.cluster.home and cluster.home itself → shared Gateway IP
+        customDnsEntries:
+          - address=/cluster.home/{{ gateway_ip }}
+        # NOTE: do NOT add local-service=false here — Pi-hole 6 FTL injects
+        # local-service internally when listeningMode=LOCAL, causing a duplicate
+        # keyword CRIT error that prevents DNS from starting. Use the FTLCONF
+        # env var below to set listeningMode=ALL instead.
+
+      # Pi-hole 6.x: set listening mode to ALL so FTL binds port 53 on all
+      # interfaces and accepts queries from external networks (e.g. Mac at .178.x).
+      # listeningMode=LOCAL is the default and maps to dnsmasq's local-service
+      # option; setting it via customSettings causes a duplicate keyword crash.
+      extraEnvVars:
+        - name: FTLCONF_dns_listeningMode
+          value: "ALL"
+
+      # Upstream DNS (Pi-hole forwards non-blocked queries here)
+      DNS1: "8.8.8.8"
+      DNS2: "8.8.4.4"
+
+- name: Wait for Pi-hole deployment rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/pihole -n {{ pihole_namespace }} --timeout=180s
+  register: pihole_rollout
+  until: pihole_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create Pi-hole HTTPRoute for web UI
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: pihole
+        namespace: "{{ pihole_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ pihole_hostname }}"
+        rules:
+          - backendRefs:
+              - name: pihole-web
+                port: 80
+    state: present

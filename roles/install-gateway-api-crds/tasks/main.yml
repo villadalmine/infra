@@ -2,6 +2,17 @@
 # These must exist before Cilium's gatewayAPI.enabled=true is applied,
 # otherwise the Cilium operator will log errors on startup.
 
+# On a fresh install K3s may take a few seconds to be reachable from localhost
+# via kubeconfig. Wait before attempting to apply CRDs.
+- name: Wait for K3s API to be reachable from localhost
+  ansible.builtin.command:
+    cmd: kubectl get nodes
+  register: api_check
+  until: api_check.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+
 - name: Apply Gateway API CRDs
   kubernetes.core.k8s:
     state: present

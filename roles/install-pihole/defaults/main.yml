@@ -1,0 +1,20 @@
+pihole_namespace: pihole
+pihole_chart_version: "2.30.0"   # mojo2600/pihole Helm chart
+
+# Pi-hole admin web UI password (change before deploying to production)
+pihole_admin_password: "changeme"
+
+# DNS service: own LoadBalancer at .203 (port 53 cannot share the HTTP Gateway)
+pihole_dns_ip: "192.168.178.203"
+
+# Web UI: ClusterIP + HTTPRoute → shared Gateway at .200
+pihole_hostname: "pihole.cluster.home"
+
+# PVC for /etc/pihole (DNS lists, config, DNSSEC data)
+# Requires local-path-provisioner (--disable local-storage must be absent from K3s flags)
+pihole_storage_size: "2Gi"
+pihole_storage_class: "local-path"
+
+# Wildcard DNS record: *.cluster.home → 192.168.178.200 (the shared Gateway IP)
+# Pi-hole custom DNS entries for this are added as a ConfigMap-mounted dnsmasq config.
+gateway_ip: "192.168.178.200"

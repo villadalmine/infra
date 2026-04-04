@@ -1,5 +1,10 @@
 # Installs the cluster as well as core system components like Cilium, MetalLB, and ArgoCD
 # After which, handover.yml is used to delegate the management of these components to ArgoCD
+#
+# Role order is CRITICAL — see AGENTS.md for full explanation.
+# Summary: CRDs before Cilium, Cilium before MetalLB (node must be Ready),
+#          cert-manager before gateway (wildcard TLS cert must exist),
+#          gateway before pihole (HTTPRoute needs gateway to exist).
 
 - name: Create partitions and install K3s
   hosts: all
@@ -10,10 +15,13 @@
 
 - name: Get kubeconfig from server and install core components
   hosts: localhost
+  gather_facts: true
   roles:
     - get-kubeconfig
     - install-gateway-api-crds
     - install-cilium
     - install-metallb
+    - install-cert-manager
+    - install-gateway
+    - install-pihole
     - install-argocd
-#    - install-cert-manager

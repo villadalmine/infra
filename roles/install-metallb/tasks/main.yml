@@ -1,6 +1,8 @@
 # Install MetalLB load balancer via Helm on localhost
 # Requires: kubeconfig fetched, K3s running with --disable servicelb
 # Provides: LoadBalancer IPs for services (L2 mode, LAN range 192.168.178.200-210)
+#
+# wait:false + kubectl rollout status — see install-cilium/tasks/main.yml for rationale.
 
 - name: Add MetalLB Helm repository
   kubernetes.core.helm_repository:
@@ -29,12 +31,29 @@
     chart_version: "{{ metallb_version }}"
     release_namespace: "{{ metallb_namespace }}"
     create_namespace: false
-    wait: true
-    timeout: "3m0s"
+    wait: false   # deliberately no --wait — see install-cilium for rationale
 
+- name: Wait for MetalLB controller rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/metallb-controller -n {{ metallb_namespace }} --timeout=120s
+  register: metallb_ctrl_rollout
+  until: metallb_ctrl_rollout.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+- name: Wait for MetalLB speaker rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/metallb-speaker -n {{ metallb_namespace }} --timeout=120s
+  register: metallb_spkr_rollout
+  until: metallb_spkr_rollout.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+# Must wait for webhook before applying CRD resources (IPAddressPool, L2Advertisement)
+# to avoid race condition with the validating webhook.
 - name: Wait for MetalLB controller webhook to be ready
-  # Must wait before applying CRD resources (IPAddressPool, L2Advertisement)
-  # to avoid race condition with the validating webhook
   kubernetes.core.k8s_info:
     kind: Deployment
     namespace: "{{ metallb_namespace }}"

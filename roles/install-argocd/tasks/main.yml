@@ -1,6 +1,9 @@
 # Install ArgoCD via Helm on localhost
-# Requires: kubeconfig fetched, Cilium ready, MetalLB ready (for LoadBalancer IP)
-# ArgoCD server exposed via MetalLB LoadBalancer at 192.168.178.200 (HTTP)
+# Requires: kubeconfig fetched, Cilium ready, MetalLB ready, Gateway + cert-manager ready
+# ArgoCD server exposed via ClusterIP + HTTPRoute → shared Gateway at .200
+# URL: https://argocd.cluster.home (TLS terminated at Gateway, cert-manager wildcard cert)
+#
+# wait:false + kubectl rollout status — see install-cilium/tasks/main.yml for rationale.
 
 - name: Add Argo Helm repository
   kubernetes.core.helm_repository:
@@ -24,27 +27,52 @@
     chart_version: "{{ argocd_version }}"
     release_namespace: "{{ argocd_namespace }}"
     create_namespace: false
-    wait: true
-    timeout: "5m0s"
+    wait: false   # deliberately no --wait — see install-cilium for rationale
     values:
-      # Single-node cluster — one replica per component is sufficient
       controller:
         replicas: 1
       server:
         replicas: 1
         service:
-          type: LoadBalancer   # MetalLB assigns 192.168.178.200
+          type: ClusterIP   # Exposed via HTTPRoute on shared Gateway
       repoServer:
         replicas: 1
       applicationSet:
         replicas: 1
-      # Disable Dex (OIDC/SSO broker) — not needed for single-user homelab
       dex:
         enabled: false
-      # Disable Redis HA — single-node, HA adds no value
       redis-ha:
         enabled: false
       configs:
         params:
-          # Serve plain HTTP — TLS termination deferred to future Ingress/Gateway + cert-manager
+          # Serve plain HTTP internally — TLS terminated at the Gateway
           server.insecure: "true"
+
+- name: Wait for ArgoCD server rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/argocd-server -n {{ argocd_namespace }} --timeout=180s
+  register: argocd_rollout
+  until: argocd_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create ArgoCD HTTPRoute
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: argocd
+        namespace: "{{ argocd_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ argocd_hostname }}"
+        rules:
+          - backendRefs:
+              - name: argocd-server
+                port: 80
+    state: present

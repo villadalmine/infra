@@ -47,6 +47,17 @@
     - "'k3s-agent.service' not in ansible_facts.services"
   changed_when: "'agent_nodes' in group_names"
 
+- name: Wait for K3s API to be ready
+  ansible.builtin.command:
+    cmd: k3s kubectl get nodes
+  become: true
+  register: k3s_api_ready
+  until: k3s_api_ready.rc == 0
+  retries: 24
+  delay: 5
+  when: "'server_nodes' in group_names"
+  changed_when: false
+
 - name: Ensure server node has worker role label
   ansible.builtin.command:
     cmd: k3s kubectl label node --selector kubernetes.io/hostname={{ ansible_facts['hostname'] }} node-role.kubernetes.io/worker=worker --overwrite

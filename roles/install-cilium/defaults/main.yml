@@ -1,10 +1,37 @@
 cilium_version: "1.19.2"
 cilium_namespace: kube-system
-# API server address used by Cilium's kube-proxy replacement
-# Must match the K3s server node IP
+
+# API server address used by Cilium's kube-proxy replacement.
+# Must match the K3s server node IP.
 k3s_api_server_host: "192.168.178.133"
 k3s_api_server_port: "6443"
-# Gateway API support (requires Gateway API CRDs to be installed first)
+
+# ── Gateway API ────────────────────────────────────────────────────────────────
+# Requires Gateway API CRDs to be installed BEFORE this is applied.
+# The install-gateway-api-crds role must run earlier in the play.
+# Enabling this automatically sets enable-envoy-config=true in cilium-config.
 cilium_gateway_api_enabled: true
-# Classic Ingress (networking.k8s.io/v1) support via Cilium
-cilium_ingress_controller_enabled: true
+
+# externalTrafficPolicy for every LoadBalancer Service created per Gateway.
+# "Local" preserves client source IP and is correct for single-node / MetalLB L2.
+# "Cluster" (chart default) SNAT's the source IP — avoid unless multi-node with
+# unequal traffic distribution is a concern.
+cilium_gateway_external_traffic_policy: "Local"
+
+# ── Hubble observability ──────────────────────────────────────────────────────
+# Hubble + relay required for `hubble observe` CLI debugging.
+cilium_hubble_enabled: true
+cilium_hubble_relay_enabled: true
+
+# ── Ingress Controller ─────────────────────────────────────────────────────────
+# Disabled — all services use Gateway API (HTTPRoute), not classic Ingress.
+# Disabling avoids cilium-ingress creating a LoadBalancer Service that would
+# compete with the shared Gateway for MetalLB IPs.
+cilium_ingress_controller_enabled: false
+
+# These settings are irrelevant when ingressController is disabled but kept
+# for documentation purposes.
+cilium_ingress_default: false
+cilium_ingress_enforce_https: false
+cilium_ingress_loadbalancer_mode: "shared"
+cilium_ingress_external_traffic_policy: "Local"
