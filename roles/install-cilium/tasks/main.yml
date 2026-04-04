@@ -1,11 +1,36 @@
-# Install Cilium CNI via Helm on localhost (requires kubeconfig already fetched)
-# Cilium replaces kube-proxy (--disable-kube-proxy was set on K3s server)
+# Install Cilium CNI via Helm on localhost (requires kubeconfig already fetched).
+# Cilium replaces kube-proxy entirely (K3s was started with --disable-kube-proxy).
 #
-# rollOutCiliumPods / operator.rollOutPods / envoy.rollOutPods:
-#   Causes the chart to hash the cilium-config ConfigMap and inject it as a
-#   pod template annotation. Any config change triggers an automatic rolling
-#   restart of agent, operator, and envoy pods, so Helm's --wait reliably
-#   blocks until all pods are running with the new config.
+# ── Pod rollout on config change ───────────────────────────────────────────────
+# rollOutCiliumPods / operator.rollOutPods / envoy.rollOutPods instruct the chart
+# to hash the cilium-config ConfigMap and inject it as a pod template annotation.
+# Any helm upgrade that changes config therefore triggers an automatic rolling
+# restart of all three components.
+#
+# WITHOUT these flags: Helm updates the ConfigMap but pods keep running with
+# stale in-memory config. The operator won't register new CRDs (e.g. Envoy CRDs
+# needed for gatewayAPI/ingressController), and the agent hangs indefinitely
+# waiting for those CRDs — a silent deadlock with no obvious error.
+#
+# ── Why wait:false + kubectl rollout status ────────────────────────────────────
+# kubernetes.core.helm with wait:true passes --wait to Helm. If Ansible is
+# interrupted (timeout, Ctrl+C) while Helm is waiting, Helm catches the signal,
+# marks the release as "failed: context canceled", and exits non-zero — even
+# though all pods are Running. The module then calls fail_json on rc!=0.
+# On the next run Ansible sees a failed release and re-runs the full upgrade,
+# which again takes 3-5 min on ARM64 — infinite loop.
+#
+# Solution: wait:false (Helm returns in <5s, release stays "deployed"),
+# then wait explicitly with kubectl rollout status which is idempotent and
+# re-runnable without corrupting Helm state.
+#
+# ── externalTrafficPolicy ─────────────────────────────────────────────────────
+# Both gatewayAPI and ingressController create LoadBalancer Services via MetalLB.
+# Default chart value is "Cluster" (SNAT, client IP is lost).
+# Use "Local" on single-node / MetalLB L2 to preserve the real client source IP.
+#
+# ── ztunnel — NOT for Cilium ──────────────────────────────────────────────────
+# ztunnel is the Istio Ambient Mesh L4 proxy. Do NOT install alongside Cilium.
 
 - name: Add Cilium Helm repository
   kubernetes.core.helm_repository:
@@ -20,29 +45,76 @@
     chart_version: "{{ cilium_version }}"
     release_namespace: "{{ cilium_namespace }}"
     create_namespace: false
-    wait: true
-    timeout: "10m0s"
+    wait: false   # deliberately no --wait — see comment at top of file
     values:
+      # ── kube-proxy replacement ───────────────────────────────────────────────
       kubeProxyReplacement: "true"
       k8sServiceHost: "{{ k3s_api_server_host }}"
       k8sServicePort: "{{ k3s_api_server_port }}"
-      # Automatically roll out pods when cilium-config ConfigMap changes
+
+      # ── Automatic pod rollout on ConfigMap change ────────────────────────────
       rollOutCiliumPods: true
       operator:
         replicas: 1
         rollOutPods: true
       envoy:
         rollOutPods: true
-      # Raspberry Pi CM4 (ARM64) — enable BPF masquerade
+
+      # ── ARM64 / Raspberry Pi CM4 ─────────────────────────────────────────────
       bpf:
         masquerade: true
-      # Needed for ARM when hardware offload not available
       loadBalancer:
         acceleration: disabled
-      # Gateway API support — CRDs must be installed before this is applied
+
+      # ── Hubble observability ─────────────────────────────────────────────────
+      hubble:
+        enabled: "{{ cilium_hubble_enabled }}"
+        relay:
+          enabled: "{{ cilium_hubble_relay_enabled }}"
+
+      # ── Gateway API ──────────────────────────────────────────────────────────
       gatewayAPI:
         enabled: "{{ cilium_gateway_api_enabled }}"
-      # Classic Kubernetes Ingress (networking.k8s.io/v1) support
+        externalTrafficPolicy: "{{ cilium_gateway_external_traffic_policy }}"
+
+      # ── Classic Ingress ───────────────────────────────────────────────────────
       ingressController:
         enabled: "{{ cilium_ingress_controller_enabled }}"
-        loadbalancerMode: shared
+        default: "{{ cilium_ingress_default }}"
+        enforceHttps: "{{ cilium_ingress_enforce_https }}"
+        loadbalancerMode: "{{ cilium_ingress_loadbalancer_mode }}"
+        service:
+          externalTrafficPolicy: "{{ cilium_ingress_external_traffic_policy }}"
+
+# Wait for Cilium DaemonSet and operator rollout to complete.
+# Uses kubectl rollout status — idempotent, re-runnable, never corrupts Helm state.
+- name: Wait for Cilium DaemonSet rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/cilium -n {{ cilium_namespace }} --timeout=300s
+  register: cilium_ds_rollout
+  until: cilium_ds_rollout.rc == 0
+  retries: 20
+  delay: 15
+  changed_when: false
+
+- name: Wait for Cilium operator rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/cilium-operator -n {{ cilium_namespace }} --timeout=120s
+  register: cilium_op_rollout
+  until: cilium_op_rollout.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+# Wait for all nodes to be Ready before proceeding to MetalLB and beyond.
+# Cilium (DaemonSet) schedules on NotReady nodes via tolerations and brings up
+# the CNI, which transitions the node to Ready. Non-DaemonSet pods (MetalLB
+# controller, cert-manager, ArgoCD) will not schedule until the node is Ready.
+- name: Wait for all nodes to be Ready
+  ansible.builtin.command:
+    cmd: kubectl wait nodes --all --for=condition=Ready --timeout=180s
+  register: node_ready
+  until: node_ready.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false

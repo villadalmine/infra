@@ -1,0 +1,190 @@
+# Install cert-manager via Helm, bootstrap an internal CA for cluster.home.
+#
+# ── Why internal CA (not Let's Encrypt) ───────────────────────────────────────
+# cluster.home is an invented domain — Let's Encrypt cannot issue certs for it.
+# We create a self-signed root CA inside the cluster and use it to sign a
+# wildcard cert *.cluster.home. Trust this CA in the Mac Keychain once and all
+# services get valid TLS with no browser warnings.
+#
+# ── Architecture ──────────────────────────────────────────────────────────────
+# 1. SelfSigned ClusterIssuer  →  issues root CA cert (stored in a Secret)
+# 2. CA ClusterIssuer          →  uses that Secret to sign service certs
+# 3. Certificate *.cluster.home →  wildcard cert issued by CA ClusterIssuer
+#                                  stored in gateway namespace for Gateway TLS
+#
+# ── CA cert trust ─────────────────────────────────────────────────────────────
+# The CA cert is written to cert_manager_ca_cert_local_path (/tmp/cluster-home-ca.crt).
+# Import manually into your OS trust store:
+#   macOS:  security add-trusted-cert -d -r trustRoot \
+#             -k ~/Library/Keychains/login.keychain-db /tmp/cluster-home-ca.crt
+#   Linux:  sudo cp /tmp/cluster-home-ca.crt /usr/local/share/ca-certificates/cluster-home.crt
+#           sudo update-ca-certificates
+#
+# wait:false + kubectl rollout status — see install-cilium/tasks/main.yml for rationale.
+
+- name: Add cert-manager Helm repository
+  kubernetes.core.helm_repository:
+    name: jetstack
+    repo_url: https://charts.jetstack.io
+  changed_when: false
+
+- name: Create cert-manager namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ cert_manager_namespace }}"
+    state: present
+
+- name: Install or upgrade cert-manager
+  kubernetes.core.helm:
+    name: cert-manager
+    chart_ref: jetstack/cert-manager
+    chart_version: "{{ cert_manager_version }}"
+    release_namespace: "{{ cert_manager_namespace }}"
+    create_namespace: false
+    wait: false   # deliberately no --wait — see install-cilium for rationale
+    values:
+      crds:
+        enabled: true   # install cert-manager CRDs as part of the Helm release
+
+- name: Wait for cert-manager controller rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/cert-manager -n {{ cert_manager_namespace }} --timeout=120s
+  register: cm_rollout
+  until: cm_rollout.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+- name: Wait for cert-manager webhook rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/cert-manager-webhook -n {{ cert_manager_namespace }} --timeout=120s
+  register: cm_webhook_rollout
+  until: cm_webhook_rollout.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+# ── Bootstrap internal CA ─────────────────────────────────────────────────────
+
+- name: Create SelfSigned ClusterIssuer (bootstrap issuer)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: selfsigned-issuer
+      spec:
+        selfSigned: {}
+    state: present
+
+- name: Create root CA Certificate (signed by selfsigned-issuer)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: "{{ cert_manager_ca_secret_name }}"
+        namespace: "{{ cert_manager_namespace }}"
+      spec:
+        isCA: true
+        commonName: "cluster.home Root CA"
+        secretName: "{{ cert_manager_ca_secret_name }}"
+        duration: 87600h      # 10 years — long-lived root CA
+        renewBefore: 8760h    # renew 1 year before expiry
+        privateKey:
+          algorithm: ECDSA
+          size: 256
+        issuerRef:
+          name: selfsigned-issuer
+          kind: ClusterIssuer
+          group: cert-manager.io
+    state: present
+
+- name: Poll until root CA secret exists
+  kubernetes.core.k8s_info:
+    kind: Secret
+    namespace: "{{ cert_manager_namespace }}"
+    name: "{{ cert_manager_ca_secret_name }}"
+  register: ca_secret_info
+  until: ca_secret_info.resources | length > 0
+  retries: 12
+  delay: 5
+
+- name: Create CA ClusterIssuer (signs service certs)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: "{{ cert_manager_ca_issuer_name }}"
+      spec:
+        ca:
+          secretName: "{{ cert_manager_ca_secret_name }}"
+    state: present
+
+# ── Wildcard certificate for *.cluster.home ───────────────────────────────────
+# Stored in the gateway namespace so the Cilium Gateway can reference it.
+
+- name: Ensure gateway namespace exists
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: gateway
+    state: present
+
+- name: Create wildcard Certificate for *.cluster.home
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: "{{ cert_manager_wildcard_cert_name }}"
+        namespace: gateway
+      spec:
+        secretName: cluster-home-wildcard-tls
+        commonName: "{{ cert_manager_wildcard_dns_name }}"
+        dnsNames:
+          - "{{ cert_manager_wildcard_dns_name }}"
+          - "cluster.home"
+        duration: 8760h
+        renewBefore: 720h
+        privateKey:
+          algorithm: ECDSA
+          size: 256
+        issuerRef:
+          name: "{{ cert_manager_ca_issuer_name }}"
+          kind: ClusterIssuer
+          group: cert-manager.io
+    state: present
+
+- name: Poll until wildcard TLS secret exists in gateway namespace
+  kubernetes.core.k8s_info:
+    kind: Secret
+    namespace: gateway
+    name: cluster-home-wildcard-tls
+  register: wildcard_secret_info
+  until: wildcard_secret_info.resources | length > 0
+  retries: 12
+  delay: 5
+
+# ── Export CA cert to disk ────────────────────────────────────────────────────
+
+- name: Extract CA cert from cluster secret
+  ansible.builtin.command:
+    cmd: >
+      kubectl get secret {{ cert_manager_ca_secret_name }}
+      -n {{ cert_manager_namespace }}
+      -o jsonpath='{.data.tls\.crt}'
+  register: ca_cert_b64
+  changed_when: false
+
+- name: Decode and write CA cert to local file
+  ansible.builtin.copy:
+    content: "{{ ca_cert_b64.stdout | b64decode }}"
+    dest: "{{ cert_manager_ca_cert_local_path }}"
+    mode: '0644'

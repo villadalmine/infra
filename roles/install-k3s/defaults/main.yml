@@ -9,10 +9,8 @@ k3s_server_exec: >
   --disable servicelb
   --token {{ k3s_token }}
   --disable-cloud-controller
-  --disable local-storage
   --disable-kube-proxy
   --disable traefik
   --disable metrics-server
-  --node-label node-role.kubernetes.io/worker=worker
 
 k3s_agent_exec: "agent --server https://{{ hostvars['srv-rk1-01'].ansible_host }}:6443 --token {{ k3s_token }}"

@@ -1,0 +1,14 @@
+cert_manager_version: "v1.17.2"   # https://github.com/cert-manager/cert-manager/releases
+cert_manager_namespace: cert-manager
+
+# Internal CA: self-signed root cert for cluster.home (invented domain,
+# so Let's Encrypt is not usable). cert-manager issues a self-signed CA cert,
+# then a ClusterIssuer uses that CA to sign all service certs.
+cert_manager_ca_secret_name: cluster-home-ca
+cert_manager_ca_issuer_name: cluster-home-ca-issuer
+cert_manager_wildcard_cert_name: cluster-home-wildcard
+cert_manager_wildcard_dns_name: "*.cluster.home"
+
+# The CA cert is written here after extraction from the cluster.
+# Import it manually into your OS trust store — see tasks/main.yml for commands.
+cert_manager_ca_cert_local_path: "/tmp/cluster-home-ca.crt"

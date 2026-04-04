@@ -1,0 +1,6 @@
+gateway_namespace: gateway
+gateway_name: cluster-gateway
+gateway_ip: "192.168.178.200"
+
+# TLS secret created by install-cert-manager role in the gateway namespace
+gateway_tls_secret: cluster-home-wildcard-tls
