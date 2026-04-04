@@ -64,7 +64,6 @@
                 - service-graphs
                 - span-metrics
                 - local-blocks
-                - local-blocks
 
       persistence:
         enabled: true
