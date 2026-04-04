@@ -30,8 +30,8 @@
     state: absent
     purge: true
   when:
-    - loki_release_info.status is defined
-    - loki_release_info.status | default('') in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+    - loki_release_info.status.status is defined
+    - loki_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
 
 - name: Install or upgrade Loki
   kubernetes.core.helm:

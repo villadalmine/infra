@@ -37,6 +37,22 @@
         name: "{{ cert_manager_namespace }}"
     state: present
 
+- name: Check if cert-manager release exists
+  kubernetes.core.helm_info:
+    name: cert-manager
+    release_namespace: "{{ cert_manager_namespace }}"
+  register: cm_release_info
+
+- name: Purge stuck cert-manager release if in failed state
+  kubernetes.core.helm:
+    name: cert-manager
+    release_namespace: "{{ cert_manager_namespace }}"
+    state: absent
+    purge: true
+  when:
+    - cm_release_info.status.status is defined
+    - cm_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+
 - name: Install or upgrade cert-manager
   kubernetes.core.helm:
     name: cert-manager

@@ -29,6 +29,8 @@
 - name: Get kubeconfig from server and install core components
   hosts: localhost
   gather_facts: true
+  environment:
+    PATH: "{{ lookup('env','HOME') }}/.asdf/shims:{{ lookup('env','HOME') }}/.asdf/bin:{{ lookup('env','PATH') }}"
   roles:
     - role: get-kubeconfig
       tags: [core]
@@ -49,10 +51,6 @@
     - role: install-kube-prometheus-stack
       tags: [observability]
     - role: install-tempo
-      tags: [observability]
-    - role: install-loki
-      tags: [observability]
-    - role: install-alloy
       tags: [observability]
     - role: install-loki
       tags: [observability]

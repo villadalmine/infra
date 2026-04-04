@@ -22,6 +22,22 @@
         name: "{{ kube_prometheus_stack_namespace }}"
     state: present
 
+- name: Check if kube-prometheus-stack release exists
+  kubernetes.core.helm_info:
+    name: kube-prometheus-stack
+    release_namespace: "{{ kube_prometheus_stack_namespace }}"
+  register: kps_release_info
+
+- name: Purge stuck kube-prometheus-stack release
+  kubernetes.core.helm:
+    name: kube-prometheus-stack
+    release_namespace: "{{ kube_prometheus_stack_namespace }}"
+    state: absent
+    purge: true
+  when:
+    - kps_release_info.status.status is defined
+    - kps_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+
 - name: Install or upgrade kube-prometheus-stack
   kubernetes.core.helm:
     name: kube-prometheus-stack
