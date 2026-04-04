@@ -1,0 +1,73 @@
+# Install helm-dashboard via Helm on localhost
+# UI for viewing Helm releases, history, and k8s resources.
+# Read-only by default — repos are pre-configured via ConfigMap.
+
+- name: Add komodorio Helm repository
+  kubernetes.core.helm_repository:
+    name: komodorio
+    repo_url: https://helm-charts.komodor.io
+  changed_when: false
+
+- name: Check if helm-dashboard release exists
+  ansible.builtin.command:
+    cmd: helm list -n {{ helm_dashboard_namespace }} -o json --filter helm-dashboard
+  register: hd_helm_list
+  changed_when: false
+  failed_when: false
+
+- name: Set helm-dashboard release status fact
+  ansible.builtin.set_fact:
+    hd_deployed: "{{ (hd_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: hd_helm_list.stdout | default('') | length > 0
+
+- name: Set helm-dashboard release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    hd_deployed: false
+  when: hd_helm_list.stdout | default('') | length == 0
+
+- name: Install or upgrade helm-dashboard
+  kubernetes.core.helm:
+    name: helm-dashboard
+    chart_ref: komodorio/helm-dashboard
+    chart_version: "{{ helm_dashboard_version }}"
+    release_namespace: "{{ helm_dashboard_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      dashboard:
+        allowWriteActions: "{{ helm_dashboard_allow_write }}"
+      extraArgs:
+        - "--no-browser"
+        - "--bind=0.0.0.0"
+      service:
+        type: ClusterIP
+  when: not hd_deployed
+
+- name: Wait for helm-dashboard rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/helm-dashboard -n {{ helm_dashboard_namespace }} --timeout=180s
+  register: hd_rollout
+  until: hd_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create HTTPRoute for helm-dashboard
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: helm-dashboard
+        namespace: "{{ helm_dashboard_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ helm_dashboard_hostname }}"
+        rules:
+          - backendRefs:
+              - name: helm-dashboard
+                port: 8080
+    state: present
