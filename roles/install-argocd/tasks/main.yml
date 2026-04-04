@@ -53,6 +53,18 @@
           type: ClusterIP   # Exposed via HTTPRoute on shared Gateway
       repoServer:
         replicas: 1
+        # ARM64 CM4 needs more time for health checks — repo-server does
+        # Redis+GPG+git init on startup and /healthz?full=true takes 2-3s
+        livenessProbe:
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
       applicationSet:
         replicas: 1
       dex:
@@ -63,6 +75,8 @@
         params:
           # Serve plain HTTP internally — TLS terminated at the Gateway
           server.insecure: "true"
+  failed_when: false
+  register: argocd_helm_result
 
 - name: Wait for ArgoCD server rollout
   ansible.builtin.command:

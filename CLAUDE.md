@@ -34,7 +34,7 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini \
 install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-cilium-pools → install-cert-manager → install-gateway
 → install-pihole → install-argocd
-→ install-kube-prometheus-stack → install-tempo → install-alloy
+→ install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
 ```
 
 ## Bootstrap Tags
@@ -48,7 +48,7 @@ all tags up to the layer you need.
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd | `ingress` |
-| `observability` | prometheus + tempo + alloy | `networking` |
+| `observability` | prometheus + tempo + loki + alloy | `networking` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -95,6 +95,7 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 | Cilium | `cilium/cilium` | 1.19.2 | 1.19.2 |
 | kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | 82.17.0 | v0.89.0 |
 | Tempo | `grafana-community/tempo` | 1.26.7 | 2.10.1 |
+| Loki | `grafana/loki` | 6.55.0 | 3.x |
 | Alloy | `grafana/alloy` | 1.7.0 | v1.15.0 |
 
 ## Skills (deep technical context per component)
