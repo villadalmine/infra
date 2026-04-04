@@ -16,20 +16,21 @@
   changed_when: false
 
 - name: Check if Tempo release exists
-  kubernetes.core.helm_info:
-    name: tempo
-    release_namespace: "{{ tempo_namespace }}"
-  register: tempo_release_info
+  ansible.builtin.command:
+    cmd: helm list -n {{ tempo_namespace }} -o json --filter tempo
+  register: tempo_helm_list
+  changed_when: false
+  failed_when: false
 
-- name: Purge stuck Tempo release if in failed state
-  kubernetes.core.helm:
-    name: tempo
-    release_namespace: "{{ tempo_namespace }}"
-    state: absent
-    purge: true
-  when:
-    - tempo_release_info.status.status is defined
-    - tempo_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+- name: Set tempo release status fact
+  ansible.builtin.set_fact:
+    tempo_deployed: "{{ (tempo_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: tempo_helm_list.stdout | default('') | length > 0
+
+- name: Set tempo release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    tempo_deployed: false
+  when: tempo_helm_list.stdout | default('') | length == 0
 
 - name: Install or upgrade Tempo
   kubernetes.core.helm:
@@ -67,9 +68,7 @@
         enabled: true
         storageClassName: local-path
         size: "{{ tempo_storage_size }}"
-  when: >
-    tempo_release_info.status.status is not defined or
-    tempo_release_info.status.status != 'deployed'
+  when: not tempo_deployed
 
 - name: Wait for Tempo rollout
   ansible.builtin.command:

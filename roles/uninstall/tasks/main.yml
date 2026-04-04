@@ -22,7 +22,7 @@
 
 - name: Remove residual k3s directories
   ansible.builtin.file:
-    path: "{{item}}"
+    path: "{{ item }}"
     state: absent
   loop:
     - /run/k3s
@@ -31,17 +31,14 @@
     - /etc/rancher
     - /var/lib/k3s
     - /etc/systemd/system/k3s.service
-# Nodes need to be rebooted to remove file locks in /mnt/data
-#- name: Reboot all nodes
-#  ansible.builtin.reboot:
-#  when: "'server_nodes' in group_names or 'agent_nodes' in group_names"
-#  become: true
-#  failed_when: false
+    - /etc/systemd/system/k3s-agent.service
+  failed_when: false
 
-# Remove after reboot
-#- name: Delete all files in /mnt/data
-#  ansible.builtin.file:
-#    path: /mnt/data
-#    state: absent
-#  become: true
-#  failed_when: false
+# Reboot to clear containerd-shim zombies, file locks, and stale mounts
+- name: Reboot all nodes
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    connect_timeout: 60
+  when: "'server_nodes' in group_names or 'agent_nodes' in group_names"
+  become: true
+  failed_when: false

@@ -23,20 +23,21 @@
     state: present
 
 - name: Check if kube-prometheus-stack release exists
-  kubernetes.core.helm_info:
-    name: kube-prometheus-stack
-    release_namespace: "{{ kube_prometheus_stack_namespace }}"
-  register: kps_release_info
+  ansible.builtin.command:
+    cmd: helm list -n {{ kube_prometheus_stack_namespace }} -o json --filter kube-prometheus-stack
+  register: kps_helm_list
+  changed_when: false
+  failed_when: false
 
-- name: Purge stuck kube-prometheus-stack release
-  kubernetes.core.helm:
-    name: kube-prometheus-stack
-    release_namespace: "{{ kube_prometheus_stack_namespace }}"
-    state: absent
-    purge: true
-  when:
-    - kps_release_info.status.status is defined
-    - kps_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+- name: Set KPS release status fact
+  ansible.builtin.set_fact:
+    kps_deployed: "{{ (kps_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: kps_helm_list.stdout | default('') | length > 0
+
+- name: Set KPS release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    kps_deployed: false
+  when: kps_helm_list.stdout | default('') | length == 0
 
 - name: Install or upgrade kube-prometheus-stack
   kubernetes.core.helm:
@@ -94,9 +95,7 @@
               httpHeaderName1: X-Scope-OrgId
             secureJsonData:
               httpHeaderValue1: fake
-  when: >
-    kps_release_info.status.status is not defined or
-    kps_release_info.status.status != 'deployed'
+  when: not kps_deployed
 
 - name: Wait for Grafana rollout
   ansible.builtin.command:

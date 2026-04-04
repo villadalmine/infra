@@ -21,20 +21,21 @@
     state: present
 
 - name: Check if ArgoCD release exists
-  kubernetes.core.helm_info:
-    name: argocd
-    release_namespace: "{{ argocd_namespace }}"
-  register: argocd_release_info
+  ansible.builtin.command:
+    cmd: helm list -n {{ argocd_namespace }} -o json --filter argocd
+  register: argocd_helm_list
+  changed_when: false
+  failed_when: false
 
-- name: Purge stuck ArgoCD release if in failed state
-  kubernetes.core.helm:
-    name: argocd
-    release_namespace: "{{ argocd_namespace }}"
-    state: absent
-    purge: true
-  when:
-    - argocd_release_info.status.status is defined
-    - argocd_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+- name: Set argocd release status fact
+  ansible.builtin.set_fact:
+    argocd_deployed: "{{ (argocd_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: argocd_helm_list.stdout | default('') | length > 0
+
+- name: Set argocd release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    argocd_deployed: false
+  when: argocd_helm_list.stdout | default('') | length == 0
 
 - name: Install or upgrade ArgoCD
   kubernetes.core.helm:
@@ -75,9 +76,7 @@
         params:
           # Serve plain HTTP internally — TLS terminated at the Gateway
           server.insecure: "true"
-  when: >
-    argocd_release_info.status.status is not defined or
-    argocd_release_info.status.status != 'deployed'
+  when: not argocd_deployed
 
 - name: Wait for ArgoCD server rollout
   ansible.builtin.command:

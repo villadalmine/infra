@@ -34,20 +34,21 @@
     state: present
 
 - name: Check if Pi-hole release exists
-  kubernetes.core.helm_info:
-    name: pihole
-    release_namespace: "{{ pihole_namespace }}"
-  register: pihole_release_info
+  ansible.builtin.command:
+    cmd: helm list -n {{ pihole_namespace }} -o json --filter pihole
+  register: pihole_helm_list
+  changed_when: false
+  failed_when: false
 
-- name: Purge stuck Pi-hole release if in failed state
-  kubernetes.core.helm:
-    name: pihole
-    release_namespace: "{{ pihole_namespace }}"
-    state: absent
-    purge: true
-  when:
-    - pihole_release_info.status.status is defined
-    - pihole_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+- name: Set pihole release status fact
+  ansible.builtin.set_fact:
+    pihole_deployed: "{{ (pihole_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: pihole_helm_list.stdout | default('') | length > 0
+
+- name: Set pihole release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    pihole_deployed: false
+  when: pihole_helm_list.stdout | default('') | length == 0
 
 - name: Install or upgrade Pi-hole
   kubernetes.core.helm:
@@ -126,9 +127,7 @@
           initialDelaySeconds: 30
           failureThreshold: 18
           periodSeconds: 10
-  when: >
-    pihole_release_info.status.status is not defined or
-    pihole_release_info.status.status != 'deployed'
+  when: not pihole_deployed
 
 - name: Wait for Pi-hole deployment rollout
   ansible.builtin.command:

@@ -16,20 +16,21 @@
   changed_when: false
 
 - name: Check if Alloy release exists
-  kubernetes.core.helm_info:
-    name: alloy
-    release_namespace: "{{ alloy_namespace }}"
-  register: alloy_release_info
+  ansible.builtin.command:
+    cmd: helm list -n {{ alloy_namespace }} -o json --filter alloy
+  register: alloy_helm_list
+  changed_when: false
+  failed_when: false
 
-- name: Purge stuck Alloy release if in failed state
-  kubernetes.core.helm:
-    name: alloy
-    release_namespace: "{{ alloy_namespace }}"
-    state: absent
-    purge: true
-  when:
-    - alloy_release_info.status.status is defined
-    - alloy_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+- name: Set alloy release status fact
+  ansible.builtin.set_fact:
+    alloy_deployed: "{{ (alloy_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: alloy_helm_list.stdout | default('') | length > 0
+
+- name: Set alloy release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    alloy_deployed: false
+  when: alloy_helm_list.stdout | default('') | length == 0
 
 - name: Install or upgrade Alloy
   kubernetes.core.helm:
@@ -72,9 +73,7 @@
                 tls { insecure = true }
               }
             }
-  when: >
-    alloy_release_info.status.status is not defined or
-    alloy_release_info.status.status != 'deployed'
+  when: not alloy_deployed
 
 - name: Wait for Alloy rollout
   ansible.builtin.command:
