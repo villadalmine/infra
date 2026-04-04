@@ -5,44 +5,80 @@ cómo se integran con el stack, y el rol de cada uno.
 
 ---
 
-## Mapa de agentes
+## Arquitectura completa
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                           LAPTOP                                 │
-│                                                                  │
-│  LiteLLM (local proxy :4000)                                     │
-│  ├── claude-sonnet-4-6   → Anthropic  (razonamiento / planif.)  │
-│  ├── claude-haiku-4-5    → Anthropic  (tareas rápidas / baratas) │
-│  └── ollama/llama3.1     → in-cluster (datos privados / logs)    │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │       OpenCode / Claude Code                                │ │
-│  │  model: via LiteLLM (elige modelo por tarea)               │ │
-│  │                                                             │ │
-│  │  MCP servers:                                               │ │
-│  │  ├── context7 (docs)                                        │ │
-│  │  ├── github (PRs/issues)                                    │ │
-│  │  └── kubernetes-mcp (live cluster state)                    │ │
-│  │                                                             │ │
-│  │  Skills con scripts/:                                       │ │
-│  │  ├── cilium/scripts/connectivity-test.sh                    │ │
-│  │  ├── k8s-debug/scripts/diagnose.sh                          │ │
-│  │  └── monitoring/scripts/health-check.sh                     │ │
-│  └──────────────┬──────────────────────────────────────────────┘ │
-│                 │ Ansible SSH / kubectl                           │
-└─────────────────┼────────────────────────────────────────────────┘
-                  │                         │ kubectl read-only
-                  ▼                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│               K3s cluster (srv-rk1-01 + srv-super6-cm4-emmc-01)  │
-│                                                                  │
-│   Cilium · cert-manager · Gateway · Pi-hole · ArgoCD            │
-│   Prometheus · Grafana · Tempo · Loki · Alloy                   │
-│                                                                  │
-│   HolmesGPT (Operator mode) ← PENDIENTE                         │
-│   Ollama (in-cluster)        ← FUTURO                           │
-└──────────────────────────────────────────────────────────────────┘
+  VOS
+   │
+   │  hablas en lenguaje natural
+   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         OpenCode (laptop)                           │
+│                                                                     │
+│  Modelo activo: litellm/cheap (qwen3-32b) ← default con MCP        │
+│                 litellm/free  (qwen3-80b:free) ← /free, sin tools  │
+│                 litellm/claude-sonnet-4-6 ← /model cuando se       │
+│                 litellm/claude-haiku-4-5    necesita más potencia   │
+│                                                                     │
+│  MCP servers (tools que el modelo puede llamar):                    │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ llm-router          │ ask_expert(question)                  │   │
+│  │                     │ ask_model(model, question)            │   │
+│  ├─────────────────────┼───────────────────────────────────────┤   │
+│  │ kubernetes-mcp      │ list-pods, get-logs, describe, events │   │
+│  ├─────────────────────┼───────────────────────────────────────┤   │
+│  │ github              │ PRs, issues, commits                  │   │
+│  ├─────────────────────┼───────────────────────────────────────┤   │
+│  │ context7            │ documentación de librerías            │   │
+│  └─────────────────────┴───────────────────────────────────────┘   │
+│                                                                     │
+│  Comandos rápidos:                                                  │
+│  /free  <tarea>  → qwen3-80b:free (gratis, sin MCP)                │
+│  /cheap <tarea>  → qwen3-32b (barato, con MCP)                     │
+│  /model          → menú interactivo para elegir modelo             │
+└──────────┬───────────────────────┬──────────────────────────────────┘
+           │                       │
+           │ ask_expert()          │ kubectl (read-only)
+           │ ask_model()           │ pods, logs, events
+           ▼                       ▼
+┌─────────────────────┐   ┌────────────────────────────┐
+│  LiteLLM proxy      │   │  K3s cluster               │
+│  localhost:4000     │   │  srv-rk1-01 + srv-super6   │
+│                     │   │                            │
+│  cheap → qwen3-32b  │   │  Cilium · Gateway · ArgoCD │
+│  free  → qwen3-80b  │   │  Prometheus · Loki · Tempo │
+│  claude → Anthropic │   │  Alloy · cert-manager      │
+│  local → Ollama ←── │───│── FUTURO (in-cluster)      │
+│     (cuando exista) │   │                            │
+└──────────┬──────────┘   └────────────────────────────┘
+           │
+           │ HTTPS
+           ▼
+     OpenRouter API
+     (todos los modelos
+      salvo Ollama local)
+```
+
+## Flujo típico — cómo trabaja el modelo principal
+
+```
+Vos: "¿por qué crashea el pod argocd-server?"
+        │
+        ▼
+OpenCode (qwen3-32b)
+        │
+        ├── [tool] kubernetes-mcp: get-pod argocd-server -n argocd
+        │       └── respuesta: OOMKilled, límite 128Mi
+        │
+        ├── [tool] kubernetes-mcp: get-events -n argocd
+        │       └── respuesta: "killed process" × 3
+        │
+        ├── [tool] ask_expert("¿cuánta memoria necesita argocd-server
+        │                      con 5 repos y ApplicationSets?")
+        │       └── qwen3-32b analiza → "mínimo 512Mi, recomendado 1Gi"
+        │
+        └── Edita roles/install-argocd/defaults/main.yml
+            Corre ansible-playbook → verifica → commitea
 ```
 
 ---
