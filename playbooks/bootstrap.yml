@@ -10,7 +10,7 @@
 #   core          → k3s + kubeconfig
 #   networking    → gateway-api-crds + cilium + cilium-pools  (requires core)
 #   ingress       → cert-manager + gateway                    (requires networking)
-#   services      → pihole + argocd                           (requires ingress)
+#   services      → pihole + argocd + helm-dashboard            (requires ingress)
 #   observability → prometheus + tempo + loki + alloy + version-checker  (requires networking)
 #
 # Examples:
@@ -48,6 +48,8 @@
       tags: [services]
     - role: install-argocd
       tags: [services]
+    - role: install-helm-dashboard
+      tags: [services]
     - role: install-kube-prometheus-stack
       tags: [observability]
     - role: install-tempo
@@ -57,6 +59,12 @@
     - role: install-alloy
       tags: [observability]
     - role: install-version-checker
+      tags: [observability]
+    - role: install-tempo
+      tags: [observability]
+    - role: install-loki
+      tags: [observability]
+    - role: install-alloy
       tags: [observability]
     - role: install-version-checker
       tags: [observability]

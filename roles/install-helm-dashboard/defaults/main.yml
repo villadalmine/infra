@@ -1,0 +1,19 @@
+helm_dashboard_version: "2.0.6"
+helm_dashboard_namespace: monitoring
+helm_dashboard_hostname: helm-dashboard.cluster.home
+helm_dashboard_allow_write: false
+helm_dashboard_repos:
+  - name: jetstack
+    url: https://charts.jetstack.io
+  - name: cilium
+    url: https://helm.cilium.io
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+  - name: grafana-community
+    url: https://grafana-community.github.io/helm-charts
+  - name: argo
+    url: https://argoproj.github.io/argo-helm
+  - name: mojo2600
+    url: https://mojo2600.github.io/pihole-kubernetes
