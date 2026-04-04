@@ -34,6 +34,7 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
     ├── install-argocd/              ← ArgoCD via Helm (ClusterIP + HTTPRoute, not LoadBalancer)
     ├── install-kube-prometheus-stack/ ← Prometheus + Grafana + AlertManager
     ├── install-tempo/               ← Grafana Tempo distributed tracing
+    ├── install-loki/                ← Grafana Loki log aggregation
     ├── install-alloy/               ← Grafana Alloy OTLP pipeline
     └── uninstall/                   ← K3s uninstall script + cleanup
 ```
@@ -77,6 +78,7 @@ install-k3s              (remote SSH)
   → install-argocd              # ClusterIP + HTTPRoute at argocd.cluster.home
   → install-kube-prometheus-stack ← Prometheus + Grafana + AlertManager
   → install-tempo               ← Grafana Tempo distributed tracing
+  → install-loki                ← Grafana Loki log aggregation
   → install-alloy               ← Grafana Alloy OTLP pipeline
 ```
 
@@ -95,7 +97,7 @@ all tags up to the layer you need.
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd | `ingress` |
-| `observability` | prometheus + tempo + alloy | `networking` |
+| `observability` | prometheus + tempo + loki + alloy | `networking` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
