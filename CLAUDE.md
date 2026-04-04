@@ -84,7 +84,8 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 4. Add role to `playbooks/bootstrap.yml`
 5. `ansible-playbook playbooks/bootstrap.yml` → must pass `failed=0`
 6. Create skill in dotfiles: `~/dotfiles/ansible/roles/opencode/files/skills/<name>/SKILL.md`
-7. Commit + push both repos
+7. **Update `README.md`** — add the service to the public or internal services table
+8. Commit + push both repos
 
 ## Installed component versions
 
