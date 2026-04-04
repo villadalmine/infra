@@ -1,0 +1,7 @@
+loki_version: "6.55.0"
+loki_namespace: monitoring
+loki_deployment_mode: SingleBinary
+loki_replicas: 1
+loki_minio_enabled: true
+loki_minio_persistence_size: 1Gi
+loki_storage_retention_period: 744h  # 31 days
