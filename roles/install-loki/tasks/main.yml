@@ -18,20 +18,21 @@
     state: present
 
 - name: Check if Loki release exists
-  kubernetes.core.helm_info:
-    name: loki
-    release_namespace: "{{ loki_namespace }}"
-  register: loki_release_info
+  ansible.builtin.command:
+    cmd: helm list -n {{ loki_namespace }} -o json --filter loki
+  register: loki_helm_list
+  changed_when: false
+  failed_when: false
 
-- name: Purge stuck Loki release if in failed state
-  kubernetes.core.helm:
-    name: loki
-    release_namespace: "{{ loki_namespace }}"
-    state: absent
-    purge: true
-  when:
-    - loki_release_info.status.status is defined
-    - loki_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+- name: Set loki release status fact
+  ansible.builtin.set_fact:
+    loki_deployed: "{{ (loki_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: loki_helm_list.stdout | default('') | length > 0
+
+- name: Set loki release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    loki_deployed: false
+  when: loki_helm_list.stdout | default('') | length == 0
 
 - name: Install or upgrade Loki
   kubernetes.core.helm:
@@ -96,9 +97,13 @@
         replicas: 0
       bloomGateway:
         replicas: 0
-  when: >
-    loki_release_info.status.status is not defined or
-    loki_release_info.status.status != 'deployed'
+
+      # Caches disabled — CM4 has limited memory (8GB shared across all pods)
+      chunksCache:
+        enabled: "{{ loki_chunks_cache_enabled }}"
+      resultsCache:
+        enabled: "{{ loki_results_cache_enabled }}"
+  when: not loki_deployed
 
 - name: Wait for Loki rollout
   ansible.builtin.command:

@@ -9,27 +9,55 @@ cómo se integran con el stack, y el rol de cada uno.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        TU LAPTOP                                 │
+│                           LAPTOP                                 │
 │                                                                  │
-│  ┌─────────────────────────┐   ┌──────────────────────────────┐  │
-│  │       OpenCode          │   │         HolmesGPT            │  │
-│  │  AI coding agent        │   │  SRE / troubleshooting agent │  │
-│  │                         │   │                              │  │
-│  │  - Edita Ansible roles  │   │  - Investiga incidentes K8s  │  │
-│  │  - Corre playbooks      │   │  - Analiza pods/logs/eventos │  │
-│  │  - Itera infra as code  │   │  - Da root cause en lenguaje │  │
-│  │  - Contexto via skills  │   │    natural                   │  │
-│  └────────────┬────────────┘   └──────────────┬───────────────┘  │
-│               │ Ansible SSH / kubectl          │ kubectl          │
-└───────────────┼────────────────────────────────┼─────────────────┘
-                │                                │
-                ▼                                ▼
+│  LiteLLM (local proxy :4000)                                     │
+│  ├── claude-sonnet-4-6   → Anthropic  (razonamiento / planif.)  │
+│  ├── claude-haiku-4-5    → Anthropic  (tareas rápidas / baratas) │
+│  └── ollama/llama3.1     → in-cluster (datos privados / logs)    │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │       OpenCode / Claude Code                                │ │
+│  │  model: via LiteLLM (elige modelo por tarea)               │ │
+│  │                                                             │ │
+│  │  MCP servers:                                               │ │
+│  │  ├── context7 (docs)                                        │ │
+│  │  ├── github (PRs/issues)                                    │ │
+│  │  └── kubernetes-mcp (live cluster state)                    │ │
+│  │                                                             │ │
+│  │  Skills con scripts/:                                       │ │
+│  │  ├── cilium/scripts/connectivity-test.sh                    │ │
+│  │  ├── k8s-debug/scripts/diagnose.sh                          │ │
+│  │  └── monitoring/scripts/health-check.sh                     │ │
+│  └──────────────┬──────────────────────────────────────────────┘ │
+│                 │ Ansible SSH / kubectl                           │
+└─────────────────┼────────────────────────────────────────────────┘
+                  │                         │ kubectl read-only
+                  ▼                         ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  K3s cluster (srv-rk1-01 + srv-super6-cm4-emmc-01)     │
+│               K3s cluster (srv-rk1-01 + srv-super6-cm4-emmc-01)  │
 │                                                                  │
 │   Cilium · cert-manager · Gateway · Pi-hole · ArgoCD            │
+│   Prometheus · Grafana · Tempo · Loki · Alloy                   │
+│                                                                  │
+│   HolmesGPT (Operator mode) ← PENDIENTE                         │
+│   Ollama (in-cluster)        ← FUTURO                           │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## División de tareas entre agentes
+
+| Tarea | Agente | Modelo | Herramienta |
+|---|---|---|---|
+| Escribir/editar Ansible role | OpenCode / Claude Code | sonnet | — skills como contexto |
+| Debuggear pod crashlooping | Claude Code | sonnet | kubernetes-mcp → live state |
+| "¿Qué sale mal en esta alerta?" | HolmesGPT | claude/ollama | kubectl nativo |
+| Formatear YAML, rename simple | Claude Code | haiku (barato) | — |
+| Analizar logs con info privada | HolmesGPT / subagent | ollama local | Loki MCP |
+| Review PR / crear issue | Claude Code | sonnet | github MCP |
+| Health check completo | skill script | — | scripts/health-check.sh |
 
 ---
 
@@ -83,6 +111,67 @@ Los skills del cluster:
 
 **Source de los skills:** `~/dotfiles/ansible/roles/opencode/files/skills/`
 Deployados via Ansible al editar, nunca a mano.
+
+---
+
+## LiteLLM — Router de modelos local
+
+**Rol:** proxy local que expone un único endpoint OpenAI-compatible y enruta a múltiples
+providers/modelos. OpenCode y Claude Code apuntan a `http://localhost:4000` en lugar
+de directo a Anthropic.
+
+**Beneficio principal:** puedes pedir a Claude Code que use `haiku` para sub-tareas baratas
+(renombrar, formatear YAML) sin cambiar la configuración global.
+
+```yaml
+# ~/.config/litellm/config.yaml (ejemplo)
+model_list:
+  - model_name: claude-sonnet-4-6
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-haiku-4-5
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: ollama/llama3.1
+    litellm_params:
+      model: ollama/llama3.1
+      api_base: http://ollama.cluster.home
+```
+
+```bash
+# Iniciar LiteLLM
+litellm --config ~/.config/litellm/config.yaml
+
+# Verificar modelos disponibles
+curl http://localhost:4000/models
+```
+
+**Configurado en:** `~/dotfiles/ansible/roles/opencode/files/opencode.jsonc`
+
+---
+
+## Kubernetes MCP — Estado live del cluster
+
+**Rol:** MCP server que da a Claude Code acceso directo al estado del cluster
+(pods, eventos, logs) sin necesidad de aprobar cada comando `kubectl`.
+
+```bash
+# Explorar herramientas disponibles antes de usar
+npx mcporter list
+npx mcporter call kubernetes list-pods -- --namespace monitoring
+```
+
+**Configurado en:** `~/dotfiles/ansible/roles/opencode/files/opencode.jsonc`
+
+```jsonc
+"kubernetes": {
+  "type": "local",
+  "command": ["npx", "-y", "kubernetes-mcp-server@latest"],
+  "enabled": true
+}
+```
 
 ---
 
@@ -219,6 +308,10 @@ permisos RBAC configurados. No aplica cambios — solo lee y analiza.
 - [x] Desplegar kube-prometheus-stack (Prometheus + Grafana + AlertManager) — ✅ hecho
 - [x] Desplegar Grafana Tempo (tracing backend) — ✅ hecho
 - [x] Desplegar Grafana Alloy (OTLP pipeline) — ✅ hecho
+- [x] LiteLLM como router local de modelos — ✅ configurado en opencode.jsonc
+- [x] Kubernetes MCP server — ✅ configurado en opencode.jsonc
+- [x] Skill scripts (`diagnose.sh`, `health-check.sh`, `connectivity-test.sh`) — ✅ creados
+- [ ] Instalar y arrancar LiteLLM localmente (`pip install litellm`, config YAML)
 - [ ] Desplegar HolmesGPT como ArgoCD Application (in-cluster, Operator mode)
 - [ ] Conectar HolmesGPT con Prometheus + Alertmanager — prerequisito cumplido ✅
 - [ ] Probar Ollama in-cluster como LLM backend local (sin costos de API, datos privados)

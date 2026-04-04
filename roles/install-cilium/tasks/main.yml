@@ -38,20 +38,21 @@
   changed_when: false
 
 - name: Check if Cilium release exists
-  kubernetes.core.helm_info:
-    name: cilium
-    release_namespace: "{{ cilium_namespace }}"
-  register: cilium_release_info
+  ansible.builtin.command:
+    cmd: helm list -n {{ cilium_namespace }} -o json --filter cilium
+  register: cilium_helm_list
+  changed_when: false
+  failed_when: false
 
-- name: Purge stuck Cilium release if in failed state
-  kubernetes.core.helm:
-    name: cilium
-    release_namespace: "{{ cilium_namespace }}"
-    state: absent
-    purge: true
-  when:
-    - cilium_release_info.status.status is defined
-    - cilium_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+- name: Set Cilium release status fact
+  ansible.builtin.set_fact:
+    cilium_deployed: "{{ (cilium_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: cilium_helm_list.stdout | default('') | length > 0
+
+- name: Set Cilium release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    cilium_deployed: false
+  when: cilium_helm_list.stdout | default('') | length == 0
 
 - name: Install or upgrade Cilium
   kubernetes.core.helm:
@@ -100,9 +101,7 @@
         loadbalancerMode: "{{ cilium_ingress_loadbalancer_mode }}"
         service:
           externalTrafficPolicy: "{{ cilium_ingress_external_traffic_policy }}"
-  when: >
-    cilium_release_info.status.status is not defined or
-    cilium_release_info.status.status != 'deployed'
+  when: not cilium_deployed
 
 # Wait for Cilium DaemonSet and operator rollout to complete.
 # Uses kubectl rollout status — idempotent, re-runnable, never corrupts Helm state.

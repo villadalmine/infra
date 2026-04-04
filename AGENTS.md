@@ -328,14 +328,18 @@ hubble observe --verdict DROPPED --follow
 ## Current Status
 
 ### Working ✅
-- `install-k3s` — K3s v1.35.1, node Ready, worker label applied
+- `install-k3s` — K3s v1.35.1, multi-node (server + agent), both Ready
 - `install-gateway-api-crds` — Gateway API CRDs v1.4.1 established
 - `install-cilium` — Cilium 1.19.2, GatewayClass `cilium` Ready, Hubble relay enabled, L2 Announcements enabled
 - `install-cilium-pools` — `CiliumLoadBalancerIPPool` + `CiliumL2AnnouncementPolicy` active
 - `install-cert-manager` — SelfSigned CA, wildcard `*.cluster.home` cert Ready
 - `install-gateway` — `cluster-gateway` at `.200`, `PROGRAMMED=True`
 - `install-pihole` — DNS port 53 listening (TCP+UDP at `.203`), wildcard `*.cluster.home → .200` resolving, web UI via HTTPRoute
-- `install-argocd` — ClusterIP + HTTPRoute at `argocd.cluster.home`
+- `install-argocd` — ClusterIP + HTTPRoute at `argocd.cluster.home`, repo-server probes tuned for ARM64
+- `install-kube-prometheus-stack` — Prometheus + Grafana + AlertManager, datasources for Tempo + Loki
+- `install-tempo` — Tempo single-binary, metricsGenerator → Prometheus
+- `install-loki` — Loki SingleBinary + MinIO 1Gi, Grafana datasource with `X-Scope-OrgId: fake`
+- `install-alloy` — Alloy DaemonSet, OTLP receiver → Tempo
 - Full bootstrap: `ansible-playbook playbooks/bootstrap.yml` → `failed=0`
 - ARP verified: `.200` and `.203` both resolve to `2c:cf:67:27:1e:24` ✅
 - HTTP verified: `curl http://argocd.cluster.home` → `200 OK` ✅
@@ -343,9 +347,15 @@ hubble observe --verdict DROPPED --follow
 - DNS verified: `dig argocd.cluster.home @192.168.178.203` → `192.168.178.200` ✅
 - Mac Wi-Fi DNS configured to `.203` ✅
 
+### Known issues
+- `loki-chunks-cache-0` stays Pending — optional cache, non-critical, safe to ignore
+- `kubernetes.core.helm` 6.2.0 bug: reports "release does not exist" + "already exists" simultaneously on `upgrade -i`. All roles now check `helm_info.status.status` and skip install when `deployed`.
+
 ### Next Steps
 - HTTPS routing (`https://argocd.cluster.home`) — cert-manager wildcard cert is ready, needs TLS listener on Gateway
 - ArgoCD app-of-apps / GitOps handover via handover.yml
+- Add Loki log forwarding to Alloy config (currently only traces → Tempo)
+- Add Loki log forwarding to Alloy config (currently only traces → Tempo)
 
 ## Useful Commands
 
