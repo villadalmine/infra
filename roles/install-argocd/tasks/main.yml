@@ -20,6 +20,22 @@
         name: "{{ argocd_namespace }}"
     state: present
 
+- name: Check if ArgoCD release exists
+  kubernetes.core.helm_info:
+    name: argocd
+    release_namespace: "{{ argocd_namespace }}"
+  register: argocd_release_info
+
+- name: Purge stuck ArgoCD release if in failed state
+  kubernetes.core.helm:
+    name: argocd
+    release_namespace: "{{ argocd_namespace }}"
+    state: absent
+    purge: true
+  when:
+    - argocd_release_info.status.status is defined
+    - argocd_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+
 - name: Install or upgrade ArgoCD
   kubernetes.core.helm:
     name: argocd

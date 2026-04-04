@@ -33,6 +33,22 @@
         name: "{{ pihole_namespace }}"
     state: present
 
+- name: Check if Pi-hole release exists
+  kubernetes.core.helm_info:
+    name: pihole
+    release_namespace: "{{ pihole_namespace }}"
+  register: pihole_release_info
+
+- name: Purge stuck Pi-hole release if in failed state
+  kubernetes.core.helm:
+    name: pihole
+    release_namespace: "{{ pihole_namespace }}"
+    state: absent
+    purge: true
+  when:
+    - pihole_release_info.status.status is defined
+    - pihole_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+
 - name: Install or upgrade Pi-hole
   kubernetes.core.helm:
     name: pihole

@@ -15,6 +15,22 @@
     repo_url: https://grafana.github.io/helm-charts
   changed_when: false
 
+- name: Check if Alloy release exists
+  kubernetes.core.helm_info:
+    name: alloy
+    release_namespace: "{{ alloy_namespace }}"
+  register: alloy_release_info
+
+- name: Purge stuck Alloy release if in failed state
+  kubernetes.core.helm:
+    name: alloy
+    release_namespace: "{{ alloy_namespace }}"
+    state: absent
+    purge: true
+  when:
+    - alloy_release_info.status.status is defined
+    - alloy_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+
 - name: Install or upgrade Alloy
   kubernetes.core.helm:
     name: alloy

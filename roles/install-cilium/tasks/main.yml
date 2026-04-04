@@ -37,6 +37,22 @@
     repo_url: https://helm.cilium.io/
   changed_when: false
 
+- name: Check if Cilium release exists
+  kubernetes.core.helm_info:
+    name: cilium
+    release_namespace: "{{ cilium_namespace }}"
+  register: cilium_release_info
+
+- name: Purge stuck Cilium release if in failed state
+  kubernetes.core.helm:
+    name: cilium
+    release_namespace: "{{ cilium_namespace }}"
+    state: absent
+    purge: true
+  when:
+    - cilium_release_info.status.status is defined
+    - cilium_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+
 - name: Install or upgrade Cilium
   kubernetes.core.helm:
     name: cilium

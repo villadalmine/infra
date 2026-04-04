@@ -15,6 +15,22 @@
     repo_url: https://grafana-community.github.io/helm-charts
   changed_when: false
 
+- name: Check if Tempo release exists
+  kubernetes.core.helm_info:
+    name: tempo
+    release_namespace: "{{ tempo_namespace }}"
+  register: tempo_release_info
+
+- name: Purge stuck Tempo release if in failed state
+  kubernetes.core.helm:
+    name: tempo
+    release_namespace: "{{ tempo_namespace }}"
+    state: absent
+    purge: true
+  when:
+    - tempo_release_info.status.status is defined
+    - tempo_release_info.status.status in ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback']
+
 - name: Install or upgrade Tempo
   kubernetes.core.helm:
     name: tempo
