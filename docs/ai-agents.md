@@ -19,62 +19,47 @@ cómo se integran con el stack, y el rol de cada uno.
 │    → decide solo cuándo usar cada MCP tool                         │
 │    → si rate-limit 429: auto-fallback free → free2 → cheap         │
 │                                                                     │
-│  Modelos disponibles (/model para cambiar):                         │
-│  free  → qwen3-coder:free (480B, $0, tools ✅)                     │
-│  cheap → qwen-turbo ($0.033/M, tools ✅)                           │
-│  claude-haiku-4-5  → Anthropic (~$0.8/M)                           │
-│  claude-sonnet-4-6 → Anthropic (~$3/M)                             │
-│                                                                     │
 │  MCP servers (tools que el modelo llama automáticamente):           │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │ kubernetes-mcp      │ list-pods, get-logs, describe, events │   │
-│  │                     │ Confirmado: llama el tool solo cuando  │   │
-│  │                     │ la pregunta requiere estado live ✅    │   │
 │  ├─────────────────────┼───────────────────────────────────────┤   │
-│  │ llm-router          │ ask_expert(question)                  │   │
-│  │                     │ ask_model(model, question)            │   │
+│  │ llm-router          │ ask_expert(question) / ask_model(...) │   │
 │  ├─────────────────────┼───────────────────────────────────────┤   │
 │  │ github              │ PRs, issues, commits                  │   │
-│  ├─────────────────────┼───────────────────────────────────────┤   │
-│  │ context7            │ documentación de librerías            │   │
 │  └─────────────────────┴───────────────────────────────────────┘   │
-│                                                                     │
-│  /free  <tarea>  → una tarea con modelo free                       │
-│  /cheap <tarea>  → una tarea con qwen-turbo                        │
-│  /model          → menú interactivo de modelos                     │
-└──────────┬───────────────────────┬──────────────────────────────────┘
-           │
+└──────────┬──────────────────────────────────────────────────────────┘
            │  (alternativa sin TUI)
            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  k8s-ask (CLI)                                                      │
-│                                                                     │
-│  k8s-ask "qué pods crashean?"   → LiteLLM → kubectl tools → stdout │
-│  k8s-ask -m free "get nodes"    → modelo configurable via -m        │
-│  K8S_ASK_MODEL=cheap k8s-ask …  → o variable de entorno            │
-│                                                                     │
-│  stdlib only · max 8 iteraciones · tool calls → stderr (dim)       │
-└─────────────────────────────────────────────────────────────────────┘
-           │                       │
-           │ ask_expert/model()    │ kubectl (read-only)
-           │                       │ pods, logs, events
-           ▼                       ▼
-┌──────────────────────────┐   ┌────────────────────────────┐
-│  LiteLLM proxy           │   │  K3s cluster               │
-│  localhost:4000          │   │  srv-rk1-01 + srv-super6   │
-│  systemctl --user start  │   │                            │
-│                          │   │  Cilium · Gateway · ArgoCD │
-│  free  → qwen3-coder:free│   │  Prometheus · Loki · Tempo │
-│  free2 → nemotron:free   │   │  Alloy · cert-manager      │
-│  cheap → qwen-turbo      │   │                            │
-│  claude → Anthropic      │   │  local → Ollama ←── FUTURO │
-│                          │   │                            │
-└──────────┬───────────────┘   └────────────────────────────┘
+│  k8s-ask (CLI — laptop)                                             │
+│  k8s-ask "qué pods crashean?"   → LiteLLM:4000 → kubectl → stdout  │
+│  stdlib only · max 8 iter · tool calls → stderr (dim)              │
+└──────────┬──────────────────────────────────────────────────────────┘
            │
-           │ HTTPS
            ▼
-     OpenRouter API
-     (todos los modelos salvo Ollama local)
+┌──────────────────────────┐   ┌──────────────────────────────────────┐
+│  LiteLLM proxy (laptop)  │   │  K3s cluster (ARM64)                 │
+│  localhost:4000          │   │                                      │
+│  systemctl --user litellm│   │  ┌─────────────────────────────┐    │
+│                          │   │  │  Namespace: ai               │    │
+│  free  → qwen3-coder:free│   │  │                             │    │
+│  free2 → nemotron:free   │   │  │  Hermes Agent               │    │
+│  cheap → qwen-turbo      │   │  │  model=free                 │    │
+│  claude → Anthropic      │   │  │  OPENAI_API_BASE=           │    │
+│                          │   │  │    litellm-proxy:4000       │    │
+└──────────┬───────────────┘   │  │         │                   │    │
+           │ HTTPS             │  │         ▼                   │    │
+           ▼                   │  │  LiteLLM proxy (in-cluster) │    │
+     OpenRouter API            │  │  free→free2→cheap           │    │
+                               │  │         │                   │    │
+                               │  └─────────┼───────────────────┘    │
+                               │            │ HTTPS:443              │
+                               │            ▼                        │
+                               │      OpenRouter API                 │
+                               │                                     │
+                               │  Cilium · Gateway · ArgoCD          │
+                               │  Prometheus · Loki · Tempo · Alloy  │
+                               └──────────────────────────────────────┘
 ```
 
 ## Flujo típico — cómo trabaja el modelo principal
@@ -102,6 +87,79 @@ OpenCode (qwen3-coder:free — modelo default)
 
 ---
 
+## Hermes Agent — Agente in-cluster (ARM64)
+
+**Rol:** agente de IA desplegado dentro del cluster K3s. Self-improving — puede
+usar skills, memoria persistente y herramientas para operar de forma autónoma.
+Accesible vía web UI en `https://hermes.cluster.home`.
+
+### Arquitectura in-cluster
+
+```
+Hermes Agent (namespace: ai)
+  │  model=free  OPENAI_API_BASE=http://litellm-proxy.ai.svc:4000
+  ▼
+LiteLLM proxy (in-cluster, namespace: ai)
+  │  fallback: free → free2 → cheap
+  │  OPENROUTER_API_KEY en litellm-secrets
+  ▼
+OpenRouter API (externo)
+```
+
+### Build ARM64 (kaniko in-cluster)
+
+El docker oficial de Hermes es **amd64-only**. Se construye un custom ARM64 image:
+
+```bash
+make ai-registry       # deploy registry:2 (almacena el resultado)
+make ai-hermes-build   # kaniko clona el repo y buildealo (~60 min en CM4)
+make ai-hermes-deploy  # despliega litellm-proxy + hermes-agent
+```
+
+**Gotchas del build:**
+- `--snapshot-mode=redo` — menos memoria que el default (evita OOM en CM4)
+- Node affinity: solo se ejecuta en el nodo `control-plane` (más disco)
+- `backoffLimit: 3` — puede fallar si el nodo tiene poca RAM disponible
+- Dockerfile clona el repo con `RUN git clone` (no usa git context de kaniko)
+
+### Persistencia
+
+```
+PVC: hermes-data (1Gi, local-path)
+  mountPath: /opt/data  (skills, memory, config)
+  HERMES_HOME=/opt/data
+```
+
+### Acceso
+
+```bash
+# Web UI (requiere ingress stack)
+https://hermes.cluster.home
+
+# Sin ingress (port-forward)
+kubectl port-forward -n ai svc/hermes-agent 8080:8080
+# → http://localhost:8080
+
+# CLI directo
+kubectl exec -it -n ai deployment/hermes-agent -- hermes
+
+# Debug
+kubectl logs -n ai -l app=hermes-agent --tail=50
+kubectl get pods -n ai
+```
+
+### Secrets
+
+```bash
+# Crear roles/install-hermes-agent/defaults/secrets.yml (gitignored):
+hermes_openrouter_api_key: "sk-or-v1-..."
+hermes_telegram_token: ""   # opcional
+hermes_discord_token: ""    # opcional
+```
+LiteLLM proxy carga automáticamente el mismo archivo.
+
+---
+
 ## División de tareas entre agentes
 
 | Tarea | Agente | Modelo | Herramienta |
@@ -113,7 +171,7 @@ OpenCode (qwen3-coder:free — modelo default)
 | Formatear YAML, rename simple | Claude Code | haiku (barato) | — |
 | Analizar logs con info privada | HolmesGPT / subagent | ollama local | Loki MCP |
 | Review PR / crear issue | Claude Code | sonnet | github MCP |
-| Health check completo | skill script | — | scripts/health-check.sh |
+| Tarea autónoma in-cluster 24/7 | **Hermes Agent** | free (LiteLLM) | skills + tools |
 
 ---
 
@@ -388,6 +446,7 @@ permisos RBAC configurados. No aplica cambios — solo lee y analiza.
 - [x] Skill scripts (`diagnose.sh`, `health-check.sh`, `connectivity-test.sh`) — ✅
 - [x] Modelo free con tool use (qwen3-coder:free) + fallback a nemotron (NVIDIA) — ✅
 - [x] k8s-ask CLI — ✅ lenguaje natural → LiteLLM → kubectl tools → stdout
+- [x] Hermes Agent in-cluster — ✅ ARM64 kaniko build + LiteLLM proxy + hermes-agent
 - [ ] Desplegar HolmesGPT como ArgoCD Application (in-cluster, Operator mode)
 - [ ] Conectar HolmesGPT con Prometheus + Alertmanager — prerequisito cumplido ✅
 - [ ] Probar Ollama in-cluster como LLM backend local (sin costos de API, datos privados)
