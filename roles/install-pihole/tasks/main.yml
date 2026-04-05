@@ -69,18 +69,11 @@
         size: "{{ pihole_storage_size }}"
 
       # DNS Service: own LoadBalancer at .203 (port 53 cannot share the HTTP Gateway)
-      # TCP and UDP get separate Services by the chart — use lbipam sharing-key so
-      # Cilium LB-IPAM assigns the same IP to both.
+      # mixedService=true creates a single Service for TCP+UDP — simpler than separate ones.
       # externalTrafficPolicy must be Cluster — L2 Announcements incompatible with Local.
       serviceDns:
         type: LoadBalancer
-        annotations:
-          lbipam.cilium.io/ips: "{{ pihole_dns_ip }}"
-          lbipam.cilium.io/sharing-key: "pihole-dns"
-        externalTrafficPolicy: Cluster
-
-      serviceDnsTCP:
-        type: LoadBalancer
+        mixedService: true
         annotations:
           lbipam.cilium.io/ips: "{{ pihole_dns_ip }}"
           lbipam.cilium.io/sharing-key: "pihole-dns"
@@ -95,8 +88,8 @@
 
       dnsmasq:
         # Wildcard: *.cluster.home and cluster.home itself → shared Gateway IP
-        customDnsEntries:
-          - address=/cluster.home/{{ gateway_ip }}
+        # Plus NeuVector entries for DNS resolution via Pi-hole
+        customDnsEntries: "{{ pihole_custom_dns }}"
         # NOTE: do NOT add local-service=false here — Pi-hole 6 FTL injects
         # local-service internally when listeningMode=LOCAL, causing a duplicate
         # keyword CRIT error that prevents DNS from starting. Use the FTLCONF

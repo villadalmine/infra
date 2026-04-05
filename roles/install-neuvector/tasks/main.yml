@@ -1,0 +1,124 @@
+# Install NeuVector via Helm on localhost
+# Container runtime security: controller, enforcer (DaemonSet), manager (UI + API).
+# No PVC — controller data is ephemeral (OK for homelab).
+# Scanner and CVE updater disabled to save resources on CM4.
+#
+# NOTE: NeuVector serves HTTPS only — Cilium Gateway API does NOT support
+# TLS passthrough yet (mode: Passthrough is ignored). The manager is exposed
+# via a dedicated LoadBalancer Service with Cilium LB-IPAM.
+# DNS entry is added to Pi-hole via dnsmasq custom config.
+
+- name: Add NeuVector Helm repository
+  kubernetes.core.helm_repository:
+    name: neuvector
+    repo_url: https://neuvector.github.io/neuvector-helm/
+  changed_when: false
+
+- name: Create NeuVector namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ neuvector_namespace }}"
+    state: present
+
+- name: Check if NeuVector release exists
+  ansible.builtin.command:
+    cmd: helm list -n {{ neuvector_namespace }} -o json --filter neuvector
+  register: nv_helm_list
+  changed_when: false
+  failed_when: false
+
+- name: Set NeuVector release status fact
+  ansible.builtin.set_fact:
+    nv_deployed: "{{ (nv_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: nv_helm_list.stdout | default('') | length > 0
+
+- name: Set NeuVector release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    nv_deployed: false
+  when: nv_helm_list.stdout | default('') | length == 0
+
+- name: Install or upgrade NeuVector
+  kubernetes.core.helm:
+    name: neuvector
+    chart_ref: neuvector/core
+    chart_version: "{{ neuvector_version }}"
+    release_namespace: "{{ neuvector_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      bootstrapPassword: "{{ neuvector_bootstrap_password }}"
+      manager:
+        enabled: true
+        svc:
+          type: ClusterIP
+          mgrServerPort: 8443
+      controller:
+        enabled: true
+        pvc:
+          enabled: "{{ neuvector_pvc_enabled }}"
+      enforcer:
+        enabled: true
+      cve:
+        scanner:
+          enabled: "{{ neuvector_scanner_enabled }}"
+        updater:
+          enabled: "{{ neuvector_cve_updater_enabled }}"
+  when: not nv_deployed
+
+- name: Wait for NeuVector controller rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status statefulset/neuvector-controller-pod -n {{ neuvector_namespace }} --timeout=180s
+  register: nv_controller_rollout
+  until: nv_controller_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Wait for NeuVector manager rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/neuvector-manager -n {{ neuvector_namespace }} --timeout=180s
+  register: nv_manager_rollout
+  until: nv_manager_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create LoadBalancer Service for NeuVector (dedicated IP — Gateway API does not support TLS passthrough)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: neuvector-lb
+        namespace: "{{ neuvector_namespace }}"
+        annotations:
+          lbipam.cilium.io/ips: "{{ neuvector_lb_ip }}"
+      spec:
+        type: LoadBalancer
+        ports:
+          - name: https
+            port: 443
+            targetPort: 8443
+            protocol: TCP
+        selector:
+          app: neuvector-manager-pod
+
+- name: Add NeuVector DNS entry to Pi-hole custom config
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: pihole-neuvector-dns
+        namespace: "{{ pihole_namespace }}"
+        labels:
+          app.kubernetes.io/managed-by: Helm
+      data:
+        neuvector.conf: |
+          address=/{{ neuvector_dashboard_hostname }}/{{ neuvector_lb_ip }}
+          address=/{{ neuvector_api_hostname }}/{{ neuvector_lb_ip }}
