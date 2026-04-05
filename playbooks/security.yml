@@ -1,0 +1,17 @@
+# Security playbook — NeuVector container runtime security.
+# Run AFTER bootstrap.yml has completed successfully.
+#
+# NeuVector requires a running cluster with Cilium networking.
+# It also requires the admin password to be set in the UI first,
+# then configured in roles/install-neuvector/defaults/secrets.yml.
+#
+# Usage:
+#   ansible-playbook playbooks/security.yml -i inventory/hosts.ini
+
+- name: Install NeuVector security stack
+  hosts: localhost
+  gather_facts: true
+  environment:
+    PATH: "{{ lookup('env','HOME') }}/.asdf/shims:{{ lookup('env','HOME') }}/.asdf/bin:{{ lookup('env','PATH') }}"
+  roles:
+    - role: install-neuvector
