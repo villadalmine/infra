@@ -96,6 +96,8 @@
                     value: "{{ hermes_model }}"
                   - name: HERMES_TEMPERATURE
                     value: "{{ hermes_temperature | string }}"
+                  - name: HERMES_HOME
+                    value: /opt/data
                 envFrom:
                   - secretRef:
                       name: hermes-secrets
@@ -114,7 +116,7 @@
                     memory: "{{ hermes_memory_limit }}"
                 volumeMounts:
                   - name: hermes-data
-                    mountPath: /home/hermes/.hermes
+                    mountPath: /opt/data
                   - name: tmp
                     mountPath: /tmp
                 readinessProbe:
