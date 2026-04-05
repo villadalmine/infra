@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ cifs_pv_name }}
+spec:
+  capacity:
+    storage: {{ cifs_pv_size }}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: {{ cifs_pv_name }}
+    readOnly: false
+    volumeAttributes:
+      source: "//{{ cifs_nas_ip }}/{{ cifs_nas_share }}"
+    nodeStageSecretRef:
+      name: smbcreds
+      namespace: {{ cifs_namespace }}
+  mountOptions:
+    - vers=1.0
+    - "uid={{ cifs_uid }}"
+    - "gid={{ cifs_gid }}"
+    - file_mode=0777
+    - dir_mode=0777
+    - noperm

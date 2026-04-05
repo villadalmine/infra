@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ cifs_pvc_name }}
+  namespace: {{ cifs_namespace }}
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ cifs_pv_size }}
+  volumeName: {{ cifs_pv_name }}

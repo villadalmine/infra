@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: smb-test-pod
+  namespace: {{ cifs_namespace }}
+spec:
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["/bin/sh", "-c", "sleep 10000"]
+      volumeMounts:
+        - name: smbvol
+          mountPath: /mnt/smb
+          subPath: Torrent
+      securityContext:
+        runAsUser: {{ cifs_uid }}
+        runAsGroup: {{ cifs_gid }}
+  volumes:
+    - name: smbvol
+      persistentVolumeClaim:
+        claimName: {{ cifs_pvc_name }}

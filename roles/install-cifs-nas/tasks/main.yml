@@ -1,0 +1,87 @@
+---
+- name: Aplica Secret para credenciales CIFS
+  kubernetes.core.k8s:
+    state: present
+    template: secret-cifs.yaml.j2
+
+- name: Ensure csi-driver-smb helm chart is installed
+  include_tasks: helm.yml
+  run_once: true
+
+- name: Check for existing PersistentVolume
+  kubernetes.core.k8s_info:
+    kind: PersistentVolume
+    name: "{{ cifs_pv_name }}"
+  register: existing_pv
+  failed_when: false
+
+- name: Extract existing PV source if present
+  set_fact:
+    existing_pv_source: "{{ (existing_pv.resources[0].spec.csi.volumeAttributes.source) if (existing_pv.resources | length > 0 and existing_pv.resources[0].spec is defined) else '' }}"
+
+- name: Delete PVC if PV needs replacement
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: PersistentVolumeClaim
+    name: "{{ cifs_pvc_name }}"
+    namespace: "{{ cifs_namespace }}"
+  when: existing_pv_source != "//{{ cifs_nas_ip }}/{{ cifs_nas_share }}" and existing_pv.resources | length > 0
+
+- name: Delete existing PersistentVolume if source changed
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: PersistentVolume
+    name: "{{ cifs_pv_name }}"
+  when: existing_pv_source != "//{{ cifs_nas_ip }}/{{ cifs_nas_share }}" and existing_pv.resources | length > 0
+
+- name: Wait for PV to disappear when replaced
+  kubernetes.core.k8s_info:
+    kind: PersistentVolume
+    name: "{{ cifs_pv_name }}"
+  register: k8s_pv_check
+  failed_when: false
+  retries: 10
+  delay: 2
+  until: k8s_pv_check.resources | length == 0
+  when: existing_pv_source != "//{{ cifs_nas_ip }}/{{ cifs_nas_share }}" and existing_pv.resources | length > 0
+
+- name: Apply PersistentVolume SMB1 (NAS LG)
+  kubernetes.core.k8s:
+    state: present
+    template: pv-cifs.yaml.j2
+
+- name: Aplica PersistentVolumeClaim
+  kubernetes.core.k8s:
+    state: present
+    template: pvc-cifs.yaml.j2
+
+- name: Aplica pod de test (busybox)
+  kubernetes.core.k8s:
+    state: present
+    template: pod-cifs-test.yaml.j2
+  register: busybox_test
+
+- name: Espera pod de test Ready
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: "{{ cifs_namespace }}"
+    name: smb-test-pod
+  register: stb_pod
+  retries: 20
+  delay: 2
+  until: stb_pod.resources[0].status.phase == "Running"
+
+- name: Chequea escritura en PV desde el pod
+  shell: |
+    kubectl exec smb-test-pod -n {{ cifs_namespace }} -- /bin/sh -c "echo 'test-ok' > /mnt/smb/prueba-escritura.txt"
+  register: resultado_escritura
+  retries: 10
+  delay: 3
+  until: resultado_escritura.rc == 0
+  failed_when: resultado_escritura.rc != 0
+
+- name: Mensaje de resultado quick-fail
+  debug:
+    msg: "¡Montaje SMB CIFS NAS OK! Puedes escribir en el volumen /mnt/smb desde Kubernetes. Si ves este mensaje, la integración es EXITOSA."

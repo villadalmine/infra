@@ -1,0 +1,10 @@
+cifs_nas_ip: "192.168.178.102"         # NAS LG N2R1 IP (tested)
+cifs_nas_share: "service"           # share raíz en el NAS (subcarpeta Torrent existe dentro)
+cifs_nas_user: "admin"
+cifs_nas_pass: "elendil123"
+cifs_pv_size: "5Gi"
+cifs_pv_name: "smb-nas-pv"
+cifs_pvc_name: "smb-nas-pvc"
+cifs_namespace: "default"
+cifs_uid: 1000
+cifs_gid: 1000
