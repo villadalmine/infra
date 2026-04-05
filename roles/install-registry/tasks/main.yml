@@ -136,6 +136,7 @@
   become: true
   delegate_to: "{{ item }}"
   loop: "{{ groups['k3s_nodes'] }}"
+  ignore_unreachable: true
 
 - name: Configure K3s registries.yaml on all nodes (insecure mirror to ClusterIP)
   ansible.builtin.copy:
@@ -152,6 +153,7 @@
   delegate_to: "{{ item }}"
   loop: "{{ groups['k3s_nodes'] }}"
   register: registries_yaml
+  ignore_unreachable: true
 
 - name: Restart K3s server if registries.yaml changed
   ansible.builtin.systemd:
@@ -161,6 +163,7 @@
   delegate_to: "{{ item }}"
   loop: "{{ groups['server_nodes'] }}"
   when: registries_yaml.changed
+  ignore_unreachable: true
 
 - name: Restart K3s agent if registries.yaml changed
   ansible.builtin.systemd:
@@ -170,3 +173,4 @@
   delegate_to: "{{ item }}"
   loop: "{{ groups['agent_nodes'] }}"
   when: registries_yaml.changed
+  ignore_unreachable: true
