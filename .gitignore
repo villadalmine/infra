@@ -3,6 +3,7 @@
 .env
 .env.local
 roles/*/defaults/secrets.yml
+roles/*/defaults/secrets.yaml
 roles/*/defaults/vault.yml
 secrets/
 vault/
