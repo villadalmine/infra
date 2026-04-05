@@ -1,5 +1,5 @@
 pihole_namespace: pihole
-pihole_chart_version: "2.30.0"   # mojo2600/pihole Helm chart
+pihole_chart_version: "2.35.0"   # mojo2600/pihole Helm chart
 
 # Pi-hole admin web UI password (change before deploying to production)
 pihole_admin_password: "changeme"
@@ -18,3 +18,9 @@ pihole_storage_class: "local-path"
 # Wildcard DNS record: *.cluster.home → 192.168.178.200 (the shared Gateway IP)
 # Pi-hole custom DNS entries for this are added as a ConfigMap-mounted dnsmasq config.
 gateway_ip: "192.168.178.200"
+
+# Additional custom DNS entries (NeuVector, etc.)
+pihole_custom_dns:
+  - "address=/cluster.home/{{ gateway_ip }}"
+  - "address=/neuvector.cluster.home/192.168.178.204"
+  - "address=/neuvector-api.cluster.home/192.168.178.204"

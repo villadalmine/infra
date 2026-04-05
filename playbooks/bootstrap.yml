@@ -12,6 +12,7 @@
 #   ingress       → cert-manager + gateway                    (requires networking)
 #   services      → pihole + argocd + helm-dashboard            (requires ingress)
 #   observability → prometheus + tempo + loki + alloy + version-checker  (requires networking)
+#   security      → neuvector                                  (requires networking)
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -60,11 +61,5 @@
       tags: [observability]
     - role: install-version-checker
       tags: [observability]
-    - role: install-tempo
-      tags: [observability]
-    - role: install-loki
-      tags: [observability]
-    - role: install-alloy
-      tags: [observability]
-    - role: install-version-checker
-      tags: [observability]
+    - role: install-neuvector
+      tags: [security]
