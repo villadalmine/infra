@@ -72,6 +72,8 @@
 
       singleBinary:
         replicas: "{{ loki_replicas }}"
+        persistence:
+          size: "{{ loki_storage_size }}"
 
       backend:
         replicas: 0
