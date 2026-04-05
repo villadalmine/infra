@@ -12,6 +12,8 @@
 #   ingress       → cert-manager + gateway                    (requires networking)
 #   services      → pihole + argocd + helm-dashboard            (requires ingress)
 #   observability → prometheus + tempo + loki + alloy + version-checker  (requires networking)
+#   ai            → hermes-agent                                (requires networking)
+#   ai            → hermes-agent                                (requires networking)
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -62,3 +64,7 @@
       tags: [observability]
     - role: install-neuvector
       tags: [security]
+    - role: install-hermes-agent
+      tags: [ai]
+    - role: install-hermes-agent
+      tags: [ai]

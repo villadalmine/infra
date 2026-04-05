@@ -43,6 +43,18 @@ cómo se integran con el stack, y el rol de cada uno.
 │  /cheap <tarea>  → una tarea con qwen-turbo                        │
 │  /model          → menú interactivo de modelos                     │
 └──────────┬───────────────────────┬──────────────────────────────────┘
+           │
+           │  (alternativa sin TUI)
+           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  k8s-ask (CLI)                                                      │
+│                                                                     │
+│  k8s-ask "qué pods crashean?"   → LiteLLM → kubectl tools → stdout │
+│  k8s-ask -m free "get nodes"    → modelo configurable via -m        │
+│  K8S_ASK_MODEL=cheap k8s-ask …  → o variable de entorno            │
+│                                                                     │
+│  stdlib only · max 8 iteraciones · tool calls → stderr (dim)       │
+└─────────────────────────────────────────────────────────────────────┘
            │                       │
            │ ask_expert/model()    │ kubectl (read-only)
            │                       │ pods, logs, events
@@ -96,6 +108,7 @@ OpenCode (qwen3-coder:free — modelo default)
 |---|---|---|---|
 | Escribir/editar Ansible role | OpenCode / Claude Code | sonnet | — skills como contexto |
 | Debuggear pod crashlooping | Claude Code | sonnet | kubernetes-mcp → live state |
+| Query rápida sin abrir TUI | **k8s-ask** | cheap (default) | kubectl directo |
 | "¿Qué sale mal en esta alerta?" | HolmesGPT | claude/ollama | kubectl nativo |
 | Formatear YAML, rename simple | Claude Code | haiku (barato) | — |
 | Analizar logs con info privada | HolmesGPT / subagent | ollama local | Loki MCP |
