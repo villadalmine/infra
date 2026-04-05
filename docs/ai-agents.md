@@ -387,6 +387,7 @@ permisos RBAC configurados. No aplica cambios — solo lee y analiza.
 - [x] llm-router MCP (ask_expert / ask_model) — ✅ FastMCP, stdio transport
 - [x] Skill scripts (`diagnose.sh`, `health-check.sh`, `connectivity-test.sh`) — ✅
 - [x] Modelo free con tool use (qwen3-coder:free) + fallback a nemotron (NVIDIA) — ✅
+- [x] k8s-ask CLI — ✅ lenguaje natural → LiteLLM → kubectl tools → stdout
 - [ ] Desplegar HolmesGPT como ArgoCD Application (in-cluster, Operator mode)
 - [ ] Conectar HolmesGPT con Prometheus + Alertmanager — prerequisito cumplido ✅
 - [ ] Probar Ollama in-cluster como LLM backend local (sin costos de API, datos privados)
