@@ -366,10 +366,14 @@ permisos RBAC configurados. No aplica cambios — solo lee y analiza.
 - [x] Desplegar kube-prometheus-stack (Prometheus + Grafana + AlertManager) — ✅ hecho
 - [x] Desplegar Grafana Tempo (tracing backend) — ✅ hecho
 - [x] Desplegar Grafana Alloy (OTLP pipeline) — ✅ hecho
-- [x] LiteLLM como router local de modelos — ✅ configurado en opencode.jsonc
-- [x] Kubernetes MCP server — ✅ configurado en opencode.jsonc
-- [x] Skill scripts (`diagnose.sh`, `health-check.sh`, `connectivity-test.sh`) — ✅ creados
-- [ ] Instalar y arrancar LiteLLM localmente (`pip install litellm`, config YAML)
+- [x] Desplegar kube-prometheus-stack (Prometheus + Grafana + AlertManager) — ✅
+- [x] Desplegar Grafana Tempo (tracing backend) — ✅
+- [x] Desplegar Grafana Alloy (OTLP pipeline) — ✅
+- [x] LiteLLM como systemd user service con fallback chain — ✅ free → free2 → cheap
+- [x] Kubernetes MCP server — ✅ confirmado: llama tools automáticamente
+- [x] llm-router MCP (ask_expert / ask_model) — ✅ FastMCP, stdio transport
+- [x] Skill scripts (`diagnose.sh`, `health-check.sh`, `connectivity-test.sh`) — ✅
+- [x] Modelo free con tool use (qwen3-coder:free) + fallback a nemotron (NVIDIA) — ✅
 - [ ] Desplegar HolmesGPT como ArgoCD Application (in-cluster, Operator mode)
 - [ ] Conectar HolmesGPT con Prometheus + Alertmanager — prerequisito cumplido ✅
 - [ ] Probar Ollama in-cluster como LLM backend local (sin costos de API, datos privados)
