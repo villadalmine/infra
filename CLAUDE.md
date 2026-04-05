@@ -8,7 +8,7 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 | | |
 |---|---|
 | Server | `srv-rk1-01` @ `192.168.178.133`, ARM64, Ubuntu 24.04 |
-| Agent | `srv-super6-cm4-emmc-01` @ `192.168.178.105`, ARM64, Ubuntu 24.04 |
+| Agent | `srv-super6-cm4-emmc-01` @ `192.168.178.104`, ARM64, Ubuntu 24.04 |
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |
@@ -42,6 +42,8 @@ install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-cilium-pools → install-cert-manager → install-gateway
 → install-pihole → install-argocd
 → install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
+→ install-registry → install-hermes-agent-image
+→ install-litellm-proxy → install-hermes-agent
 ```
 
 ## Bootstrap Tags
@@ -55,9 +57,12 @@ all tags up to the layer you need.
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd + helm-dashboard | `ingress` |
-| `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
+| `observability` | prometheus + tempo + loki + alloy | `networking` |
 | `security` | neuvector | `services` |
-| `ai` | registry + hermes-agent-image + hermes-agent | `services` |
+| `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking` |
+| `ai-registry` | registry only | `networking` |
+| `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
+| `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -100,7 +105,7 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 
 | Component | Helm Chart | Version | App Version |
 |---|---|---|---|
-| K3s | — | v1.35.1+k3s1 | — |
+| K3s | — | v1.35.2+k3s1 | — |
 | Cilium | `cilium/cilium` | 1.19.2 | 1.19.2 |
 | cert-manager | `jetstack/cert-manager` | v1.20.1 | v1.20.1 |
 | kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | 82.18.0 | v0.89.0 |
@@ -108,6 +113,9 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 | Loki | `grafana/loki` | 6.55.0 | 3.x |
 | Alloy | `grafana/alloy` | 1.7.0 | v1.15.0 |
 | NeuVector | `neuvector/core` | 2.8.12 | 5.5.0 |
+| Docker Registry | `registry:2` | 2 | 2.x |
+| LiteLLM proxy | `ghcr.io/berriai/litellm` | main-latest | in-cluster |
+| Hermes Agent | `registry.registry:5000/ai/hermes-agent` | 0.7.0 | ARM64 custom build |
 
 > **Check outdated charts:** `nova --format table find --helm`
 > Cilium 1.20.0-pre.1 is pre-release — do NOT upgrade. Tempo pinned to 1.26.7 (2.0.0 buggy).
@@ -126,6 +134,8 @@ Read the relevant skill before working on a component.
 | `argocd` | GitOps, ApplicationSets, sync waves |
 | `pihole` | Wildcard DNS, Pi-hole 6 gotchas |
 | `monitoring` | Prometheus, Grafana, Tempo, Alloy — full observability stack |
+| `ai` | Registry + LiteLLM proxy + Hermes Agent — ARM64 AI stack |
+| `k8s-ask` | CLI de lenguaje natural → LiteLLM → kubectl tools |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `platform-engineering` | Helm, Terraform, CI/CD patterns |
 

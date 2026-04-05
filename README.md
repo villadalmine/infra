@@ -55,6 +55,23 @@ NeuVector is installed in two steps:
 
 ---
 
+## Services — AI stack (namespace: ai + registry)
+
+| Service | Access | What it does |
+|---|---|---|
+| Hermes Agent | `https://hermes.cluster.home` | Self-improving AI assistant (ARM64, NousResearch) |
+| LiteLLM proxy | `http://litellm-proxy.ai:4000` (cluster-internal) | OpenRouter model router — free→free2→cheap fallback |
+| Docker Registry | `registry.registry:5000` (cluster-internal) | ARM64 image storage for kaniko builds (5Gi PVC) |
+
+```bash
+make ai-registry       # deploy registry (fast)
+make ai-hermes-build   # kaniko ARM64 build (~60 min)
+make ai-hermes-deploy  # deploy litellm-proxy + hermes-agent
+make ai               # all three in sequence
+```
+
+---
+
 ## Services — internal (no public URL)
 
 Access via `kubectl port-forward` or from within the cluster.
@@ -66,7 +83,6 @@ Access via `kubectl port-forward` or from within the cluster.
 | Tempo | `tempo.monitoring:3200` | Distributed tracing backend |
 | Alloy | `alloy.monitoring:4317` (gRPC) / `alloy.monitoring:4318` (HTTP) | OTLP pipeline — receives traces from apps, scrapes pod logs → Loki |
 | Loki | `loki-gateway.monitoring:80` | Log aggregation backend |
-| version-checker | `version-checker.monitoring:8080` | Tracks container image versions vs upstream |
 
 ---
 
@@ -75,7 +91,7 @@ Access via `kubectl port-forward` or from within the cluster.
 | IP | What it is |
 |---|---|
 | `192.168.178.133` | K3s server (`srv-rk1-01`) |
-| `192.168.178.105` | K3s agent (`srv-super6-cm4-emmc-01`) |
+| `192.168.178.104` | K3s agent (`srv-super6-cm4-emmc-01`) |
 | `192.168.178.200` | Shared Cilium Gateway (all HTTP/HTTPS via LB-IPAM) |
 | `192.168.178.203` | Pi-hole DNS — wildcard `*.cluster.home → .200` |
 | `192.168.178.204` | NeuVector HTTPS (dedicated LoadBalancer) |
@@ -97,23 +113,28 @@ all tags up to the layer you need.
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd + helm-dashboard | `ingress` |
-| `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
+| `observability` | prometheus + tempo + loki + alloy | `networking` |
+| `security` | neuvector | `services` |
+| `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking` |
+| `ai-registry` | registry only | `networking` |
+| `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
+| `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
-ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
 
 # Cluster with networking (deploy ClusterIPs, internal services)
-ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
 
 # Full stack with public URLs (HTTPS + DNS + GitOps)
-ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
 
 # Add observability to an existing cluster
-ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
 
 # Full bootstrap (all roles)
-ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
 ```
 
 ---
