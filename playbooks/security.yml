@@ -1,17 +1,21 @@
-# Security playbook — NeuVector container runtime security.
-# Run AFTER bootstrap.yml has completed successfully.
+# Security playbook — NeuVector Prometheus exporter (monitor).
+# Run AFTER bootstrap.yml has completed AND after changing the admin password
+# in the NeuVector UI and updating secrets.yml with the real password.
 #
-# NeuVector requires a running cluster with Cilium networking.
-# It also requires the admin password to be set in the UI first,
-# then configured in roles/install-neuvector/defaults/secrets.yml.
+# Workflow:
+#   1. Run bootstrap.yml (installs NeuVector core with random password)
+#   2. Login to NeuVector UI at https://neuvector.cluster.home
+#   3. Change the admin password
+#   4. Edit roles/install-neuvector-monitor/defaults/secrets.yml with the real password
+#   5. Run this playbook
 #
 # Usage:
 #   ansible-playbook playbooks/security.yml -i inventory/hosts.ini
 
-- name: Install NeuVector security stack
+- name: Install NeuVector Prometheus exporter
   hosts: localhost
   gather_facts: true
   environment:
     PATH: "{{ lookup('env','HOME') }}/.asdf/shims:{{ lookup('env','HOME') }}/.asdf/bin:{{ lookup('env','PATH') }}"
   roles:
-    - role: install-neuvector
+    - role: install-neuvector-monitor

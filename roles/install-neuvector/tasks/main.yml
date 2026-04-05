@@ -111,34 +111,3 @@
             protocol: TCP
         selector:
           app: neuvector-manager-pod
-
-- name: Install NeuVector Prometheus exporter (neuvector/monitor chart)
-  kubernetes.core.helm:
-    name: neuvector-monitor
-    chart_ref: neuvector/monitor
-    chart_version: "{{ neuvector_version }}"
-    release_namespace: "{{ neuvector_namespace }}"
-    create_namespace: false
-    wait: false
-    values:
-      exporter:
-        enabled: true
-        CTRL_USERNAME: admin
-        CTRL_PASSWORD: "{{ neuvector_monitor_password | default('admin') }}"
-        apiSvc: "neuvector-svc-controller.neuvector:10443"
-        enforcerStats:
-          enabled: false
-        svc:
-          enabled: true
-          type: ClusterIP
-        serviceMonitor:
-          enabled: true
-          labels:
-            release: kube-prometheus-stack
-        grafanaDashboard:
-          enabled: true
-          namespace: monitoring
-          labels:
-            grafana_dashboard: "1"
-  when: neuvector_monitor_password | default('') | length > 0
-  failed_when: false

@@ -1,0 +1,68 @@
+# Install NeuVector Prometheus exporter (neuvector/monitor chart).
+# Run AFTER install-neuvector and AFTER changing the admin password in the UI.
+#
+# Requires:
+#   1. NeuVector core installed (install-neuvector role)
+#   2. Admin password changed in NeuVector UI
+#   3. neuvector_monitor_password set in roles/install-neuvector-monitor/defaults/secrets.yml
+
+- name: Load NeuVector monitor secrets (if secrets.yml exists)
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+  failed_when: false
+
+- name: Add NeuVector Helm repository
+  kubernetes.core.helm_repository:
+    name: neuvector
+    repo_url: https://neuvector.github.io/neuvector-helm/
+  changed_when: false
+
+- name: Check if NeuVector monitor release exists
+  ansible.builtin.command:
+    cmd: helm list -n {{ neuvector_monitor_namespace }} -o json --filter neuvector-monitor
+  register: nvm_helm_list
+  changed_when: false
+  failed_when: false
+
+- name: Set NeuVector monitor release status fact
+  ansible.builtin.set_fact:
+    nvm_deployed: "{{ (nvm_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: nvm_helm_list.stdout | default('') | length > 0
+
+- name: Set NeuVector monitor release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    nvm_deployed: false
+  when: nvm_helm_list.stdout | default('') | length == 0
+
+- name: Install or upgrade NeuVector monitor
+  kubernetes.core.helm:
+    name: neuvector-monitor
+    chart_ref: neuvector/monitor
+    chart_version: "{{ neuvector_monitor_version }}"
+    release_namespace: "{{ neuvector_monitor_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      exporter:
+        enabled: true
+        CTRL_USERNAME: admin
+        CTRL_PASSWORD: "{{ neuvector_monitor_password }}"
+        apiSvc: "neuvector-svc-controller.neuvector:10443"
+        enforcerStats:
+          enabled: false
+        svc:
+          enabled: true
+          type: ClusterIP
+        serviceMonitor:
+          enabled: true
+          labels:
+            release: kube-prometheus-stack
+        grafanaDashboard:
+          enabled: true
+          namespace: monitoring
+          labels:
+            grafana_dashboard: "1"
+  when: >
+    neuvector_monitor_password | default('') | length > 0 and
+    not nvm_deployed
+  failed_when: false

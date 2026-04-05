@@ -8,5 +8,4 @@ neuvector_scanner_enabled: true
 neuvector_scanner_replicas: 1  # CM4 has limited resources
 neuvector_cve_updater_enabled: false
 neuvector_bootstrap_password: admin
-neuvector_monitor_password: ""  # Set to the password you configured in the NeuVector UI
 pihole_namespace: pihole

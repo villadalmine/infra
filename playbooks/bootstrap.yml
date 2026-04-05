@@ -60,3 +60,5 @@
       tags: [observability]
     - role: install-version-checker
       tags: [observability]
+    - role: install-neuvector
+      tags: [security]
