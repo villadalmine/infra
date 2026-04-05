@@ -17,7 +17,7 @@
   ansible.builtin.replace:
     path: ~/.kube/config
     regexp: "127.0.0.1"
-    replace: "{{ hostvars['srv-rk1-01'].ansible_host }}"
+    replace: "https://{{ hostvars[groups['server_nodes'][0]]['ansible_host'] }}:6443"
 
 - name: Set permissions on kubeconfig file
   ansible.builtin.file:
