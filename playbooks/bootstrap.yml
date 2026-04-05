@@ -12,6 +12,8 @@
 #   ingress       → cert-manager + gateway                    (requires networking)
 #   services      → pihole + argocd + helm-dashboard            (requires ingress)
 #   observability → prometheus + tempo + loki + alloy + version-checker  (requires networking)
+#   ai            → registry + hermes-agent-image + hermes-agent          (requires services)
+#   ai            → registry + hermes-agent-image + hermes-agent          (requires services)
 #   ai            → hermes-agent                                (requires networking)
 #   ai            → hermes-agent                                (requires networking)
 #
@@ -64,7 +66,13 @@
       tags: [observability]
     - role: install-neuvector
       tags: [security]
-    - role: install-hermes-agent
+    # install-hermes-agent: image nousresearch/hermes-agent has no ARM64 build
+    # TODO: find ARM64-compatible Hermes image or build custom
+    # - role: install-hermes-agent
+    #   tags: [ai]
+    - role: install-registry
+      tags: [ai]
+    - role: install-hermes-agent-image
       tags: [ai]
     - role: install-hermes-agent
       tags: [ai]

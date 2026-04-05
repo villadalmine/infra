@@ -1,0 +1,64 @@
+# Build Hermes Agent ARM64 image using kaniko in-cluster.
+# Clones the hermes-agent repo, builds with docker buildx, pushes to local registry.
+
+- name: Create kaniko namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ kaniko_namespace }}"
+    state: present
+
+- name: Create kaniko Job to build Hermes Agent ARM64 image
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: build-hermes-arm64
+        namespace: "{{ kaniko_namespace }}"
+      spec:
+        template:
+          spec:
+            containers:
+              - name: kaniko
+                image: gcr.io/kaniko-project/executor:latest
+                args:
+                  - "--dockerfile=/workspace/Dockerfile"
+                  - "--context=git://{{ hermes_git_repo }}@{{ hermes_git_ref }}"
+                  - "--destination={{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}"
+                  - "--insecure"
+                  - "--skip-tls-verify"
+                  - "--single-snapshot"
+                volumeMounts:
+                  - name: dockerfile
+                    mountPath: /workspace/Dockerfile
+                    subPath: Dockerfile
+            volumes:
+              - name: dockerfile
+                configMap:
+                  name: hermes-dockerfile
+            restartPolicy: Never
+        backoffLimit: 1
+
+- name: Create ConfigMap with Hermes Dockerfile
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: hermes-dockerfile
+        namespace: "{{ kaniko_namespace }}"
+      data:
+        Dockerfile: |
+          {{ lookup('template', 'Dockerfile.j2') }}
+
+- name: Wait for kaniko job to complete
+  ansible.builtin.command:
+    cmd: kubectl wait --for=condition=complete job/build-hermes-arm64 -n {{ kaniko_namespace }} --timeout=600s
+  register: kaniko_wait
+  changed_when: false
+  failed_when: kaniko_wait.rc != 0

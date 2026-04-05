@@ -1,4 +1,4 @@
-cert_manager_version: "v1.17.2"   # https://github.com/cert-manager/cert-manager/releases
+cert_manager_version: "v1.20.1"   # https://github.com/cert-manager/cert-manager/releases
 cert_manager_namespace: cert-manager
 
 # Internal CA: self-signed root cert for cluster.home (invented domain,
