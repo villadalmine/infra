@@ -1,0 +1,21 @@
+hermes_version: "0.7.0"
+hermes_namespace: ai
+hermes_hostname: hermes.cluster.home
+
+# Model configuration (OpenRouter)
+hermes_model: "openrouter/anthropic/claude-sonnet-4-6"
+hermes_temperature: 0.7
+
+# Resource limits (CM4-friendly)
+hermes_cpu_limit: "500m"
+hermes_cpu_request: "100m"
+hermes_memory_limit: "512Mi"
+hermes_memory_request: "128Mi"
+
+# Storage for ~/.hermes (skills, memory, config)
+hermes_storage_size: "1Gi"
+hermes_storage_class: "local-path"
+
+# Platform integrations (set via secrets.yml)
+hermes_telegram_enabled: false
+hermes_discord_enabled: false
