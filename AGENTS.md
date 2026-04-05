@@ -41,6 +41,9 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
     ├── install-helm-dashboard/      ← Helm release management UI (read-only)
     ├── install-neuvector/           ← Container runtime security (LoadBalancer at .204)
     ├── install-neuvector-monitor/   ← NeuVector Prometheus exporter (separate playbook)
+    ├── install-registry/            ← Docker registry:2 for ARM64 images (5Gi PVC)
+    ├── install-hermes-agent-image/  ← Kaniko job to build Hermes Agent ARM64
+    ├── install-hermes-agent/        ← Hermes Agent AI assistant (OpenRouter)
     └── uninstall/                   ← K3s uninstall script + cleanup
 ```
 
@@ -154,6 +157,48 @@ ansible-playbook playbooks/security.yml -i inventory/hosts.ini
 
 Roles are idempotent — running `--tags observability` on a cluster that already
 has `core` + `networking` will skip those roles automatically.
+
+## AI Stack (ARM64 Build Required)
+
+Hermes Agent official Docker image is amd64-only. For ARM64 (Raspberry Pi CM4),
+we build a custom image in-cluster using kaniko.
+
+**Workflow:**
+```bash
+# Option 1: Install AI stack incrementally (recommended for debugging)
+make ai-registry          # Docker registry:2 with 5Gi PVC (~1 min)
+make ai-hermes-build      # Kaniko build (~15 min on CM4)
+make ai-hermes-deploy     # Deploy Hermes Agent (~2 min)
+
+# Option 2: Install all at once
+make ai                   # registry + build + deploy (~20 min total)
+
+# Option 3: Via Ansible tags
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-registry
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-hermes-build
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-hermes-deploy
+```
+
+**Makefile targets:**
+```bash
+make help                 # Show all available targets
+make core                 # K3s + kubeconfig only
+make networking           # + Cilium, LB-IPAM, Gateway API
+make ingress              # + cert-manager, Gateway
+make services             # + Pi-hole, ArgoCD, helm-dashboard, registry
+make observability        # + Prometheus, Grafana, Tempo, Loki, Alloy, version-checker
+make ai                   # Full AI stack (registry + hermes build + deploy)
+make ai-registry          # Registry only
+make ai-hermes-build      # Kaniko build only (~15 min)
+make ai-hermes-deploy     # Hermes deployment only
+make security             # NeuVector core
+make security-monitor     # NeuVector Prometheus exporter
+make full                 # All roles
+make clean                # Full uninstall
+make idempotent           # Test idempotency (run twice)
+make status               # Show cluster status
+make logs                 # Show failing pod logs
+```
 
 ## Ansible Workflow
 
