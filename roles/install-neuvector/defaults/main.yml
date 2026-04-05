@@ -4,7 +4,8 @@ neuvector_dashboard_hostname: neuvector.cluster.home
 neuvector_api_hostname: neuvector-api.cluster.home
 neuvector_lb_ip: "192.168.178.204"
 neuvector_pvc_enabled: false
-neuvector_scanner_enabled: false
+neuvector_scanner_enabled: true
+neuvector_scanner_replicas: 1  # CM4 has limited resources
 neuvector_cve_updater_enabled: false
 neuvector_bootstrap_password: admin
 neuvector_monitor_password: ""  # Set to the password you configured in the NeuVector UI

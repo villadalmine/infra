@@ -15,48 +15,54 @@ cómo se integran con el stack, y el rol de cada uno.
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         OpenCode (laptop)                           │
 │                                                                     │
-│  Modelo activo: litellm/cheap (qwen3-32b) ← default con MCP        │
-│                 litellm/free  (qwen3-80b:free) ← /free, sin tools  │
-│                 litellm/claude-sonnet-4-6 ← /model cuando se       │
-│                 litellm/claude-haiku-4-5    necesita más potencia   │
+│  Modelo default: litellm/free (qwen3-coder:free, 480B)             │
+│    → decide solo cuándo usar cada MCP tool                         │
+│    → si rate-limit 429: auto-fallback free → free2 → cheap         │
 │                                                                     │
-│  MCP servers (tools que el modelo puede llamar):                    │
+│  Modelos disponibles (/model para cambiar):                         │
+│  free  → qwen3-coder:free (480B, $0, tools ✅)                     │
+│  cheap → qwen-turbo ($0.033/M, tools ✅)                           │
+│  claude-haiku-4-5  → Anthropic (~$0.8/M)                           │
+│  claude-sonnet-4-6 → Anthropic (~$3/M)                             │
+│                                                                     │
+│  MCP servers (tools que el modelo llama automáticamente):           │
 │  ┌─────────────────────────────────────────────────────────────┐   │
+│  │ kubernetes-mcp      │ list-pods, get-logs, describe, events │   │
+│  │                     │ Confirmado: llama el tool solo cuando  │   │
+│  │                     │ la pregunta requiere estado live ✅    │   │
+│  ├─────────────────────┼───────────────────────────────────────┤   │
 │  │ llm-router          │ ask_expert(question)                  │   │
 │  │                     │ ask_model(model, question)            │   │
-│  ├─────────────────────┼───────────────────────────────────────┤   │
-│  │ kubernetes-mcp      │ list-pods, get-logs, describe, events │   │
 │  ├─────────────────────┼───────────────────────────────────────┤   │
 │  │ github              │ PRs, issues, commits                  │   │
 │  ├─────────────────────┼───────────────────────────────────────┤   │
 │  │ context7            │ documentación de librerías            │   │
 │  └─────────────────────┴───────────────────────────────────────┘   │
 │                                                                     │
-│  Comandos rápidos:                                                  │
-│  /free  <tarea>  → qwen3-80b:free (gratis, sin MCP)                │
-│  /cheap <tarea>  → qwen3-32b (barato, con MCP)                     │
-│  /model          → menú interactivo para elegir modelo             │
+│  /free  <tarea>  → una tarea con modelo free                       │
+│  /cheap <tarea>  → una tarea con qwen-turbo                        │
+│  /model          → menú interactivo de modelos                     │
 └──────────┬───────────────────────┬──────────────────────────────────┘
            │                       │
-           │ ask_expert()          │ kubectl (read-only)
-           │ ask_model()           │ pods, logs, events
+           │ ask_expert/model()    │ kubectl (read-only)
+           │                       │ pods, logs, events
            ▼                       ▼
-┌─────────────────────┐   ┌────────────────────────────┐
-│  LiteLLM proxy      │   │  K3s cluster               │
-│  localhost:4000     │   │  srv-rk1-01 + srv-super6   │
-│                     │   │                            │
-│  cheap → qwen3-32b  │   │  Cilium · Gateway · ArgoCD │
-│  free  → qwen3-80b  │   │  Prometheus · Loki · Tempo │
-│  claude → Anthropic │   │  Alloy · cert-manager      │
-│  local → Ollama ←── │───│── FUTURO (in-cluster)      │
-│     (cuando exista) │   │                            │
-└──────────┬──────────┘   └────────────────────────────┘
+┌──────────────────────────┐   ┌────────────────────────────┐
+│  LiteLLM proxy           │   │  K3s cluster               │
+│  localhost:4000          │   │  srv-rk1-01 + srv-super6   │
+│  systemctl --user start  │   │                            │
+│                          │   │  Cilium · Gateway · ArgoCD │
+│  free  → qwen3-coder:free│   │  Prometheus · Loki · Tempo │
+│  free2 → nemotron:free   │   │  Alloy · cert-manager      │
+│  cheap → qwen-turbo      │   │                            │
+│  claude → Anthropic      │   │  local → Ollama ←── FUTURO │
+│                          │   │                            │
+└──────────┬───────────────┘   └────────────────────────────┘
            │
            │ HTTPS
            ▼
      OpenRouter API
-     (todos los modelos
-      salvo Ollama local)
+     (todos los modelos salvo Ollama local)
 ```
 
 ## Flujo típico — cómo trabaja el modelo principal
@@ -65,17 +71,18 @@ cómo se integran con el stack, y el rol de cada uno.
 Vos: "¿por qué crashea el pod argocd-server?"
         │
         ▼
-OpenCode (qwen3-32b)
+OpenCode (qwen3-coder:free — modelo default)
         │
         ├── [tool] kubernetes-mcp: get-pod argocd-server -n argocd
         │       └── respuesta: OOMKilled, límite 128Mi
+        │       (aparece en UI como bloque: "kubernetes_pod_get [...]")
         │
         ├── [tool] kubernetes-mcp: get-events -n argocd
         │       └── respuesta: "killed process" × 3
         │
         ├── [tool] ask_expert("¿cuánta memoria necesita argocd-server
         │                      con 5 repos y ApplicationSets?")
-        │       └── qwen3-32b analiza → "mínimo 512Mi, recomendado 1Gi"
+        │       └── analiza → "mínimo 512Mi, recomendado 1Gi"
         │
         └── Edita roles/install-argocd/defaults/main.yml
             Corre ansible-playbook → verifica → commitea
@@ -152,52 +159,67 @@ Deployados via Ansible al editar, nunca a mano.
 
 ## LiteLLM — Router de modelos local
 
-**Rol:** proxy local que expone un único endpoint OpenAI-compatible y enruta a múltiples
-providers/modelos. OpenCode y Claude Code apuntan a `http://localhost:4000` en lugar
-de directo a Anthropic.
+**Rol:** proxy local (puerto 4000) con endpoint OpenAI-compatible. Enruta todos los
+modelos hacia OpenRouter. OpenCode apunta a `http://localhost:4000` como provider.
 
-**Beneficio principal:** puedes pedir a Claude Code que use `haiku` para sub-tareas baratas
-(renombrar, formatear YAML) sin cambiar la configuración global.
+**Instalado como servicio:** `systemctl --user start/stop/restart litellm`
+
+### Modelos configurados y fallback chain
 
 ```yaml
-# ~/.config/litellm/config.yaml (ejemplo)
+# ~/.config/litellm/config.yaml  (source: dotfiles/ansible/roles/opencode/files/litellm-config.yaml)
 model_list:
-  - model_name: claude-sonnet-4-6
-    litellm_params:
-      model: anthropic/claude-sonnet-4-6
-      api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: claude-haiku-4-5
-    litellm_params:
-      model: anthropic/claude-haiku-4-5-20251001
-      api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: ollama/llama3.1
-    litellm_params:
-      model: ollama/llama3.1
-      api_base: http://ollama.cluster.home
+  - model_name: free      # qwen/qwen3-coder:free — 480B, $0, tool use ✅
+  - model_name: free2     # nvidia/nemotron-3-super-120b-a12b:free — backup, NVIDIA provider
+  - model_name: cheap     # qwen/qwen-turbo — $0.033/M, tool use ✅
+  - model_name: claude-sonnet-4-6   # anthropic/claude-sonnet-4-6 via OpenRouter
+  - model_name: claude-haiku-4-5    # anthropic/claude-haiku-4-5 via OpenRouter
+
+litellm_settings:
+  fallbacks: [{"free": ["free2", "cheap"]}, {"free2": ["cheap"]}]
+  # free y free2 son Venice-hosted → pueden tener 429 simultáneo
+  # cada modelo en la cadena necesita su propio entry de fallback
 ```
+
+### Gotchas aprendidos en producción
+
+- **Venice rate limits**: `qwen3-coder:free` y `llama-3.3-70b:free` comparten provider
+  Venice en OpenRouter → 429 simultáneo. Usar `nemotron:free` (NVIDIA) como `free2`.
+- **Bug de fallback chain**: si `free2` no tiene su propio entry en `fallbacks[]`,
+  LiteLLM tira `"No fallback model group found"` en vez de seguir hacia `cheap`.
+- **Tool use en :free**: modelos `:free` pueden listar `tools` en su metadata pero
+  fallar en runtime. Verificar: `journalctl --user -u litellm -f`
+
+### Comandos operativos
 
 ```bash
-# Iniciar LiteLLM
-litellm --config ~/.config/litellm/config.yaml
-
-# Verificar modelos disponibles
-curl http://localhost:4000/models
+systemctl --user status litellm          # estado del servicio
+systemctl --user restart litellm         # aplicar cambios de config
+journalctl --user -u litellm -f          # logs en tiempo real (ver routing y fallbacks)
+curl http://localhost:4000/models        # modelos disponibles
 ```
 
-**Configurado en:** `~/dotfiles/ansible/roles/opencode/files/opencode.jsonc`
+**Source config:** `~/dotfiles/ansible/roles/opencode/files/litellm-config.yaml`
+**API key:** `~/.config/litellm/litellm.env` (no sobrescrito por Ansible, contiene `OPENROUTER_API_KEY`)
 
 ---
 
 ## Kubernetes MCP — Estado live del cluster
 
-**Rol:** MCP server que da a Claude Code acceso directo al estado del cluster
-(pods, eventos, logs) sin necesidad de aprobar cada comando `kubectl`.
+**Rol:** MCP server que expone el estado live del cluster como tools que el modelo
+llama automáticamente cuando la pregunta lo requiere — sin que el usuario apruebe
+cada `kubectl`.
 
-```bash
-# Explorar herramientas disponibles antes de usar
-npx mcporter list
-npx mcporter call kubernetes list-pods -- --namespace monitoring
+**Confirmado funcionando:** pregunta "get events en kube-system" → modelo llama
+`kubernetes_events_list [namespaces=kube-system]` → responde con los eventos reales.
+
+**Cómo aparece en OpenCode:** bloque colapsable antes de la respuesta en texto:
 ```
+kubernetes_events_list [namespaces=kube-system]
+```
+
+**Si el modelo responde de memoria sin llamar el tool:** reformular la pregunta
+explícitamente: *"consultá el cluster y decime..."*
 
 **Configurado en:** `~/dotfiles/ansible/roles/opencode/files/opencode.jsonc`
 
