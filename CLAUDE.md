@@ -8,7 +8,7 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 | | |
 |---|---|
 | Server | `srv-rk1-01` @ `192.168.178.133`, ARM64, Ubuntu 24.04 |
-| Agent | `srv-super6-cm4-emmc-01` @ `192.168.178.104`, ARM64, Ubuntu 24.04 |
+| Agent | `srv-super6c-cm4-eemc-nvme` @ `192.168.178.104`, ARM64, Ubuntu 24.04 |
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |

@@ -91,7 +91,7 @@ Access via `kubectl port-forward` or from within the cluster.
 | IP | What it is |
 |---|---|
 | `192.168.178.133` | K3s server (`srv-rk1-01`) |
-| `192.168.178.104` | K3s agent (`srv-super6-cm4-emmc-01`) |
+| `192.168.178.104` | K3s agent (`srv-super6c-cm4-eemc-nvme`) |
 | `192.168.178.200` | Shared Cilium Gateway (all HTTP/HTTPS via LB-IPAM) |
 | `192.168.178.203` | Pi-hole DNS — wildcard `*.cluster.home → .200` |
 | `192.168.178.204` | NeuVector HTTPS (dedicated LoadBalancer) |

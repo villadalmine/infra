@@ -3,7 +3,7 @@
 ## Project Purpose
 
 Ansible-managed K3s cluster bootstrap on Raspberry Pi CM4 nodes.
-Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-super6-cm4-emmc-01` (agent, 192.168.178.105).
+Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-super6c-cm4-eemc-nvme` (agent, 192.168.178.104).
 
 **Stack:** K3s + Cilium CNI + cert-manager + Gateway API + Pi-hole + ArgoCD
 
@@ -18,7 +18,7 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
 ├── opencode.jsonc                   ← OpenCode project config (context7 local)
 ├── ansible.cfg
 ├── inventory/
-│   └── hosts.ini                    ← srv-rk1-01 @ .133, srv-super6-cm4-emmc-01 @ .105
+│   └── hosts.ini                    ← srv-rk1-01 @ .133, srv-super6c-cm4-eemc-nvme @ .105
 └── playbooks/
     ├── bootstrap.yml                ← full cluster bootstrap (order matters — see below)
     ├── security.yml                 ← NeuVector monitor (run AFTER bootstrap + password change)
@@ -52,9 +52,9 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
 | Key | Value |
 |-----|-------|
 | Node (server) | `srv-rk1-01` / `cm4-unknow-3` |
-| Node (agent) | `srv-super6-cm4-emmc-01` |
+| Node (agent) | `srv-super6c-cm4-eemc-nvme` |
 | IP (server) | `192.168.178.133` |
-| IP (agent) | `192.168.178.105` |
+| IP (agent) | `192.168.178.104` |
 | OS | Ubuntu 24.04.3 LTS (ARM64) |
 | K3s | `v1.35.1+k3s1` |
 | Cilium | `1.19.2` (helm chart) |
