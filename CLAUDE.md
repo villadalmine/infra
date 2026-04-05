@@ -26,6 +26,13 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,netw
 # Resume from a specific role
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini \
   --start-at-task "Add prometheus-community Helm repository"
+
+# Makefile shortcuts (preferred for day-to-day iteration)
+make help            # show all targets
+make observability   # deploy only observability stack
+make ai              # build + deploy Hermes Agent (ARM64 kaniko build)
+make status          # show cluster pod status
+make logs            # show failing pod logs
 ```
 
 ## Bootstrap role order (CRITICAL — order matters)
@@ -47,8 +54,10 @@ all tags up to the layer you need.
 | `core` | k3s + kubeconfig | — |
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
-| `services` | pihole + argocd | `ingress` |
-| `observability` | prometheus + tempo + loki + alloy | `networking` |
+| `services` | pihole + argocd + helm-dashboard | `ingress` |
+| `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
+| `security` | neuvector | `services` |
+| `ai` | registry + hermes-agent-image + hermes-agent | `services` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -93,10 +102,15 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 |---|---|---|---|
 | K3s | — | v1.35.1+k3s1 | — |
 | Cilium | `cilium/cilium` | 1.19.2 | 1.19.2 |
-| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | 82.17.0 | v0.89.0 |
+| cert-manager | `jetstack/cert-manager` | v1.20.1 | v1.20.1 |
+| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | 82.18.0 | v0.89.0 |
 | Tempo | `grafana-community/tempo` | 1.26.7 | 2.10.1 |
 | Loki | `grafana/loki` | 6.55.0 | 3.x |
 | Alloy | `grafana/alloy` | 1.7.0 | v1.15.0 |
+| NeuVector | `neuvector/core` | 2.8.12 | 5.5.0 |
+
+> **Check outdated charts:** `nova --format table find --helm`
+> Cilium 1.20.0-pre.1 is pre-release — do NOT upgrade. Tempo pinned to 1.26.7 (2.0.0 buggy).
 
 ## Skills (deep technical context per component)
 
