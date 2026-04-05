@@ -75,7 +75,7 @@
 
 - name: Wait for NeuVector controller rollout
   ansible.builtin.command:
-    cmd: kubectl rollout status statefulset/neuvector-controller-pod -n {{ neuvector_namespace }} --timeout=180s
+    cmd: kubectl rollout status deployment/neuvector-controller-pod -n {{ neuvector_namespace }} --timeout=180s
   register: nv_controller_rollout
   until: nv_controller_rollout.rc == 0
   retries: 18
