@@ -21,6 +21,7 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
 │   └── hosts.ini                    ← srv-rk1-01 @ .133, srv-super6-cm4-emmc-01 @ .105
 └── playbooks/
     ├── bootstrap.yml                ← full cluster bootstrap (order matters — see below)
+    ├── security.yml                 ← NeuVector monitor (run AFTER bootstrap + password change)
     └── uninstall.yml                ← full teardown
 └── roles/
     ├── install-k3s/                 ← K3s server/agent install
@@ -39,6 +40,7 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
     ├── install-version-checker/     ← Container image version tracking (Prometheus + Grafana)
     ├── install-helm-dashboard/      ← Helm release management UI (read-only)
     ├── install-neuvector/           ← Container runtime security (LoadBalancer at .204)
+    ├── install-neuvector-monitor/   ← NeuVector Prometheus exporter (separate playbook)
     └── uninstall/                   ← K3s uninstall script + cleanup
 ```
 
@@ -83,6 +85,14 @@ install-k3s              (remote SSH)
   → install-tempo               ← Grafana Tempo distributed tracing
   → install-loki                ← Grafana Loki log aggregation
   → install-alloy               ← Grafana Alloy OTLP pipeline
+  → install-version-checker       ← Container image version tracking
+  → install-helm-dashboard        ← Helm release management UI (read-only)
+  → install-neuvector             ← NeuVector core (controller, enforcer, manager, scanner)
+```
+
+After bootstrap, run `security.yml` to install the NeuVector Prometheus exporter:
+```
+install-neuvector-monitor       ← Prometheus exporter + Grafana dashboard
 ```
 
 Do NOT reorder. Cilium's operator will error if Gateway API CRDs are missing
@@ -116,11 +126,30 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,netw
 # Add observability to an existing cluster
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
 
-# Add security to an existing cluster
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags security
-
 # Full bootstrap (all roles)
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
+```
+
+## Security Playbook (NeuVector Monitor)
+
+NeuVector is split into two parts:
+1. **Core** (in bootstrap.yml) — controller, enforcer, manager, scanner
+2. **Monitor** (in security.yml) — Prometheus exporter + Grafana dashboard
+
+The monitor requires the admin password to be changed in the NeuVector UI first.
+
+```bash
+# Step 1: Run bootstrap (installs NeuVector core with random password)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
+
+# Step 2: Login to NeuVector UI at https://neuvector.cluster.home
+#         Change the admin password
+
+# Step 3: Edit roles/install-neuvector-monitor/defaults/secrets.yml
+#         Set neuvector_monitor_password to your new password
+
+# Step 4: Install the monitor/exporter
+ansible-playbook playbooks/security.yml -i inventory/hosts.ini
 ```
 
 Roles are idempotent — running `--tags observability` on a cluster that already
