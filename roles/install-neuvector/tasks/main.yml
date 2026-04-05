@@ -69,6 +69,7 @@
       cve:
         scanner:
           enabled: "{{ neuvector_scanner_enabled }}"
+          replicas: "{{ neuvector_scanner_replicas }}"
         updater:
           enabled: "{{ neuvector_cve_updater_enabled }}"
   when: not nv_deployed
