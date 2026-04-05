@@ -62,17 +62,11 @@
       tags: [observability]
     - role: install-alloy
       tags: [observability]
-    - role: install-version-checker
-      tags: [observability]
-    - role: install-neuvector
-      tags: [security]
-    # install-hermes-agent: image nousresearch/hermes-agent has no ARM64 build
-    # TODO: find ARM64-compatible Hermes image or build custom
-    # - role: install-hermes-agent
-    #   tags: [ai]
+
+    # AI stack (ARM64 build required)
     - role: install-registry
-      tags: [ai]
+      tags: [ai, ai-registry]
     - role: install-hermes-agent-image
-      tags: [ai]
+      tags: [ai, ai-hermes-build]
     - role: install-hermes-agent
-      tags: [ai]
+      tags: [ai, ai-hermes-deploy]
