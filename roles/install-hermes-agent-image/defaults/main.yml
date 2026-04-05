@@ -1,0 +1,6 @@
+hermes_git_repo: "https://github.com/NousResearch/hermes-agent.git"
+hermes_git_ref: "main"
+hermes_image_tag: "0.7.0"
+hermes_registry: "registry.registry:5000"
+hermes_image_name: "ai/hermes-agent"
+kaniko_namespace: kaniko

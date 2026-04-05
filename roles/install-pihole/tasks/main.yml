@@ -100,8 +100,7 @@
       # listeningMode=LOCAL is the default and maps to dnsmasq's local-service
       # option; setting it via customSettings causes a duplicate keyword crash.
       extraEnvVars:
-        - name: FTLCONF_dns_listeningMode
-          value: "ALL"
+        FTLCONF_dns_listeningMode: "ALL"
 
       # Upstream DNS (Pi-hole forwards non-blocked queries here)
       DNS1: "8.8.8.8"

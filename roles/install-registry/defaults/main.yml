@@ -1,0 +1,9 @@
+registry_version: "2"
+registry_namespace: registry
+registry_hostname: registry.cluster.home
+registry_storage_size: "5Gi"
+registry_storage_class: "local-path"
+registry_cpu_request: "50m"
+registry_cpu_limit: "200m"
+registry_memory_request: "64Mi"
+registry_memory_limit: "256Mi"

@@ -1,0 +1,121 @@
+# Install Docker Registry v2 via kubectl on localhost
+# Simple ARM64-compatible registry for storing custom images.
+# Exposed via HTTPRoute at registry.cluster.home
+
+- name: Create registry namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ registry_namespace }}"
+    state: present
+
+- name: Create registry PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: registry-data
+        namespace: "{{ registry_namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "{{ registry_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ registry_storage_size }}"
+
+- name: Deploy registry
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: registry
+        namespace: "{{ registry_namespace }}"
+        labels:
+          app: registry
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: registry
+        template:
+          metadata:
+            labels:
+              app: registry
+          spec:
+            containers:
+              - name: registry
+                image: "registry:{{ registry_version }}"
+                ports:
+                  - containerPort: 5000
+                    name: http
+                env:
+                  - name: REGISTRY_STORAGE_DELETE_ENABLED
+                    value: "true"
+                volumeMounts:
+                  - name: data
+                    mountPath: /var/lib/registry
+                resources:
+                  requests:
+                    cpu: "{{ registry_cpu_request }}"
+                    memory: "{{ registry_memory_request }}"
+                  limits:
+                    cpu: "{{ registry_cpu_limit }}"
+                    memory: "{{ registry_memory_limit }}"
+            volumes:
+              - name: data
+                persistentVolumeClaim:
+                  claimName: registry-data
+
+- name: Create registry Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: registry
+        namespace: "{{ registry_namespace }}"
+      spec:
+        type: ClusterIP
+        selector:
+          app: registry
+        ports:
+          - name: http
+            port: 5000
+            targetPort: 5000
+
+- name: Create HTTPRoute for registry
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: registry
+        namespace: "{{ registry_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ registry_hostname }}"
+        rules:
+          - backendRefs:
+              - name: registry
+                port: 5000
+
+- name: Wait for registry rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/registry -n {{ registry_namespace }} --timeout=180s
+  register: registry_rollout
+  until: registry_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false

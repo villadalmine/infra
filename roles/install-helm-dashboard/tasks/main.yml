@@ -31,7 +31,7 @@
     chart_ref: komodorio/helm-dashboard
     chart_version: "{{ helm_dashboard_version }}"
     release_namespace: "{{ helm_dashboard_namespace }}"
-    create_namespace: false
+    create_namespace: true
     wait: false
     values:
       dashboard:

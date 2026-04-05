@@ -81,7 +81,7 @@
               fsGroup: 1000
             containers:
               - name: hermes-agent
-                image: "nousresearch/hermes-agent:{{ hermes_version }}"
+                image: "{{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}"
                 imagePullPolicy: IfNotPresent
                 command:
                   - hermes

@@ -1,4 +1,4 @@
-hermes_version: "0.7.0"
+hermes_version: "latest"
 hermes_namespace: ai
 hermes_hostname: hermes.cluster.home
 
@@ -19,3 +19,13 @@ hermes_storage_class: "local-path"
 # Platform integrations (set via secrets.yml)
 hermes_telegram_enabled: false
 hermes_discord_enabled: false
+
+# Local registry for ARM64 image
+hermes_registry: "registry.registry:5000"
+hermes_image_name: "ai/hermes-agent"
+hermes_image_tag: "0.7.0"
+
+# Local registry for ARM64 image
+hermes_registry: "registry.registry:5000"
+hermes_image_name: "ai/hermes-agent"
+hermes_image_tag: "0.7.0"
