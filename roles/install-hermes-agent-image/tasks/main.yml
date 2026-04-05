@@ -27,7 +27,7 @@
                 image: gcr.io/kaniko-project/executor:latest
                 args:
                   - "--dockerfile=/workspace/Dockerfile"
-                  - "--context=git://{{ hermes_git_repo }}@{{ hermes_git_ref }}"
+                  - "--context=dir:///workspace"
                   - "--destination={{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}"
                   - "--insecure"
                   - "--skip-tls-verify"
