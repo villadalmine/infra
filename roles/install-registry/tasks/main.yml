@@ -119,3 +119,54 @@
   retries: 18
   delay: 10
   changed_when: false
+
+- name: Get registry ClusterIP
+  ansible.builtin.command:
+    cmd: kubectl get svc registry -n {{ registry_namespace }} -o jsonpath='{.spec.clusterIP}'
+  register: registry_clusterip
+  changed_when: false
+
+- name: Ensure /etc/rancher/k3s directory exists on all nodes
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_nodes'] }}"
+
+- name: Configure K3s registries.yaml on all nodes (insecure mirror to ClusterIP)
+  ansible.builtin.copy:
+    content: |
+      mirrors:
+        "registry.registry:5000":
+          endpoint:
+            - "http://{{ registry_clusterip.stdout }}:5000"
+    dest: /etc/rancher/k3s/registries.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_nodes'] }}"
+  register: registries_yaml
+
+- name: Restart K3s server if registries.yaml changed
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+  become: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['server_nodes'] }}"
+  when: registries_yaml.changed
+
+- name: Restart K3s agent if registries.yaml changed
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: restarted
+  become: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['agent_nodes'] }}"
+  when: registries_yaml.changed
