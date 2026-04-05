@@ -1,12 +1,11 @@
 # Install NeuVector via Helm on localhost
 # Container runtime security: controller, enforcer (DaemonSet), manager (UI + API).
 # No PVC — controller data is ephemeral (OK for homelab).
-# Scanner and CVE updater disabled to save resources on CM4.
 #
 # NOTE: NeuVector serves HTTPS only — Cilium Gateway API does NOT support
 # TLS passthrough yet (mode: Passthrough is ignored). The manager is exposed
 # via a dedicated LoadBalancer Service with Cilium LB-IPAM.
-# DNS entry is added to Pi-hole via dnsmasq custom config.
+# DNS entries are added to Pi-hole via dnsmasq customDnsEntries.
 
 - name: Load NeuVector secrets (if secrets.yml exists)
   ansible.builtin.include_vars:
