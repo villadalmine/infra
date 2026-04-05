@@ -44,6 +44,7 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
     ├── install-registry/            ← Docker registry:2 for ARM64 images (5Gi PVC)
     ├── install-hermes-agent-image/  ← Kaniko job to build Hermes Agent ARM64
     ├── install-hermes-agent/        ← Hermes Agent AI assistant (OpenRouter)
+    ├── install-cifs-nas/            ← CSI SMB driver + PV/PVC for LG N2R1 NAS (SMB1)
     └── uninstall/                   ← K3s uninstall script + cleanup
 ```
 
@@ -91,6 +92,7 @@ install-k3s              (remote SSH)
   → install-version-checker       ← Container image version tracking
   → install-helm-dashboard        ← Helm release management UI (read-only)
   → install-neuvector             ← NeuVector core (controller, enforcer, manager, scanner)
+  → install-cifs-nas              ← CSI SMB driver + PV/PVC for LG N2R1 NAS (SMB1, tag: storage)
 ```
 
 After bootstrap, run `security.yml` to install the NeuVector Prometheus exporter:
@@ -114,7 +116,8 @@ all tags up to the layer you need.
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
-| `security`      → neuvector                                   (requires networking)
+| `security`      → neuvector                                   (requires networking) |
+| `storage`       → cifs-nas (CSI SMB driver + PV/PVC/pod test) | `networking` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -193,6 +196,7 @@ make ai-hermes-build      # Kaniko build only (~15 min)
 make ai-hermes-deploy     # Hermes deployment only
 make security             # NeuVector core
 make security-monitor     # NeuVector Prometheus exporter
+make storage              # CIFS/NAS CSI SMB driver + PV/PVC
 make full                 # All roles
 make clean                # Full uninstall
 make idempotent           # Test idempotency (run twice)
@@ -356,6 +360,18 @@ Pi-hole wildcard `*.cluster.home → .200` covers all DNS automatically.
 Exceptions: Pi-hole DNS port 53 gets its own LoadBalancer at `.203`.
 Port 53 cannot share the HTTP Gateway.
 
+### NAS Storage
+
+| Resource | Details |
+|----------|---------|
+| NAS | LG N2R1 @ `192.168.178.102` (SMB1 only) |
+| Share | `//192.168.178.102/service` (subdirs: `Torrent`, `DLNA`, etc.) |
+| CSI Driver | `smb.csi.k8s.io` (Helm chart `csi-driver-smb` in `kube-system`) |
+| PV | `smb-nas-pv` (5Gi, RWX, `storageClassName: ""`) |
+| PVC | `smb-nas-pvc` (default namespace) |
+| mountOptions | `vers=1.0`, `uid=1000`, `gid=1000`, `file_mode=0777`, `dir_mode=0777`, `noperm` |
+| Credentials | `roles/install-cifs-nas/defaults/secrets.yml` (gitignored) |
+
 ## Pi-hole 6.x — Critical Knowledge
 
 ### DNS not listening on port 53 (solved)
@@ -427,6 +443,7 @@ hubble observe --verdict DROPPED --follow
 - HTTP verified: `curl http://pihole.cluster.home/admin` → `308` (correct Pi-hole redirect) ✅
 - DNS verified: `dig argocd.cluster.home @192.168.178.203` → `192.168.178.200` ✅
 - Mac Wi-Fi DNS configured to `.203` ✅
+- `install-cifs-nas` — CSI SMB driver + PV/PVC + pod test (SMB1, NAS LG N2R1 at `.102`) ✅
 
 ### Known issues
 - `loki-chunks-cache-0` stays Pending — optional cache, non-critical, safe to ignore
@@ -478,5 +495,6 @@ Load these when working on the relevant component:
 - `cilium` — CNI operations, upgrades, BPF/kube-proxy replacement, Gateway API, LB-IPAM, L2 Announcements
 - `argocd` — ApplicationSets, sync waves, app management, GitOps patterns
 - `monitoring` — Prometheus + Grafana + Tempo + Loki + Alloy full observability stack
+- `cifs-nas` — CSI SMB driver, PV/PVC, SMB1 mountOptions, NAS LG N2R1
 - `k8s-debug` — systematic pod/network/node debugging (global skill)
 - `platform-engineering` — Helm, Terraform, CI/CD best practices (global skill)

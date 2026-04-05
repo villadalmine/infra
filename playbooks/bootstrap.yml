@@ -13,6 +13,7 @@
 #   services       → pihole + argocd + helm-dashboard          (requires ingress)
 #   observability  → prometheus + tempo + loki + alloy         (requires networking)
 #   security       → neuvector                                 (requires networking)
+#   storage        → cifs-nas (CSI SMB driver + PV/PVC)        (requires networking)
 #   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services)
 #   ai-registry    → registry only
 #   ai-hermes-build → kaniko ARM64 image build only
