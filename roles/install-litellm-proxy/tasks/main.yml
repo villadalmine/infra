@@ -63,6 +63,9 @@
             request_timeout: 120
             num_retries: 1
 
+          general_settings:
+            master_key: "{{ litellm_master_key }}"
+
 - name: Deploy LiteLLM proxy
   kubernetes.core.k8s:
     state: present
@@ -92,8 +95,6 @@
                   - "/etc/litellm/config.yaml"
                   - "--port"
                   - "{{ litellm_port | string }}"
-                  - "--master_key"
-                  - "{{ litellm_master_key }}"
                 ports:
                   - containerPort: "{{ litellm_port }}"
                     name: http
