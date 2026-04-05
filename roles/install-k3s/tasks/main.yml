@@ -2,6 +2,21 @@
 - name: Populate service facts
   ansible.builtin.service_facts:
 
+
+- name: Establecer el hostname usando hostnamectl
+  ansible.builtin.command: "hostnamectl set-hostname {{ inventory_hostname }}"
+  become: true
+  changed_when: false # Agregamos esto para que Ansible no lo marque siempre como "changed" si ya tiene el nombre correcto.
+
+- name: Asegurar que el nodo pueda resolver su propio nombre en /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1 {{ inventory_hostname }}"
+    state: present
+  become: true
+
+
 - name: Check if K3s server is running
   ansible.builtin.command:
     cmd: systemctl is-active k3s
