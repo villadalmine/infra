@@ -13,4 +13,5 @@ k3s_server_exec: >
   --disable traefik
   --disable metrics-server
 
-k3s_agent_exec: "agent --server https://{{ hostvars['srv-rk1-01'].ansible_host }}:6443 --token {{ k3s_token }}"
+# k3s_agent_exec: "agent --server https://{{ hostvars['srv-rk1-01'].ansible_host }}:6443 --token {{ k3s_token }}"
+k3s_agent_exec: "agent --server https://{{ hostvars[groups['server_nodes'][0]]['ansible_host'] }}:6443 --token {{ k3s_token }}"
