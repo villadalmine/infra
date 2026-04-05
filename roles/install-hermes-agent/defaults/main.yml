@@ -2,9 +2,11 @@ hermes_version: "latest"
 hermes_namespace: ai
 hermes_hostname: hermes.cluster.home
 
-# Model configuration (OpenRouter)
-hermes_model: "openrouter/anthropic/claude-sonnet-4-6"
+# Model configuration (routed via in-cluster LiteLLM proxy)
+hermes_model: "free"
 hermes_temperature: 0.7
+hermes_litellm_base_url: "http://litellm-proxy.ai.svc.cluster.local:4000"
+hermes_litellm_master_key: "sk-hermes-internal"
 
 # Resource limits (CM4-friendly)
 hermes_cpu_limit: "500m"

@@ -1,0 +1,193 @@
+# In-cluster LiteLLM proxy for AI workloads.
+# Provides OpenRouter model routing with fallback chains (free → free2 → cheap).
+# Hermes Agent points here instead of calling OpenRouter directly.
+# API key loaded from install-hermes-agent/defaults/secrets.yml (shared file).
+
+- name: Load OpenRouter API key (from hermes-agent secrets)
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/../roles/install-hermes-agent/defaults/secrets.yml"
+  failed_when: false
+
+- name: Create ai namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ litellm_namespace }}"
+    state: present
+
+- name: Create LiteLLM proxy secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: litellm-secrets
+        namespace: "{{ litellm_namespace }}"
+      type: Opaque
+      stringData:
+        OPENROUTER_API_KEY: "{{ hermes_openrouter_api_key | default('') }}"
+  when: hermes_openrouter_api_key | default('') | length > 0
+
+- name: Create LiteLLM proxy ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: litellm-proxy-config
+        namespace: "{{ litellm_namespace }}"
+      data:
+        config.yaml: |
+          model_list:
+            - model_name: free
+              litellm_params:
+                model: openrouter/qwen/qwen3-coder:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: free2
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: cheap
+              litellm_params:
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/OPENROUTER_API_KEY
+
+          litellm_settings:
+            fallbacks:
+              - {"free": ["free2", "cheap"]}
+              - {"free2": ["cheap"]}
+            request_timeout: 120
+            num_retries: 1
+
+- name: Deploy LiteLLM proxy
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: litellm-proxy
+        namespace: "{{ litellm_namespace }}"
+        labels:
+          app: litellm-proxy
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: litellm-proxy
+        template:
+          metadata:
+            labels:
+              app: litellm-proxy
+          spec:
+            containers:
+              - name: litellm
+                image: "ghcr.io/berriai/litellm:{{ litellm_proxy_version }}"
+                args:
+                  - "--config"
+                  - "/etc/litellm/config.yaml"
+                  - "--port"
+                  - "{{ litellm_port | string }}"
+                  - "--master_key"
+                  - "{{ litellm_master_key }}"
+                ports:
+                  - containerPort: "{{ litellm_port }}"
+                    name: http
+                env:
+                  - name: OPENROUTER_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: litellm-secrets
+                        key: OPENROUTER_API_KEY
+                volumeMounts:
+                  - name: config
+                    mountPath: /etc/litellm
+                resources:
+                  requests:
+                    cpu: "{{ litellm_cpu_request }}"
+                    memory: "{{ litellm_memory_request }}"
+                  limits:
+                    cpu: "{{ litellm_cpu_limit }}"
+                    memory: "{{ litellm_memory_limit }}"
+                readinessProbe:
+                  httpGet:
+                    path: /health/readiness
+                    port: "{{ litellm_port }}"
+                  initialDelaySeconds: 15
+                  periodSeconds: 10
+                  failureThreshold: 6
+                livenessProbe:
+                  httpGet:
+                    path: /health/liveliness
+                    port: "{{ litellm_port }}"
+                  initialDelaySeconds: 30
+                  periodSeconds: 30
+                  failureThreshold: 3
+            volumes:
+              - name: config
+                configMap:
+                  name: litellm-proxy-config
+
+- name: Create LiteLLM proxy Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: litellm-proxy
+        namespace: "{{ litellm_namespace }}"
+      spec:
+        type: ClusterIP
+        selector:
+          app: litellm-proxy
+        ports:
+          - name: http
+            port: "{{ litellm_port }}"
+            targetPort: "{{ litellm_port }}"
+
+- name: Create NetworkPolicy for LiteLLM proxy (egress to OpenRouter only)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: litellm-proxy-netpol
+        namespace: "{{ litellm_namespace }}"
+      spec:
+        podSelector:
+          matchLabels:
+            app: litellm-proxy
+        policyTypes:
+          - Egress
+        egress:
+          - to: []
+            ports:
+              - port: 53
+                protocol: UDP
+              - port: 53
+                protocol: TCP
+          - to:
+              - ipBlock:
+                  cidr: 0.0.0.0/0
+                  except:
+                    - 10.0.0.0/8
+                    - 172.16.0.0/12
+                    - 192.168.0.0/16
+            ports:
+              - port: 443
+                protocol: TCP
+
+- name: Wait for LiteLLM proxy rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/litellm-proxy -n {{ litellm_namespace }} --timeout=180s
+  register: litellm_rollout
+  until: litellm_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false

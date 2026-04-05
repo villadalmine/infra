@@ -31,17 +31,26 @@
                   - "--destination={{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}"
                   - "--insecure"
                   - "--skip-tls-verify"
-                  - "--single-snapshot"
+                  - "--snapshot-mode=redo"
+                  - "--compression=zstd"
+                  - "--compression-level=1"
                 volumeMounts:
                   - name: dockerfile
                     mountPath: /workspace/Dockerfile
                     subPath: Dockerfile
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node-role.kubernetes.io/control-plane
+                          operator: Exists
             volumes:
               - name: dockerfile
                 configMap:
                   name: hermes-dockerfile
             restartPolicy: Never
-        backoffLimit: 1
+        backoffLimit: 3
 
 - name: Create ConfigMap with Hermes Dockerfile
   kubernetes.core.k8s:
@@ -58,7 +67,7 @@
 
 - name: Wait for kaniko job to complete
   ansible.builtin.command:
-    cmd: kubectl wait --for=condition=complete job/build-hermes-arm64 -n {{ kaniko_namespace }} --timeout=600s
+    cmd: kubectl wait --for=condition=complete job/build-hermes-arm64 -n {{ kaniko_namespace }} --timeout=3600s
   register: kaniko_wait
   changed_when: false
   failed_when: kaniko_wait.rc != 0

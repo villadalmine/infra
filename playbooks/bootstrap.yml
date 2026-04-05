@@ -7,15 +7,16 @@
 #          gateway before pihole (HTTPRoute needs gateway to exist).
 #
 # Tags (cumulative — include all tags up to the layer you need):
-#   core          → k3s + kubeconfig
-#   networking    → gateway-api-crds + cilium + cilium-pools  (requires core)
-#   ingress       → cert-manager + gateway                    (requires networking)
-#   services      → pihole + argocd + helm-dashboard            (requires ingress)
-#   observability → prometheus + tempo + loki + alloy + version-checker  (requires networking)
-#   ai            → registry + hermes-agent-image + hermes-agent          (requires services)
-#   ai            → registry + hermes-agent-image + hermes-agent          (requires services)
-#   ai            → hermes-agent                                (requires networking)
-#   ai            → hermes-agent                                (requires networking)
+#   core           → k3s + kubeconfig
+#   networking     → gateway-api-crds + cilium + cilium-pools  (requires core)
+#   ingress        → cert-manager + gateway                    (requires networking)
+#   services       → pihole + argocd + helm-dashboard          (requires ingress)
+#   observability  → prometheus + tempo + loki + alloy         (requires networking)
+#   security       → neuvector                                 (requires networking)
+#   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services)
+#   ai-registry    → registry only
+#   ai-hermes-build → kaniko ARM64 image build only
+#   ai-hermes-deploy → litellm-proxy + hermes-agent deploy
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -68,5 +69,7 @@
       tags: [ai, ai-registry]
     - role: install-hermes-agent-image
       tags: [ai, ai-hermes-build]
+    - role: install-litellm-proxy
+      tags: [ai, ai-hermes-deploy]
     - role: install-hermes-agent
       tags: [ai, ai-hermes-deploy]

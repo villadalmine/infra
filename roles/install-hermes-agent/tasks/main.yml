@@ -98,6 +98,10 @@
                     value: "{{ hermes_temperature | string }}"
                   - name: HERMES_HOME
                     value: /opt/data
+                  - name: OPENAI_API_BASE
+                    value: "{{ hermes_litellm_base_url }}"
+                  - name: OPENAI_API_KEY
+                    value: "{{ hermes_litellm_master_key }}"
                 envFrom:
                   - secretRef:
                       name: hermes-secrets
@@ -205,14 +209,11 @@
               - port: 53
                 protocol: TCP
           - to:
-              - ipBlock:
-                  cidr: 0.0.0.0/0
-                  except:
-                    - 10.0.0.0/8
-                    - 172.16.0.0/12
-                    - 192.168.0.0/16
+              - podSelector:
+                  matchLabels:
+                    app: litellm-proxy
             ports:
-              - port: 443
+              - port: 4000
                 protocol: TCP
 
 - name: Wait for Hermes Agent rollout
