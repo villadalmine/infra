@@ -1,18 +1,19 @@
 FROM debian:13.4
 
-# Install system dependencies in one layer, clear APT cache
+# Install system dependencies including git for source clone
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential nodejs npm python3 python3-pip ripgrep ffmpeg gcc python3-dev libffi-dev && \
+        git build-essential nodejs npm python3 python3-pip ripgrep ffmpeg gcc python3-dev libffi-dev && \
     rm -rf /var/lib/apt/lists/*
 
-COPY . /opt/hermes
+# Clone source from git (no build context dependency)
+RUN git clone --depth=1 --branch {{ hermes_git_ref }} {{ hermes_git_repo }} /opt/hermes
+
 WORKDIR /opt/hermes
 
 # Install Python and Node dependencies in one layer, no cache
 RUN pip install --no-cache-dir -e ".[all]" --break-system-packages && \
     npm install --prefer-offline --no-audit && \
-    npx playwright install --with-deps chromium --only-shell && \
     cd /opt/hermes/scripts/whatsapp-bridge && \
     npm install --prefer-offline --no-audit && \
     npm cache clean --force
