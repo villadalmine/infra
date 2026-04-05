@@ -4,5 +4,5 @@ litellm_master_key: "sk-hermes-internal"
 litellm_port: 4000
 litellm_cpu_request: "100m"
 litellm_cpu_limit: "500m"
-litellm_memory_request: "128Mi"
-litellm_memory_limit: "512Mi"
+litellm_memory_request: "512Mi"
+litellm_memory_limit: "3Gi"
