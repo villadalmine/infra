@@ -44,6 +44,16 @@
     nv_deployed: false
   when: nv_helm_list.stdout | default('') | length == 0
 
+- name: Purge stuck NeuVector release
+  kubernetes.core.helm:
+    name: neuvector
+    release_namespace: "{{ neuvector_namespace }}"
+    state: absent
+    purge: true
+  when: >
+    nv_helm_list.stdout | default('') | length > 0 and
+    (nv_helm_list.stdout | from_json | selectattr('status', 'match', '^(failed|pending-install|pending-upgrade|pending-rollback)$') | list | length) > 0
+
 - name: Install or upgrade NeuVector
   kubernetes.core.helm:
     name: neuvector
