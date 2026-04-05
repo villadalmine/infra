@@ -8,6 +8,11 @@
 # via a dedicated LoadBalancer Service with Cilium LB-IPAM.
 # DNS entry is added to Pi-hole via dnsmasq custom config.
 
+- name: Load NeuVector secrets (if secrets.yml exists)
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+  failed_when: false
+
 - name: Add NeuVector Helm repository
   kubernetes.core.helm_repository:
     name: neuvector
@@ -107,18 +112,33 @@
         selector:
           app: neuvector-manager-pod
 
-- name: Add NeuVector DNS entry to Pi-hole custom config
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: pihole-neuvector-dns
-        namespace: "{{ pihole_namespace }}"
-        labels:
-          app.kubernetes.io/managed-by: Helm
-      data:
-        neuvector.conf: |
-          address=/{{ neuvector_dashboard_hostname }}/{{ neuvector_lb_ip }}
-          address=/{{ neuvector_api_hostname }}/{{ neuvector_lb_ip }}
+- name: Install NeuVector Prometheus exporter (neuvector/monitor chart)
+  kubernetes.core.helm:
+    name: neuvector-monitor
+    chart_ref: neuvector/monitor
+    chart_version: "{{ neuvector_version }}"
+    release_namespace: "{{ neuvector_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      exporter:
+        enabled: true
+        CTRL_USERNAME: admin
+        CTRL_PASSWORD: "{{ neuvector_monitor_password | default('admin') }}"
+        apiSvc: "neuvector-svc-controller.neuvector:10443"
+        enforcerStats:
+          enabled: false
+        svc:
+          enabled: true
+          type: ClusterIP
+        serviceMonitor:
+          enabled: true
+          labels:
+            release: kube-prometheus-stack
+        grafanaDashboard:
+          enabled: true
+          namespace: monitoring
+          labels:
+            grafana_dashboard: "1"
+  when: neuvector_monitor_password | default('') | length > 0
+  failed_when: false
