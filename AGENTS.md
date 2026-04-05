@@ -36,6 +36,9 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
     ├── install-tempo/               ← Grafana Tempo distributed tracing
     ├── install-loki/                ← Grafana Loki log aggregation
     ├── install-alloy/               ← Grafana Alloy OTLP pipeline
+    ├── install-version-checker/     ← Container image version tracking (Prometheus + Grafana)
+    ├── install-helm-dashboard/      ← Helm release management UI (read-only)
+    ├── install-neuvector/           ← Container runtime security (LoadBalancer at .204)
     └── uninstall/                   ← K3s uninstall script + cleanup
 ```
 
@@ -97,7 +100,8 @@ all tags up to the layer you need.
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd | `ingress` |
-| `observability` | prometheus + tempo + loki + alloy | `networking` |
+| `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
+| `security`      → neuvector                                   (requires networking)
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -111,6 +115,9 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,netw
 
 # Add observability to an existing cluster
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
+
+# Add security to an existing cluster
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags security
 
 # Full bootstrap (all roles)
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
