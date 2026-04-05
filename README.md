@@ -21,6 +21,9 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,netw
 # Add observability to existing cluster
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
 
+# Add security (NeuVector) after bootstrap + password change
+ansible-playbook playbooks/security.yml -i inventory/hosts.ini
+
 # Workstation DNS (run on host, not toolbox)
 bash scripts/setup-dns-split.sh
 ```
@@ -29,27 +32,41 @@ After DNS is set up, all `*.cluster.home` URLs resolve from the workstation.
 
 ---
 
-## Services — public (HTTPRoute)
+## Services — public (HTTPRoute via Gateway)
 
 | Service | URL | What it does | Credentials |
 |---|---|---|---|
 | ArgoCD | https://argocd.cluster.home | GitOps — deploy and sync K8s apps | `kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' \| base64 -d` |
-| Grafana | https://grafana.cluster.home | Dashboards — metrics, alerts, traces | `admin` / `admin` |
+| Grafana | https://grafana.cluster.home | Dashboards — metrics, alerts, traces, logs | `admin` / `admin` |
 | Pi-hole | https://pihole.cluster.home | DNS admin — blocklists, query log | `changeme` |
+| helm-dashboard | https://helm-dashboard.cluster.home | Helm release management UI (read-only) | N/A |
+
+---
+
+## Services — security (dedicated LoadBalancer)
+
+| Service | URL | What it does | Credentials |
+|---|---|---|---|
+| NeuVector | https://192.168.178.204 | Container runtime security, vulnerability scanning | `admin` / set in UI on first login |
+
+NeuVector is installed in two steps:
+1. **bootstrap.yml** → core (controller, enforcer, manager, scanner)
+2. **security.yml** → Prometheus exporter + Grafana dashboard (requires password change in UI first)
 
 ---
 
 ## Services — internal (no public URL)
 
-Access via `kubectl port-forward` or from within the cluster using the internal DNS name.
+Access via `kubectl port-forward` or from within the cluster.
 
 | Service | Internal DNS | What it does |
 |---|---|---|
 | Prometheus | `kube-prometheus-stack-prometheus.monitoring:9090` | Scrapes cluster metrics |
 | AlertManager | `kube-prometheus-stack-alertmanager.monitoring:9093` | Routes alerts |
 | Tempo | `tempo.monitoring:3200` | Distributed tracing backend |
-| Alloy | `alloy.monitoring:4317` (gRPC) / `alloy.monitoring:4318` (HTTP) | OTLP pipeline — receives traces from apps |
+| Alloy | `alloy.monitoring:4317` (gRPC) / `alloy.monitoring:4318` (HTTP) | OTLP pipeline — receives traces from apps, scrapes pod logs → Loki |
 | Loki | `loki-gateway.monitoring:80` | Log aggregation backend |
+| version-checker | `version-checker.monitoring:8080` | Tracks container image versions vs upstream |
 
 ---
 
@@ -59,11 +76,45 @@ Access via `kubectl port-forward` or from within the cluster using the internal 
 |---|---|
 | `192.168.178.133` | K3s server (`srv-rk1-01`) |
 | `192.168.178.105` | K3s agent (`srv-super6-cm4-emmc-01`) |
-| `192.168.178.200` | Shared Gateway (all HTTP/HTTPS via Cilium LB-IPAM) |
+| `192.168.178.200` | Shared Cilium Gateway (all HTTP/HTTPS via LB-IPAM) |
 | `192.168.178.203` | Pi-hole DNS — wildcard `*.cluster.home → .200` |
+| `192.168.178.204` | NeuVector HTTPS (dedicated LoadBalancer) |
 
 - **Domain**: `cluster.home` — wildcard TLS via cert-manager internal CA
 - **Storage**: `local-path` (default StorageClass)
+- **DNS**: Pi-hole at `.203` resolves `*.cluster.home → .200` automatically
+
+---
+
+## Bootstrap Tags
+
+Each role is tagged for selective deployment. Tags are cumulative — include
+all tags up to the layer you need.
+
+| Tag | Roles | Requires |
+|-----|-------|----------|
+| `core` | k3s + kubeconfig | — |
+| `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
+| `ingress` | cert-manager + gateway | `networking` |
+| `services` | pihole + argocd + helm-dashboard | `ingress` |
+| `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
+
+```bash
+# Minimal cluster (kubectl works, no networking)
+ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
+
+# Cluster with networking (deploy ClusterIPs, internal services)
+ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
+
+# Full stack with public URLs (HTTPS + DNS + GitOps)
+ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
+
+# Add observability to an existing cluster
+ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
+
+# Full bootstrap (all roles)
+ansible-playplaybook playbooks/bootstrap.yml -i inventory/hosts.ini
+```
 
 ---
 
@@ -79,3 +130,4 @@ Access via `kubectl port-forward` or from within the cluster using the internal 
 8. Commit + push both repos
 
 See `CLAUDE.md` for the full bootstrap role order and architectural constraints.
+See `AGENTS.md` for project rules, golden rules, and troubleshooting.
