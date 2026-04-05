@@ -1,0 +1,8 @@
+# Secrets - never commit
+*.vault
+.env
+.env.local
+roles/*/defaults/secrets.yml
+roles/*/defaults/vault.yml
+secrets/
+vault/
