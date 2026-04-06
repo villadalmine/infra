@@ -83,6 +83,14 @@ make ai               # all three in sequence
 
 The wrapper uses a local `kubectl port-forward` to the Holmes service and prints only the `analysis` field.
 
+For Telegram Hermes, send plain text like:
+
+```text
+che como está mi cluster
+cuantos pods hay en monitoring
+mostrame los pods con más de 500 MiB de RAM
+```
+
 Hermes runs as a persistent gateway on the high-resource node and mounts its
 `gateway.json` from the `hermes-gateway-config` ConfigMap into `HERMES_HOME`.
 The gateway is kept alive by the webhook platform so the pod stays `1/1` under
