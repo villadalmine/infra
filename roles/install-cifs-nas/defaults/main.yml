@@ -5,6 +5,12 @@ cifs_nas_pass: "elendil123"
 cifs_pv_size: "5Gi"
 cifs_pv_name: "smb-nas-pv"
 cifs_pvc_name: "smb-nas-pvc"
+cifs_enable_static: true
+cifs_storage_class_name: "smb-nas"
+cifs_storage_class_source: "//192.168.178.102/service/Torrent"
+cifs_dynamic_pvc_name: "smb-nas-dynamic-pvc"
+cifs_dynamic_pod_name: "smb-dynamic-test-pod"
+cifs_enable_dynamic_test: true
 cifs_namespace: "default"
 cifs_uid: 1000
 cifs_gid: 1000
