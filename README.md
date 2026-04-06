@@ -63,6 +63,7 @@ NeuVector is installed in two steps:
 | Service | Access | What it does |
 |---|---|---|
 | Hermes Agent | `https://hermes.cluster.home` | Self-improving AI assistant (ARM64, NousResearch) |
+| HolmesGPT | `https://holmes.cluster.home` | SRE assistant with Kubernetes + logs + metrics toolsets |
 | LiteLLM proxy | `http://litellm-proxy.ai:4000` (cluster-internal) | OpenRouter model router — free→free2→cheap fallback |
 | Docker Registry | `registry.registry:5000` (cluster-internal) | ARM64 image storage for kaniko builds (5Gi PVC) |
 
@@ -70,6 +71,7 @@ NeuVector is installed in two steps:
 make ai-registry       # deploy registry (fast)
 make ai-hermes-build   # kaniko ARM64 build (~60 min)
 make ai-hermes-deploy  # deploy litellm-proxy + hermes-agent
+make ai-holmes         # deploy HolmesGPT HTTP API
 make ai               # all three in sequence
 ```
 
@@ -77,6 +79,11 @@ Hermes runs as a persistent gateway on the high-resource node and mounts its
 `gateway.json` from the `hermes-gateway-config` ConfigMap into `HERMES_HOME`.
 The gateway is kept alive by the webhook platform so the pod stays `1/1` under
 Ansible as well as manual cluster updates.
+
+HolmesGPT runs in the same `ai` namespace and points at LiteLLM through the
+OpenAI-compatible API. It reuses the same OpenRouter secret pattern as Hermes
+and exposes `https://holmes.cluster.home` through the shared Gateway.
+Future work: add Holmes MCP servers once the base HTTP install is stable.
 
 ---
 
@@ -91,6 +98,21 @@ Access via `kubectl port-forward` or from within the cluster.
 | Tempo | `tempo.monitoring:3200` | Distributed tracing backend |
 | Alloy | `alloy.monitoring:4317` (gRPC) / `alloy.monitoring:4318` (HTTP) | OTLP pipeline — receives traces from apps, scrapes pod logs → Loki |
 | Loki | `loki-gateway.monitoring:80` | Log aggregation backend |
+
+## MCPs
+
+OpenCode uses MCPs to inspect live infrastructure and the GitHub repo without
+guessing. Keep these in mind when debugging or documenting changes:
+
+| MCP | Use |
+|---|---|
+| Kubernetes | Live cluster state: pods, services, events, leases, logs |
+| GitHub | PRs, issues, file contents, repo metadata |
+| context7 | Upstream docs for libraries and tools |
+
+Workflow rule: prove a change manually or with Helm first, then run Ansible in
+the background with logs redirected, then re-run the same Ansible command in
+foreground only after the background run is clean.
 
 ---
 

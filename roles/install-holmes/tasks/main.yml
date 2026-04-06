@@ -1,0 +1,114 @@
+# Install HolmesGPT via Helm in the ai namespace.
+# It uses the in-cluster LiteLLM proxy as an OpenAI-compatible backend and
+# reuses the same OpenRouter secret pattern as Hermes.
+
+- name: Load Holmes secrets (if secrets.yml exists)
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/../roles/install-hermes-agent/defaults/secrets.yml"
+  failed_when: false
+
+- name: Create Holmes namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ holmes_namespace }}"
+    state: present
+
+- name: Check if Holmes release exists
+  ansible.builtin.command:
+    cmd: helm list -n {{ holmes_namespace }} -o json --filter {{ holmes_release_name }}
+  register: holmes_helm_list
+  changed_when: false
+  failed_when: false
+
+- name: Set Holmes release status fact
+  ansible.builtin.set_fact:
+    holmes_deployed: "{{ (holmes_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
+  when: holmes_helm_list.stdout | default('') | length > 0
+
+- name: Set Holmes release status fact (default not deployed)
+  ansible.builtin.set_fact:
+    holmes_deployed: false
+  when: holmes_helm_list.stdout | default('') | length == 0
+
+- name: Install or upgrade HolmesGPT
+  kubernetes.core.helm:
+    name: "{{ holmes_release_name }}"
+    chart_ref: robusta/holmes
+    chart_version: "{{ holmes_version }}"
+    release_namespace: "{{ holmes_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      additionalEnvVars: "{{ holmes_additional_env }}"
+      modelList:
+        holmes-litellm:
+          api_key: "{{ '{{ env.OPENAI_API_KEY }}' }}"
+          api_base: "{{ '{{ env.OPENAI_API_BASE }}' }}"
+          model: openai/{{ holmes_model_name }}
+          temperature: 0
+      toolsets:
+        kubernetes/core:
+          enabled: true
+        kubernetes/logs:
+          enabled: true
+        kubernetes/live-metrics:
+          enabled: true
+        kubernetes/prometheus_stack:
+          enabled: true
+        bash:
+          enabled: true
+          config:
+            builtin_allowlist: "extended"
+      crdPermissions:
+        argo: true
+        flux: true
+        kafka: true
+        keda: true
+        crossplane: true
+        istio: true
+        gatewayApi: true
+        velero: true
+        externalSecrets: true
+      nodeSelector:
+        kubernetes.io/hostname: "{{ holmes_node_hostname }}"
+      tolerations:
+        - operator: Exists
+      resources:
+        requests:
+          cpu: "{{ holmes_cpu_request }}"
+          memory: "{{ holmes_memory_request }}"
+        limits:
+          memory: "{{ holmes_memory_limit }}"
+  when: not holmes_deployed
+
+- name: Wait for HolmesGPT rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/{{ holmes_release_name }}-holmes -n {{ holmes_namespace }} --timeout=180s
+  register: holmes_rollout
+  until: holmes_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create HTTPRoute for HolmesGPT
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: holmesgpt
+        namespace: "{{ holmes_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ holmes_hostname }}"
+        rules:
+          - backendRefs:
+              - name: "{{ holmes_release_name }}-holmes"
+                port: 80
+    state: present

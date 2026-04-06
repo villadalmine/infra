@@ -19,6 +19,7 @@
 #   ai-hermes-build → kaniko ARM64 image build only
 #   ai-hermes-deploy → LiteLLM proxy + Hermes Agent deploy
 #   ai-hermes-agent  → Hermes Agent only
+#   ai-holmes       → HolmesGPT HTTP API + Gateway route
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -79,3 +80,5 @@
       tags: [ai, ai-hermes-deploy]
     - role: install-hermes-agent
       tags: [ai, ai-hermes-deploy, ai-hermes-agent]
+    - role: install-holmes
+      tags: [ai, ai-holmes]

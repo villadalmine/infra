@@ -6,7 +6,7 @@ INVENTORY := inventory/hosts.ini
 BOOTSTRAP := playbooks/bootstrap.yml
 UNINSTALL := playbooks/uninstall.yml
 
-.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy security full clean
+.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes security full clean
 
 help: ## Show this help message
 	@echo "Infra Makefile - Simplified Ansible workflow"
@@ -44,6 +44,9 @@ ai-hermes-build: ## Build Hermes Agent ARM64 image with kaniko (takes ~15 min on
 
 ai-hermes-deploy: ## Deploy Hermes Agent (requires ai-hermes-build to complete first)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-deploy
+
+ai-holmes: ## Deploy HolmesGPT (OpenAI-compatible backend via LiteLLM)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-holmes
 
 security: ## Install NeuVector core (controller, enforcer, manager, scanner)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags security
