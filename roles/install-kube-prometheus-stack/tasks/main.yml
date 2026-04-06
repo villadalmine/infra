@@ -105,8 +105,6 @@
                 resources:
                   requests:
                     storage: "{{ kube_prometheus_stack_storage_size }}"
-  when: not kps_deployed
-
 - name: Wait for Grafana rollout
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/kube-prometheus-stack-grafana -n {{ kube_prometheus_stack_namespace }} --timeout=180s

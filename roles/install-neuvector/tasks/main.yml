@@ -1,6 +1,6 @@
 # Install NeuVector via Helm on localhost
 # Container runtime security: controller, enforcer (DaemonSet), manager (UI + API).
-# Controller PVC is backed by the SMB CSI StorageClass (smb-nas) when enabled.
+# Controller PVC uses the configured StorageClass.
 #
 # NOTE: NeuVector serves HTTPS only — Cilium Gateway API does NOT support
 # TLS passthrough yet (mode: Passthrough is ignored). The manager is exposed
@@ -44,6 +44,47 @@
     nv_deployed: false
   when: nv_helm_list.stdout | default('') | length == 0
 
+- name: Read NeuVector PVCs
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    namespace: "{{ neuvector_namespace }}"
+    label_selectors:
+      - release=neuvector
+  register: nv_pvcs
+  changed_when: false
+  failed_when: false
+
+- name: Detect NeuVector storage migration need
+  ansible.builtin.set_fact:
+    nv_storage_migration_needed: >-
+      {{ (nv_pvcs.resources | default([])
+      | selectattr('spec.storageClassName', 'defined')
+      | selectattr('spec.storageClassName', 'ne', neuvector_pvc_storage_class)
+      | list | length) > 0 }}
+
+- name: Purge NeuVector release before storage migration
+  kubernetes.core.helm:
+    name: neuvector
+    release_namespace: "{{ neuvector_namespace }}"
+    state: absent
+    purge: true
+  when: nv_storage_migration_needed | default(false)
+
+- name: Wait for NeuVector PVCs to disappear after purge
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    namespace: "{{ neuvector_namespace }}"
+    label_selectors:
+      - release=neuvector
+  register: nv_pvcs_after_purge
+  until: nv_pvcs_after_purge.resources | default([]) | length == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+  when: nv_storage_migration_needed | default(false)
+
 - name: Purge stuck NeuVector release
   kubernetes.core.helm:
     name: neuvector
@@ -83,7 +124,6 @@
           replicas: "{{ neuvector_scanner_replicas }}"
         updater:
           enabled: "{{ neuvector_cve_updater_enabled }}"
-  when: not nv_deployed
 
 - name: Wait for NeuVector controller rollout
   ansible.builtin.command:

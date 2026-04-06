@@ -2,5 +2,7 @@ kube_prometheus_stack_version: "82.18.0"
 kube_prometheus_stack_namespace: monitoring
 kube_prometheus_stack_hostname: grafana.cluster.home
 kube_prometheus_stack_admin_password: admin
+# Cluster default is local-path. This role overrides to smb-nas, so the
+# storage backend role must exist before installing/upgrading it.
 kube_prometheus_stack_storage_class: smb-nas
 kube_prometheus_stack_storage_size: "20Gi"
