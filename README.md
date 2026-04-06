@@ -85,6 +85,10 @@ OpenAI-compatible API. It reuses the same OpenRouter secret pattern as Hermes
 and exposes `https://holmes.cluster.home` through the shared Gateway.
 Future work: add Holmes MCP servers once the base HTTP install is stable.
 
+Example questions:
+- `Using Prometheus, show the top 5 pods by CPU in namespace monitoring over the last 15m.`
+- `Using Prometheus, check whether Grafana latency or error rate spiked in the last 30m.`
+
 ---
 
 ## Services — internal (no public URL)

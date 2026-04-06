@@ -5,16 +5,13 @@ holmes_hostname: holmes.cluster.home
 holmes_release_name: holmesgpt
 holmes_model_name: free
 holmes_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-holmes_openai_key: "none"
+holmes_openai_key: "sk-hermes-internal"
 
 holmes_additional_env:
   - name: OPENAI_API_BASE
     value: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
   - name: OPENAI_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: hermes-secrets
-        key: OPENROUTER_API_KEY
+    value: "sk-hermes-internal"
 
 holmes_cpu_request: "100m"
 holmes_memory_request: "512Mi"
