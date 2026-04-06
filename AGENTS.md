@@ -39,9 +39,9 @@ Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-sup
     ├── install-alloy/               ← Grafana Alloy OTLP pipeline
     ├── install-version-checker/     ← Container image version tracking (Prometheus + Grafana)
     ├── install-helm-dashboard/      ← Helm release management UI (read-only)
-    ├── install-neuvector/           ← Container runtime security (LoadBalancer at .204)
+    ├── install-neuvector/           ← Container runtime security (LoadBalancer at .204, PVC via smb-nas)
     ├── install-neuvector-monitor/   ← NeuVector Prometheus exporter (separate playbook)
-    ├── install-registry/            ← Docker registry:2 for ARM64 images (5Gi PVC)
+    ├── install-registry/            ← Docker registry:2 for ARM64 images (100Gi PVC)
     ├── install-hermes-agent-image/  ← Kaniko job to build Hermes Agent ARM64
     ├── install-hermes-agent/        ← Hermes Agent AI assistant (OpenRouter)
     ├── install-cifs-nas/            ← CSI SMB driver + PV/PVC for LG N2R1 NAS (SMB1)
@@ -126,9 +126,15 @@ all tags up to the layer you need.
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
-| `security`      → neuvector                                   (requires networking) |
+| `security`      → neuvector                                   (requires networking + storage; defaults to smb-nas PVC backend) |
 | `storage`       → storage backends / PVC backends              | `networking` |
 | `ai-registry`   | registry only | `networking`, `storage` |
+
+Prometheus uses `smb-nas` by default. If you override `kube_prometheus_stack_storage_class`,
+install the matching storage backend first.
+
+Pi-hole uses `local-path` by default. If you override `pihole_storage_class`,
+install the matching storage backend first.
 
 ```bash
 # Minimal cluster (kubectl works, no networking)

@@ -2,3 +2,4 @@ tempo_version: "1.26.7"
 tempo_namespace: monitoring
 tempo_retention: 72h
 tempo_storage_size: 1Gi
+tempo_storage_class: local-path

@@ -13,7 +13,9 @@
 # volume mounts needed. The chart renders this into /etc/dnsmasq.d natively.
 #
 # ── Storage ───────────────────────────────────────────────────────────────────
-# Pi-hole persists /etc/pihole via local-path-provisioner PVC.
+# Pi-hole persists /etc/pihole via a PVC.
+# Default StorageClass is local-path; override pihole_storage_class only after
+# the matching storage backend role is installed.
 # Requires K3s without --disable local-storage.
 #
 # wait:false + kubectl rollout status — see install-cilium/tasks/main.yml for rationale.

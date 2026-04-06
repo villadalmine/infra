@@ -117,12 +117,18 @@ all tags up to the layer you need.
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd + helm-dashboard | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy | `networking` |
-| `security` | neuvector | `services` |
+| `security` | neuvector (PVC backend: smb-nas) | `services` |
 | `storage` | storage backends / PVC backends | `networking` |
 | `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking`, `storage` |
 | `ai-registry` | registry only | `networking`, `storage` |
 | `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
 | `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
+
+Prometheus uses `smb-nas` by default. If you override `kube_prometheus_stack_storage_class`,
+install the matching storage backend first.
+
+Pi-hole uses `local-path` by default. If you override `pihole_storage_class`,
+install the matching storage backend first.
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
