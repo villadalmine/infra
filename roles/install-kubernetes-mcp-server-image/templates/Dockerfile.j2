@@ -1,0 +1,13 @@
+FROM debian:13.4
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+
+ARG KUBERNETES_MCP_VERSION={{ kubernetes_mcp_version }}
+
+RUN curl -fsSL -o /usr/local/bin/kubernetes-mcp-server \
+      "https://github.com/containers/kubernetes-mcp-server/releases/download/v${KUBERNETES_MCP_VERSION}/kubernetes-mcp-server-linux-arm64" && \
+    chmod +x /usr/local/bin/kubernetes-mcp-server
+
+ENTRYPOINT ["/usr/local/bin/kubernetes-mcp-server"]

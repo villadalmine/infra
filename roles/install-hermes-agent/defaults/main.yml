@@ -2,11 +2,10 @@ hermes_version: "latest"
 hermes_namespace: ai
 hermes_hostname: hermes.cluster.home
 
-# Model configuration (routed via in-cluster LiteLLM proxy)
-hermes_model: "free"
+# Model configuration (OpenRouter direct)
+hermes_model: "openai/gpt-4o-mini"
 hermes_temperature: 0.7
-hermes_litellm_base_url: "http://litellm-proxy.ai.svc.cluster.local:4000"
-hermes_litellm_master_key: "sk-hermes-internal"
+hermes_inference_provider: "openrouter"
 
 # Resource limits (CM4-friendly)
 hermes_cpu_limit: "500m"
@@ -35,3 +34,19 @@ hermes_telegram_webhook_url: ""
 hermes_registry: "registry.registry:5000"
 hermes_image_name: "ai/hermes-agent"
 hermes_image_tag: "0.7.0"
+
+# Kubernetes MCP sidecar (HTTP /mcp endpoint)
+hermes_mcp_image_name: "ai/kubernetes-mcp-server"
+hermes_mcp_image_tag: "v0.0.60"
+
+# Hermes MCP test/server configuration
+hermes_mcp_enabled: true
+hermes_mcp_url: "http://127.0.0.1:8080/mcp"
+hermes_mcp_timeout: 120
+hermes_mcp_connect_timeout: 30
+
+hermes_system_prompt: |
+  You are an assistant for Kubernetes cluster inspection.
+  When the user asks about Kubernetes pods, namespaces, deployments, or logs, you must use the Kubernetes MCP tools.
+  Do not use kubectl, oc, or terminal commands for cluster inspection.
+  If a Kubernetes MCP tool is available, call it directly.

@@ -6,7 +6,7 @@ INVENTORY := inventory/hosts.ini
 BOOTSTRAP := playbooks/bootstrap.yml
 UNINSTALL := playbooks/uninstall.yml
 
-.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes security full clean
+.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build security full clean
 
 help: ## Show this help message
 	@echo "Infra Makefile - Simplified Ansible workflow"
@@ -33,7 +33,7 @@ observability: ## Install networking + observability (Prometheus, Grafana, Tempo
 storage: ## Install networking + storage (CSI SMB driver + PV/PVC test)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags storage
 
-ai: ## Install full AI stack (registry + hermes-agent-image + hermes-agent)
+ai: ## Install full AI stack (registry + hermes-agent-image + kubernetes-mcp + hermes-agent)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai
 
 ai-registry: ## Install only Docker registry (5GB PVC, ARM64 compatible)
@@ -41,6 +41,9 @@ ai-registry: ## Install only Docker registry (5GB PVC, ARM64 compatible)
 
 ai-hermes-build: ## Build Hermes Agent ARM64 image with kaniko (takes ~15 min on CM4)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build
+
+ai-kubernetes-mcp-build: ## Build Kubernetes MCP server ARM64 image with kaniko
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-kubernetes-mcp-build
 
 ai-hermes-deploy: ## Deploy Hermes Agent (requires ai-hermes-build to complete first)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-deploy

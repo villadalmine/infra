@@ -1,0 +1,8 @@
+kubernetes_mcp_version: "0.0.60"
+kubernetes_mcp_registry: "registry.registry:5000"
+kubernetes_mcp_image_name: "ai/kubernetes-mcp-server"
+kubernetes_mcp_image_tag: "v0.0.60"
+kubernetes_mcp_namespace: kaniko
+kubernetes_mcp_storage_class: "smb-nas"
+kubernetes_mcp_storage_size: "10Gi"
+kubernetes_mcp_node_hostname: "srv-rk1-nvme-01"

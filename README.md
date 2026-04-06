@@ -93,12 +93,18 @@ mostrame los pods con más de 500 MiB de RAM
 
 Hermes runs as a persistent gateway on the high-resource node and mounts its
 `gateway.json` from the `hermes-gateway-config` ConfigMap into `HERMES_HOME`.
+The role now uses `emptyDir` for `/opt/data`, so Hermes starts clean on each
+recreate instead of carrying stale PVC state.
+The Deployment uses `strategy: Recreate` so Telegram polling never has two
+Hermes instances overlapping during rollout.
 The gateway is kept alive by the webhook platform so the pod stays `1/1` under
 Ansible as well as manual cluster updates.
 
 HolmesGPT runs in the same `ai` namespace and points at LiteLLM through the
-OpenAI-compatible API. It reuses the same OpenRouter secret pattern as Hermes
-and exposes `https://holmes.cluster.home` through the shared Gateway.
+OpenAI-compatible API. Hermes talks directly to OpenRouter with
+`HERMES_INFERENCE_PROVIDER=openrouter` and a free model like
+`qwen/qwen3-coder:free`. HolmesGPT exposes `https://holmes.cluster.home`
+through the shared Gateway.
 Future work: add Holmes MCP servers once the base HTTP install is stable.
 
 Example questions:

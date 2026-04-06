@@ -171,6 +171,32 @@ hermes_discord_token: ""    # opcional
 ```
 LiteLLM proxy carga automáticamente el mismo archivo.
 
+### Hermes MCP lessons learned
+
+- The working MCP layout is a sidecar: `hermes-agent` + `kubernetes-mcp-server:v0.0.60`.
+- Hermes must point to the HTTP endpoint explicitly: `mcp_servers.kubernetes.url: http://127.0.0.1:8080/mcp`.
+- `type: sse` alone was not enough in practice.
+- Keep the sidecar in the same pod, mount `/opt/data`, `/opt/data/.hermes`, `config.yaml`, `.env`, and `gateway.json`.
+- Use `serviceAccountName` on the pod and let Kubernetes mount the token/CA automatically.
+- Remove terminal fallback while validating MCP, otherwise Hermes may choose `kubectl` instead of the MCP tools.
+- `kube-prometheus-stack` does not replace `metrics-server` for `pods_top` / `nodes_top`.
+- Telegram privacy is controlled by both `TELEGRAM_ALLOWED_USERS` and the gateway platform `allowed_users`; keep them aligned to a single user ID when the bot should be private.
+
+### Sidecar MCP build
+
+- The Kubernetes MCP sidecar is built as its own ARM64 image with kaniko.
+- The role `install-kubernetes-mcp-server-image` creates a dedicated kaniko namespace, workspace/cache PVCs, and a one-shot Job.
+- The Dockerfile is rendered from `roles/install-kubernetes-mcp-server-image/templates/Dockerfile.j2` and downloads `kubernetes-mcp-server` from the upstream GitHub release tarball.
+- The resulting image is pushed to the local registry as `registry.registry:5000/ai/kubernetes-mcp-server:v0.0.60`.
+- Hermes then consumes that image in the same pod as a sidecar and exposes the MCP endpoint at `http://127.0.0.1:8080/mcp`.
+- This keeps the build reproducible and source-managed instead of relying on a manually built image.
+
+### Static manifest reference
+
+- `infra/scripts/hermes-static-mcp-test.yaml` is the known-good comparison point.
+- If Ansible drifts, copy the static manifest shape verbatim before changing anything else.
+- The static manifest is the source of truth for the working MCP sidecar setup.
+
 ---
 
 ## División de tareas entre agentes
