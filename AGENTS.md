@@ -137,6 +137,9 @@ Prometheus, Loki, Tempo, NeuVector, the registry, Hermes, and kaniko use `smb-na
 Hermes also uses a dedicated workspace PVC on `smb-nas` to avoid node ephemeral-storage pressure.
 Those roles require the storage backend role to be installed first.
 
+Hermes gateway state lives in `/opt/data` and the webhook platform is mounted
+from `hermes-gateway-config` so the pod stays alive under Ansible-managed rollouts.
+
 ```bash
 # Minimal cluster (kubectl works, no networking)
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core

@@ -52,6 +52,21 @@
           requests:
             storage: "{{ hermes_storage_size }}"
 
+- name: Render Hermes Gateway ConfigMap manifest
+  ansible.builtin.template:
+    src: hermes-gateway-configmap.yaml.j2
+    dest: /tmp/hermes-gateway-configmap.yaml
+
+- name: Apply Hermes Gateway ConfigMap
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/hermes-gateway-configmap.yaml
+  changed_when: false
+
+- name: Remove temporary Hermes Gateway ConfigMap manifest
+  ansible.builtin.file:
+    path: /tmp/hermes-gateway-configmap.yaml
+    state: absent
+
 - name: Deploy Hermes Agent
   kubernetes.core.k8s:
     state: present
@@ -94,8 +109,8 @@
                 args:
                   - --replace
                 ports:
-                  - containerPort: 8080
-                    name: http
+                  - containerPort: 8644
+                    name: webhook
                     protocol: TCP
                 env:
                   - name: HERMES_MODEL
@@ -108,6 +123,14 @@
                     value: "{{ hermes_litellm_base_url }}"
                   - name: OPENAI_API_KEY
                     value: "{{ hermes_litellm_master_key }}"
+                  - name: WEBHOOK_ENABLED
+                    value: "true"
+                  - name: WEBHOOK_PORT
+                    value: "8644"
+                  - name: WEBHOOK_SECRET
+                    value: hermes-webhook-secret
+                  - name: GATEWAY_ALLOW_ALL_USERS
+                    value: "true"
                 envFrom:
                   - secretRef:
                       name: hermes-secrets
@@ -135,7 +158,7 @@
                 readinessProbe:
                   httpGet:
                     path: /health
-                    port: 8080
+                    port: 8644
                   initialDelaySeconds: 30
                   periodSeconds: 10
                   timeoutSeconds: 5
@@ -143,7 +166,7 @@
                 livenessProbe:
                   httpGet:
                     path: /health
-                    port: 8080
+                    port: 8644
                   initialDelaySeconds: 60
                   periodSeconds: 30
                   timeoutSeconds: 10
@@ -158,18 +181,6 @@
               - name: tmp
                 emptyDir:
                   sizeLimit: 128Mi
-
-- name: Create Hermes Gateway ConfigMap
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: hermes-gateway-config
-        namespace: "{{ hermes_namespace }}"
-      data:
-        gateway.json: "{{ hermes_gateway_config }}"
 
 - name: Create Hermes Agent Service
   kubernetes.core.k8s:

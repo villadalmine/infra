@@ -117,6 +117,10 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 | LiteLLM proxy | `ghcr.io/berriai/litellm` | main-latest | in-cluster |
 | Hermes Agent | `registry.registry:5000/ai/hermes-agent` | 0.7.0 | ARM64 custom build |
 
+Hermes is deployed as a persistent gateway on the high-resource node with a
+mounted `gateway.json` so the webhook platform stays enabled and the pod does
+not exit after startup.
+
 > **Check outdated charts:** `nova --format table find --helm`
 > Cilium 1.20.0-pre.1 is pre-release — do NOT upgrade. Tempo pinned to 1.26.7 (2.0.0 buggy).
 

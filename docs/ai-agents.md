@@ -130,6 +130,10 @@ PVC: hermes-data (1Gi, local-path)
   HERMES_HOME=/opt/data
 ```
 
+The gateway platform config is mounted from the `hermes-gateway-config`
+ConfigMap as `/opt/data/gateway.json`. That keeps the webhook platform enabled
+so the pod remains `1/1 Running` instead of exiting after startup.
+
 ### Acceso
 
 ```bash

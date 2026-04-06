@@ -1,0 +1,18 @@
+{
+  "platforms": {
+    "webhook": {
+      "enabled": true,
+      "extra": {
+        "port": 8644,
+        "secret": "hermes-webhook-secret",
+        "routes": {
+          "default": {
+            "secret": "INSECURE_NO_AUTH",
+            "prompt": "Hermes webhook is alive",
+            "deliver": "log"
+          }
+        }
+      }
+    }
+  }
+}
