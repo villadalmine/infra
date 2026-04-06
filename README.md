@@ -75,6 +75,13 @@ make ai-holmes         # deploy HolmesGPT HTTP API
 make ai               # all three in sequence
 ```
 
+```bash
+./scripts/holmes-chat "Using Prometheus, how many pods are using more than 500 MiB of RAM right now?"
+./scripts/holmes-chat "Using Prometheus, show the top 5 pods by CPU in namespace monitoring over the last 15m."
+```
+
+The wrapper uses a local `kubectl port-forward` to the Holmes service and prints only the `analysis` field.
+
 Hermes runs as a persistent gateway on the high-resource node and mounts its
 `gateway.json` from the `hermes-gateway-config` ConfigMap into `HERMES_HOME`.
 The gateway is kept alive by the webhook platform so the pod stays `1/1` under
