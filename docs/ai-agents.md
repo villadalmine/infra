@@ -122,6 +122,15 @@ make ai-hermes-deploy  # despliega litellm-proxy + hermes-agent
 - `backoffLimit: 3` — puede fallar si el nodo tiene poca RAM disponible
 - Dockerfile clona el repo con `RUN git clone` (no usa git context de kaniko)
 
+### Validation workflow
+
+When a change might take a while to prove, validate it in this order:
+1. Manual or Helm proof of the desired state
+2. Background Ansible run with logs redirected
+3. Inspect the background log and fix issues
+4. Run the same Ansible command in the foreground only after the background
+   run proves the change
+
 ### Persistencia
 
 ```

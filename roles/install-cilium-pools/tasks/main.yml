@@ -30,16 +30,7 @@
 - name: Create CiliumL2AnnouncementPolicy
   kubernetes.core.k8s:
     state: present
-    definition:
-      apiVersion: "cilium.io/v2alpha1"
-      kind: CiliumL2AnnouncementPolicy
-      metadata:
-        name: "{{ cilium_l2_policy_name }}"
-      spec:
-        interfaces:
-          - "{{ cilium_l2_policy_interface }}"
-        externalIPs: false
-        loadBalancerIPs: true
+    definition: "{{ lookup('ansible.builtin.template', role_path + '/templates/cilium-l2announcementpolicy.yaml.j2') | from_yaml }}"
 
 - name: Verify IP pool is active
   ansible.builtin.command:

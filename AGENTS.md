@@ -140,6 +140,11 @@ Those roles require the storage backend role to be installed first.
 Hermes gateway state lives in `/opt/data` and the webhook platform is mounted
 from `hermes-gateway-config` so the pod stays alive under Ansible-managed rollouts.
 
+When validating Ansible changes that may take more than a minute, first prove
+the desired state manually or with Helm, then run Ansible in the background
+with redirected logs and monitor it separately. If the background run succeeds,
+re-run the same Ansible command in the normal foreground path before committing.
+
 ```bash
 # Minimal cluster (kubectl works, no networking)
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core

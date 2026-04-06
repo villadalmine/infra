@@ -121,6 +121,10 @@ Hermes is deployed as a persistent gateway on the high-resource node with a
 mounted `gateway.json` so the webhook platform stays enabled and the pod does
 not exit after startup.
 
+For long-running Ansible validation, prefer: manual/Helm proof first, then
+background `ansible-playbook` with logs redirected, then foreground Ansible
+only after the background run proves the change.
+
 > **Check outdated charts:** `nova --format table find --helm`
 > Cilium 1.20.0-pre.1 is pre-release — do NOT upgrade. Tempo pinned to 1.26.7 (2.0.0 buggy).
 
