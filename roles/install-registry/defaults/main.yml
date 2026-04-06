@@ -1,7 +1,7 @@
 registry_version: "2"
 registry_namespace: registry
 registry_hostname: registry.cluster.home
-registry_storage_size: "5Gi"
+registry_storage_size: "100Gi"
 registry_storage_class: "smb-nas"
 registry_storage_access_mode: "ReadWriteMany"
 registry_cpu_request: "50m"

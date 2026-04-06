@@ -95,6 +95,16 @@
               httpHeaderName1: X-Scope-OrgId
             secureJsonData:
               httpHeaderValue1: fake
+
+      prometheus:
+        prometheusSpec:
+          storageSpec:
+            volumeClaimTemplate:
+              spec:
+                storageClassName: "{{ kube_prometheus_stack_storage_class }}"
+                resources:
+                  requests:
+                    storage: "{{ kube_prometheus_stack_storage_size }}"
   when: not kps_deployed
 
 - name: Wait for Grafana rollout

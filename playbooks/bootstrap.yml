@@ -11,11 +11,13 @@
 #   networking     → gateway-api-crds + cilium + cilium-pools  (requires core)
 #   ingress        → cert-manager + gateway                    (requires networking)
 #   services       → pihole + argocd + helm-dashboard          (requires ingress)
-#   observability  → prometheus + tempo + loki + alloy         (requires networking)
-#   security       → neuvector                                 (requires networking)
+#                    Pi-hole defaults to local-path; override only if the
+#                    target StorageClass already exists via the storage role.
+#   observability  → prometheus + tempo + loki + alloy         (requires networking + storage for Prometheus)
 #   storage        → storage backends / PVC backends             (requires networking)
 #   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
 #   ai-registry    → registry only (requires storage)
+#   security       → neuvector                                   (requires networking + storage)
 #   ai-hermes-build → kaniko ARM64 image build only
 #   ai-hermes-deploy → litellm-proxy + hermes-agent deploy
 #

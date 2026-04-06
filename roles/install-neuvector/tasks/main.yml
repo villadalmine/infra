@@ -1,6 +1,6 @@
 # Install NeuVector via Helm on localhost
 # Container runtime security: controller, enforcer (DaemonSet), manager (UI + API).
-# No PVC — controller data is ephemeral (OK for homelab).
+# Controller PVC is backed by the SMB CSI StorageClass (smb-nas) when enabled.
 #
 # NOTE: NeuVector serves HTTPS only — Cilium Gateway API does NOT support
 # TLS passthrough yet (mode: Passthrough is ignored). The manager is exposed
@@ -73,6 +73,8 @@
         enabled: true
         pvc:
           enabled: "{{ neuvector_pvc_enabled }}"
+          storageClass: "{{ neuvector_pvc_storage_class }}"
+          size: "{{ neuvector_pvc_size }}"
       enforcer:
         enabled: true
       cve:

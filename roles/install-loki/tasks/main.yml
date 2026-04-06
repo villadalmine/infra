@@ -68,11 +68,13 @@
       minio:
         enabled: "{{ loki_minio_enabled }}"
         persistence:
+          storageClass: "{{ loki_storage_class }}"
           size: "{{ loki_minio_persistence_size }}"
 
       singleBinary:
         replicas: "{{ loki_replicas }}"
         persistence:
+          storageClass: "{{ loki_storage_class }}"
           size: "{{ loki_storage_size }}"
 
       backend:
