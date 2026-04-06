@@ -1,6 +1,6 @@
 # Install HolmesGPT via Helm in the ai namespace.
 # It uses the in-cluster LiteLLM proxy as an OpenAI-compatible backend and
-# reuses the same OpenRouter secret pattern as Hermes.
+# authenticates with the LiteLLM master key.
 
 - name: Load Holmes secrets (if secrets.yml exists)
   ansible.builtin.include_vars:
@@ -82,7 +82,6 @@
           memory: "{{ holmes_memory_request }}"
         limits:
           memory: "{{ holmes_memory_limit }}"
-  when: not holmes_deployed
 
 - name: Wait for HolmesGPT rollout
   ansible.builtin.command:
