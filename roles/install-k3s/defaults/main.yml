@@ -2,6 +2,11 @@ k3s_token: myrandompassword
 k3s_version: v1.35.2+k3s1
 k3s_kubeconfig_mode: "644"
 
+# Kernel tuning for fsnotify/inotify-heavy workloads (Pi-hole, file watchers,
+# config reloaders, etc.). Applied to every k3s node during bootstrap.
+k3s_sysctl_inotify_max_user_watches: 524288
+k3s_sysctl_inotify_max_user_instances: 512
+
 k3s_server_exec: >
   --flannel-backend=none
   --disable-network-policy
