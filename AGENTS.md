@@ -104,6 +104,16 @@ Do NOT reorder. Cilium's operator will error if Gateway API CRDs are missing
 when `gatewayAPI.enabled=true`. `install-cilium-pools` CRDs only exist after
 the Cilium operator is running.
 
+## Node Tuning
+
+- `install-k3s` persists `fs.inotify.max_user_watches` and
+  `fs.inotify.max_user_instances` via `/etc/sysctl.d/99-k3s-inotify.conf` on
+  every k3s node.
+- This is cluster-wide tuning for fsnotify-heavy workloads such as Pi-hole,
+  file watchers, and config reloaders.
+- If you see `failed to create fsnotify watcher: too many open files`, check
+  the sysctl file first before changing application pods.
+
 ## Bootstrap Tags
 
 Each role is tagged for selective deployment. Tags are cumulative — include
