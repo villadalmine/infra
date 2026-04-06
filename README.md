@@ -129,6 +129,9 @@ foreground only after the background run is clean.
 - **Domain**: `cluster.home` — wildcard TLS via cert-manager internal CA
 - **Storage**: `local-path` (default StorageClass)
 - **DNS**: Pi-hole at `.203` resolves `*.cluster.home → .200` automatically
+- **Important**: `.203` is the DNS VIP and `.200` is the HTTP/HTTPS Gateway.
+  They are different services; `dig @192.168.178.203` tests DNS, while `curl`
+  to `https://<name>.cluster.home` uses the Gateway at `.200` after DNS resolves.
 
 ---
 

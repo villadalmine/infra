@@ -152,6 +152,10 @@ For Pi-hole and Gateway troubleshooting, always check the LAN-side VIP path too:
 announcement leases. If the VIP is unreachable, the service may be healthy in
 cluster but not announced on the correct host interface.
 
+Remember: `192.168.178.203` is Pi-hole DNS and `192.168.178.200` is the shared
+HTTP/HTTPS Gateway. `dig @192.168.178.203` validates DNS reachability; `curl`
+to `https://<name>.cluster.home` only works after DNS resolves the name to `.200`.
+
 ```bash
 # Minimal cluster (kubectl works, no networking)
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core

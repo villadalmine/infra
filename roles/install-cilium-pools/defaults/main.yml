@@ -9,6 +9,7 @@ cilium_lb_pool_stop: "192.168.178.210"
 cilium_l2_policy_name: "default"
 # Interface regexes — cover wired + Wi-Fi naming variants.
 cilium_l2_policy_interfaces:
+  - "^eth.*$"
   - "^en.*$"
   - "^wl.*$"
   - "^end.*$"
