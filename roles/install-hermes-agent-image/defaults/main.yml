@@ -4,3 +4,8 @@ hermes_image_tag: "0.7.0"
 hermes_registry: "registry.registry:5000"
 hermes_image_name: "ai/hermes-agent"
 kaniko_namespace: kaniko
+kaniko_storage_class: "smb-nas"
+kaniko_storage_size: "60Gi"
+kaniko_node_hostname: "srv-rk1-nvme-01"
+kaniko_workspace_storage_class: "smb-nas"
+kaniko_workspace_storage_size: "40Gi"

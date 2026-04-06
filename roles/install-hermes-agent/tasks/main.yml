@@ -79,6 +79,10 @@
               runAsGroup: 1000
               runAsNonRoot: true
               fsGroup: 1000
+            nodeSelector:
+              kubernetes.io/hostname: "{{ hermes_node_hostname }}"
+            tolerations:
+              - operator: Exists
             containers:
               - name: hermes-agent
                 image: "{{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}"
@@ -86,7 +90,9 @@
                 command:
                   - hermes
                   - gateway
-                  - start
+                  - run
+                args:
+                  - --replace
                 ports:
                   - containerPort: 8080
                     name: http
@@ -121,6 +127,9 @@
                 volumeMounts:
                   - name: hermes-data
                     mountPath: /opt/data
+                  - name: hermes-gateway-config
+                    mountPath: /opt/data/gateway.json
+                    subPath: gateway.json
                   - name: tmp
                     mountPath: /tmp
                 readinessProbe:
@@ -143,9 +152,24 @@
               - name: hermes-data
                 persistentVolumeClaim:
                   claimName: hermes-data
+              - name: hermes-gateway-config
+                configMap:
+                  name: hermes-gateway-config
               - name: tmp
                 emptyDir:
                   sizeLimit: 128Mi
+
+- name: Create Hermes Gateway ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: hermes-gateway-config
+        namespace: "{{ hermes_namespace }}"
+      data:
+        gateway.json: "{{ hermes_gateway_config }}"
 
 - name: Create Hermes Agent Service
   kubernetes.core.k8s:
