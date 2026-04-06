@@ -118,9 +118,9 @@ all tags up to the layer you need.
 | `services` | pihole + argocd + helm-dashboard | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy | `networking` |
 | `security` | neuvector | `services` |
-| `storage` | cifs-nas | `networking` |
-| `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking` |
-| `ai-registry` | registry only | `networking` |
+| `storage` | storage backends / PVC backends | `networking` |
+| `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking`, `storage` |
+| `ai-registry` | registry only | `networking`, `storage` |
 | `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
 | `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
 

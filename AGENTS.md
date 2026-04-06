@@ -127,7 +127,8 @@ all tags up to the layer you need.
 | `services` | pihole + argocd | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
 | `security`      → neuvector                                   (requires networking) |
-| `storage`       → cifs-nas (CSI SMB driver + PV/PVC/pod test) | `networking` |
+| `storage`       → storage backends / PVC backends              | `networking` |
+| `ai-registry`   | registry only | `networking`, `storage` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -179,7 +180,8 @@ we build a custom image in-cluster using kaniko.
 **Workflow:**
 ```bash
 # Option 1: Install AI stack incrementally (recommended for debugging)
-make ai-registry          # Docker registry:2 with 5Gi PVC (~1 min)
+make storage              # Prepare the active PVC backend(s) first
+make ai-registry          # Docker registry:2 with PVC backend (~1 min)
 make ai-hermes-build      # Kaniko build (~15 min on CM4)
 make ai-hermes-deploy     # Deploy Hermes Agent (~2 min)
 
