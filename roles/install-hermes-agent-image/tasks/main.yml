@@ -1,5 +1,5 @@
 # Build Hermes Agent ARM64 image using kaniko in-cluster.
-# Clones the hermes-agent repo, builds with docker buildx, pushes to local registry.
+# Clones the hermes-agent repo, builds with kaniko, pushes to local registry.
 
 - name: Create kaniko namespace
   kubernetes.core.k8s:
@@ -9,6 +9,48 @@
       metadata:
         name: "{{ kaniko_namespace }}"
     state: present
+
+- name: Create kaniko PVC for build cache
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: kaniko-cache
+        namespace: "{{ kaniko_namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "{{ kaniko_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ kaniko_storage_size }}"
+
+- name: Create kaniko PVC for build workspace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: kaniko-workspace
+        namespace: "{{ kaniko_namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "{{ kaniko_workspace_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ kaniko_workspace_storage_size }}"
+
+- name: Recreate kaniko Job when the pod template changes
+  kubernetes.core.k8s:
+    state: absent
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ kaniko_namespace }}"
+    name: build-hermes-arm64
 
 - name: Create kaniko Job to build Hermes Agent ARM64 image
   kubernetes.core.k8s:
@@ -22,12 +64,26 @@
       spec:
         template:
           spec:
+            initContainers:
+              - name: clone-source
+                image: alpine/git:2.47.2
+                command:
+                  - sh
+                  - -ec
+                  - |
+                    rm -rf /workspace/source || true
+                    git clone --depth=1 --filter=blob:none --single-branch --no-tags --branch {{ hermes_git_ref }} {{ hermes_git_repo }} /workspace/source
+                volumeMounts:
+                  - name: workspace
+                    mountPath: /workspace
             containers:
               - name: kaniko
                 image: gcr.io/kaniko-project/executor:latest
                 args:
-                  - "--dockerfile=/workspace/Dockerfile"
-                  - "--context=dir:///workspace"
+                  - "--dockerfile=/workspace/source/Dockerfile"
+                  - "--context=dir:///workspace/source"
+                  - "--cache=true"
+                  - "--cache-dir=/cache"
                   - "--destination={{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}"
                   - "--insecure"
                   - "--skip-tls-verify"
@@ -36,19 +92,33 @@
                   - "--compression-level=1"
                 volumeMounts:
                   - name: dockerfile
-                    mountPath: /workspace/Dockerfile
+                    mountPath: /workspace/source/Dockerfile
                     subPath: Dockerfile
-            affinity:
-              nodeAffinity:
-                requiredDuringSchedulingIgnoredDuringExecution:
-                  nodeSelectorTerms:
-                    - matchExpressions:
-                        - key: node-role.kubernetes.io/control-plane
-                          operator: Exists
+                  - name: cache
+                    mountPath: /cache
+                  - name: workspace
+                    mountPath: /workspace
+                resources:
+                  requests:
+                    cpu: "1"
+                    memory: "8Gi"
+                  limits:
+                    cpu: "4"
+                    memory: "20Gi"
+            nodeSelector:
+              kubernetes.io/hostname: "{{ kaniko_node_hostname }}"
+            tolerations:
+              - operator: Exists
             volumes:
               - name: dockerfile
                 configMap:
                   name: hermes-dockerfile
+              - name: cache
+                persistentVolumeClaim:
+                  claimName: kaniko-cache
+              - name: workspace
+                persistentVolumeClaim:
+                  claimName: kaniko-workspace
             restartPolicy: Never
         backoffLimit: 3
 

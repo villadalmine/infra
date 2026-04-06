@@ -130,11 +130,12 @@ all tags up to the layer you need.
 | `storage`       → storage backends / PVC backends              | `networking` |
 | `ai-registry`   | registry only | `networking`, `storage` |
 
-Pi-hole uses `local-path` by default. If you override its StorageClass,
-install the matching storage backend first.
+Pi-hole and NeuVector use `smb-nas`. Those roles require the storage backend
+role to be installed first.
 
-Prometheus, Loki, Tempo, NeuVector, and the registry use `smb-nas`. Those
-roles require the storage backend role to be installed first.
+Prometheus, Loki, Tempo, NeuVector, the registry, Hermes, and kaniko use `smb-nas`.
+Hermes also uses a dedicated workspace PVC on `smb-nas` to avoid node ephemeral-storage pressure.
+Those roles require the storage backend role to be installed first.
 
 ```bash
 # Minimal cluster (kubectl works, no networking)

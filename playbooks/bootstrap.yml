@@ -10,14 +10,15 @@
 #   core           → k3s + kubeconfig + node sysctls
 #   networking     → gateway-api-crds + cilium + cilium-pools  (requires core)
 #   ingress        → cert-manager + gateway                    (requires networking)
-#   services       → pihole + argocd + helm-dashboard          (requires ingress)
+#   services       → pihole + argocd + helm-dashboard          (requires ingress + storage for Pi-hole)
 #   observability  → prometheus + tempo + loki + alloy         (requires networking + storage for Prometheus/Loki)
 #   storage        → storage backends / PVC backends             (requires networking)
 #   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
 #   ai-registry    → registry only (requires storage)
 #   security       → neuvector                                   (requires networking + storage)
 #   ai-hermes-build → kaniko ARM64 image build only
-#   ai-hermes-deploy → litellm-proxy + hermes-agent deploy
+#   ai-hermes-deploy → LiteLLM proxy + Hermes Agent deploy
+#   ai-hermes-agent  → Hermes Agent only
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -77,4 +78,4 @@
     - role: install-litellm-proxy
       tags: [ai, ai-hermes-deploy]
     - role: install-hermes-agent
-      tags: [ai, ai-hermes-deploy]
+      tags: [ai, ai-hermes-deploy, ai-hermes-agent]
