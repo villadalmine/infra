@@ -11,11 +11,10 @@ pihole_dns_ip: "192.168.178.203"
 pihole_hostname: "pihole.cluster.home"
 
 # PVC for /etc/pihole (DNS lists, config, DNSSEC data)
-# Default StorageClass is local-path. Override only if the matching storage
-# backend role has already been installed.
-# Requires local-path-provisioner (--disable local-storage must be absent from K3s flags)
+# Cluster default is local-path, but this role uses smb-nas. The storage
+# backend role must exist before installing/upgrading it.
 pihole_storage_size: "2Gi"
-pihole_storage_class: "local-path"
+pihole_storage_class: "smb-nas"
 
 # Wildcard DNS record: *.cluster.home → 192.168.178.200 (the shared Gateway IP)
 # Pi-hole custom DNS entries for this are added as a ConfigMap-mounted dnsmasq config.
