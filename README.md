@@ -73,6 +73,11 @@ make ai-hermes-deploy  # deploy litellm-proxy + hermes-agent
 make ai               # all three in sequence
 ```
 
+Hermes runs as a persistent gateway on the high-resource node and mounts its
+`gateway.json` from the `hermes-gateway-config` ConfigMap into `HERMES_HOME`.
+The gateway is kept alive by the webhook platform so the pod stays `1/1` under
+Ansible as well as manual cluster updates.
+
 ---
 
 ## Services — internal (no public URL)
