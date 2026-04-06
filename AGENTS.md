@@ -139,11 +139,18 @@ Those roles require the storage backend role to be installed first.
 
 Hermes gateway state lives in `/opt/data` and the webhook platform is mounted
 from `hermes-gateway-config` so the pod stays alive under Ansible-managed rollouts.
+HolmesGPT lives in the same `ai` namespace, reuses the Hermes OpenRouter secret
+pattern, and should be validated with Helm/manual proof before Ansible.
 
 When validating Ansible changes that may take more than a minute, first prove
 the desired state manually or with Helm, then run Ansible in the background
 with redirected logs and monitor it separately. If the background run succeeds,
 re-run the same Ansible command in the normal foreground path before committing.
+
+For Pi-hole and Gateway troubleshooting, always check the LAN-side VIP path too:
+`ip neigh show <vip>`, `arp -n <vip>`, `dig @<vip> <hostname>`, and Cilium L2
+announcement leases. If the VIP is unreachable, the service may be healthy in
+cluster but not announced on the correct host interface.
 
 ```bash
 # Minimal cluster (kubectl works, no networking)

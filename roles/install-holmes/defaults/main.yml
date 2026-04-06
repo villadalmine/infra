@@ -1,0 +1,23 @@
+holmes_version: "0.24.0"
+holmes_namespace: ai
+holmes_hostname: holmes.cluster.home
+
+holmes_release_name: holmesgpt
+holmes_model_name: free
+holmes_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+holmes_openai_key: "none"
+
+holmes_additional_env:
+  - name: OPENAI_API_BASE
+    value: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+  - name: OPENAI_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: hermes-secrets
+        key: OPENROUTER_API_KEY
+
+holmes_cpu_request: "100m"
+holmes_memory_request: "512Mi"
+holmes_memory_limit: "1Gi"
+
+holmes_node_hostname: "srv-rk1-nvme-01"
