@@ -222,9 +222,18 @@ Los skills del cluster:
 | `metallb` | OBSOLETO — reemplazado por Cilium LB-IPAM |
 | `k8s-debug` | Debug sistemático de pods, red, nodos |
 | `platform-engineering` | Helm, Terraform, CI/CD best practices |
+| `cifs-nas` | CSI SMB driver, SMB1 mount options, PV/PVC static + dynamic tests |
 
 **Source de los skills:** `~/dotfiles/ansible/roles/opencode/files/skills/`
 Deployados via Ansible al editar, nunca a mano.
+
+### Storage workflow
+
+Para el NAS SMB1, OpenCode usa el rol `install-cifs-nas` con dos rutas opcionales:
+- `cifs_enable_static=true` para PV/PVC estáticos con `storageClassName: ""`
+- `cifs_enable_dynamic_test=true` para `StorageClass` + PVC + pod de prueba
+
+El target de ejecución es `make storage`, que llama `ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags storage`.
 
 ---
 

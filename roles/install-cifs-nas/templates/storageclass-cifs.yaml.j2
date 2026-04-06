@@ -1,0 +1,24 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ cifs_storage_class_name }}
+provisioner: smb.csi.k8s.io
+parameters:
+  source: "{{ cifs_storage_class_source }}"
+  csi.storage.k8s.io/provisioner-secret-name: smbcreds
+  csi.storage.k8s.io/provisioner-secret-namespace: {{ cifs_namespace }}
+  csi.storage.k8s.io/node-stage-secret-name: smbcreds
+  csi.storage.k8s.io/node-stage-secret-namespace: {{ cifs_namespace }}
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+mountOptions:
+  - vers=1.0
+  - "uid={{ cifs_uid }}"
+  - "gid={{ cifs_gid }}"
+  - file_mode=0777
+  - dir_mode=0777
+  - noperm
+  - mfsymlinks
+  - cache=strict
+  - noserverino

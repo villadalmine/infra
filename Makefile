@@ -6,7 +6,7 @@ INVENTORY := inventory/hosts.ini
 BOOTSTRAP := playbooks/bootstrap.yml
 UNINSTALL := playbooks/uninstall.yml
 
-.PHONY: help core networking ingress services observability ai ai-registry ai-hermes-build ai-hermes-deploy security full clean
+.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy security full clean
 
 help: ## Show this help message
 	@echo "Infra Makefile - Simplified Ansible workflow"
@@ -29,6 +29,9 @@ services: ## Install ingress + services (Pi-hole, ArgoCD, helm-dashboard, regist
 
 observability: ## Install networking + observability (Prometheus, Grafana, Tempo, Loki, Alloy, version-checker)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags observability
+
+storage: ## Install networking + storage (CSI SMB driver + PV/PVC test)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags storage
 
 ai: ## Install full AI stack (registry + hermes-agent-image + hermes-agent)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai

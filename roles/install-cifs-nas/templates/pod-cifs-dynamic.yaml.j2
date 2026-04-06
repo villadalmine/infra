@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ cifs_dynamic_pod_name }}
+  namespace: {{ cifs_namespace }}
+spec:
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["/bin/sh", "-c", "sleep 10000"]
+      volumeMounts:
+        - name: smbvol
+          mountPath: /mnt/smb
+      securityContext:
+        runAsUser: {{ cifs_uid }}
+        runAsGroup: {{ cifs_gid }}
+  volumes:
+    - name: smbvol
+      persistentVolumeClaim:
+        claimName: {{ cifs_dynamic_pvc_name }}

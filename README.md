@@ -24,6 +24,9 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observabi
 # Add security (NeuVector) after bootstrap + password change
 ansible-playbook playbooks/security.yml -i inventory/hosts.ini
 
+# Add SMB storage (CSI driver + static/dynamic NAS tests)
+make storage
+
 # Workstation DNS (run on host, not toolbox)
 bash scripts/setup-dns-split.sh
 ```
@@ -115,6 +118,7 @@ all tags up to the layer you need.
 | `services` | pihole + argocd + helm-dashboard | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy | `networking` |
 | `security` | neuvector | `services` |
+| `storage` | cifs-nas | `networking` |
 | `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking` |
 | `ai-registry` | registry only | `networking` |
 | `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |

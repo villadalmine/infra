@@ -16,6 +16,12 @@ cifs_nas_share: "service"           # share raíz en el NAS
 cifs_pv_size: "5Gi"
 cifs_pv_name: "smb-nas-pv"
 cifs_pvc_name: "smb-nas-pvc"
+cifs_enable_static: true
+cifs_storage_class_name: "smb-nas"
+cifs_storage_class_source: "//192.168.178.102/service/Torrent"
+cifs_dynamic_pvc_name: "smb-nas-dynamic-pvc"
+cifs_dynamic_pod_name: "smb-dynamic-test-pod"
+cifs_enable_dynamic_test: true
 cifs_namespace: "default"
 cifs_uid: 1000                      # UID mapeado en el mount
 cifs_gid: 1000                      # GID mapeado en el mount
@@ -36,6 +42,13 @@ Copia `defaults/secrets.yml.example` → `defaults/secrets.yml` y completa con t
 3. **PersistentVolume**: con `mountOptions` SMB1 (vers=1.0, uid/gid, file/dir_mode=0777, noperm)
 4. **PersistentVolumeClaim**: bind al PV con `storageClassName: ""`
 5. **Pod de test**: busybox que monta el volumen con `subPath: Torrent` y valida escritura
+6. **StorageClass dinámico**: opcional, para probar provisión CSI con `source` apuntando a `Torrent`
+7. **PVC/Pod dinámicos**: opcionales, para validar montaje/escritura end-to-end
+
+## Flags
+
+- `cifs_enable_static`: crea o borra el PV/PVC/pod estáticos
+- `cifs_enable_dynamic_test`: crea o borra el StorageClass, PVC y pod dinámicos
 
 ## MountOptions
 
@@ -65,7 +78,10 @@ cp roles/install-cifs-nas/defaults/secrets.yml.example \
    roles/install-cifs-nas/defaults/secrets.yml
 # Editar roles/install-cifs-nas/defaults/secrets.yml
 
-# Ejecutar
+# Ejecutar via Makefile
+make storage
+
+# O directo con Ansible
 ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags storage
 ```
 
