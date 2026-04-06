@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: holmes-chat <question>" >&2
+  exit 1
+fi
+
+QUESTION="$*"
+TMPFILE=$(mktemp)
+trap 'rm -f "$TMPFILE"' EXIT
+
+PF_PID=""
+cleanup() {
+  if [[ -n "$PF_PID" ]]; then
+    kill "$PF_PID" >/dev/null 2>&1 || true
+  fi
+  rm -f "$TMPFILE"
+}
+trap cleanup EXIT
+
+kubectl -n ai port-forward svc/holmesgpt-holmes 5050:80 >/dev/null 2>&1 &
+PF_PID=$!
+
+for _ in $(seq 1 30); do
+  if curl -sf http://127.0.0.1:5050/healthz >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+curl -sS http://127.0.0.1:5050/api/chat \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<'PY' "$QUESTION"
+import json, sys
+question = sys.argv[1]
+print(json.dumps({
+    "ask": question,
+    "model": "holmes-litellm",
+}))
+PY
+)" > "$TMPFILE"
+
+python3 -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text()).get("analysis", ""))' "$TMPFILE"
