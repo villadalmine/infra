@@ -2,4 +2,6 @@ tempo_version: "1.26.7"
 tempo_namespace: monitoring
 tempo_retention: 72h
 tempo_storage_size: 1Gi
-tempo_storage_class: local-path
+# Cluster default is local-path, but this role uses smb-nas. The storage
+# backend role must exist before installing/upgrading it.
+tempo_storage_class: smb-nas
