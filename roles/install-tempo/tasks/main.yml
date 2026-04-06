@@ -67,7 +67,7 @@
 
       persistence:
         enabled: true
-        storageClassName: local-path
+        storageClassName: "{{ tempo_storage_class }}"
         size: "{{ tempo_storage_size }}"
   when: not tempo_deployed
 
