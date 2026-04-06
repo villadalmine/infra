@@ -113,6 +113,8 @@
                     name: webhook
                     protocol: TCP
                 env:
+                  - name: HOME
+                    value: /opt/data
                   - name: HERMES_MODEL
                     value: "{{ hermes_model }}"
                   - name: HERMES_TEMPERATURE
@@ -123,14 +125,12 @@
                     value: "{{ hermes_litellm_base_url }}"
                   - name: OPENAI_API_KEY
                     value: "{{ hermes_litellm_master_key }}"
-                  - name: WEBHOOK_ENABLED
-                    value: "true"
-                  - name: WEBHOOK_PORT
-                    value: "8644"
-                  - name: WEBHOOK_SECRET
-                    value: hermes-webhook-secret
                   - name: GATEWAY_ALLOW_ALL_USERS
                     value: "true"
+                  - name: TELEGRAM_ALLOWED_USERS
+                    value: "{{ hermes_telegram_allowed_users }}"
+                  - name: TELEGRAM_WEBHOOK_URL
+                    value: "{{ hermes_telegram_webhook_url }}"
                 envFrom:
                   - secretRef:
                       name: hermes-secrets
@@ -221,7 +221,7 @@
               - name: hermes-agent
                 port: 8080
 
-- name: Create NetworkPolicy for Hermes Agent (egress to OpenRouter only)
+- name: Create NetworkPolicy for Hermes Agent (egress to OpenRouter and Telegram)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -249,6 +249,16 @@
                     app: litellm-proxy
             ports:
               - port: 4000
+                protocol: TCP
+          - to:
+              - ipBlock:
+                  cidr: 0.0.0.0/0
+                  except:
+                    - 10.0.0.0/8
+                    - 172.16.0.0/12
+                    - 192.168.0.0/16
+            ports:
+              - port: 443
                 protocol: TCP
 
 - name: Wait for Hermes Agent rollout
