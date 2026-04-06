@@ -13,9 +13,9 @@
 #   services       → pihole + argocd + helm-dashboard          (requires ingress)
 #   observability  → prometheus + tempo + loki + alloy         (requires networking)
 #   security       → neuvector                                 (requires networking)
-#   storage        → cifs-nas (CSI SMB driver + PV/PVC)        (requires networking)
-#   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services)
-#   ai-registry    → registry only
+#   storage        → storage backends / PVC backends             (requires networking)
+#   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
+#   ai-registry    → registry only (requires storage)
 #   ai-hermes-build → kaniko ARM64 image build only
 #   ai-hermes-deploy → litellm-proxy + hermes-agent deploy
 #
@@ -68,6 +68,8 @@
       tags: [storage]
 
     # AI stack (ARM64 build required)
+    - role: install-cifs-nas
+      tags: [ai, ai-registry]
     - role: install-registry
       tags: [ai, ai-registry]
     - role: install-hermes-agent-image

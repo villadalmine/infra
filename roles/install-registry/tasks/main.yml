@@ -22,7 +22,7 @@
         namespace: "{{ registry_namespace }}"
       spec:
         accessModes:
-          - ReadWriteOnce
+          - "{{ registry_storage_access_mode }}"
         storageClassName: "{{ registry_storage_class }}"
         resources:
           requests:
