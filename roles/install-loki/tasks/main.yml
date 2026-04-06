@@ -34,6 +34,47 @@
     loki_deployed: false
   when: loki_helm_list.stdout | default('') | length == 0
 
+- name: Read Loki PVCs
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    namespace: "{{ loki_namespace }}"
+    label_selectors:
+      - release=loki
+  register: loki_pvcs
+  changed_when: false
+  failed_when: false
+
+- name: Detect Loki storage migration need
+  ansible.builtin.set_fact:
+    loki_storage_migration_needed: >-
+      {{ (loki_pvcs.resources | default([])
+      | selectattr('spec.storageClassName', 'defined')
+      | selectattr('spec.storageClassName', 'ne', loki_storage_class)
+      | list | length) > 0 }}
+
+- name: Purge Loki release before storage migration
+  kubernetes.core.helm:
+    name: loki
+    release_namespace: "{{ loki_namespace }}"
+    state: absent
+    purge: true
+  when: loki_storage_migration_needed | default(false)
+
+- name: Wait for Loki PVCs to disappear after purge
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    namespace: "{{ loki_namespace }}"
+    label_selectors:
+      - release=loki
+  register: loki_pvcs_after_purge
+  until: loki_pvcs_after_purge.resources | default([]) | length == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+  when: loki_storage_migration_needed | default(false)
+
 - name: Install or upgrade Loki
   kubernetes.core.helm:
     name: loki
@@ -107,8 +148,6 @@
         enabled: "{{ loki_chunks_cache_enabled }}"
       resultsCache:
         enabled: "{{ loki_results_cache_enabled }}"
-  when: not loki_deployed
-
 - name: Wait for Loki rollout
   ansible.builtin.command:
     cmd: kubectl rollout status statefulset/loki -n {{ loki_namespace }} --timeout=180s

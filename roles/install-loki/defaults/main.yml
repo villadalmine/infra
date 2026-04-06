@@ -5,7 +5,9 @@ loki_replicas: 1
 loki_minio_enabled: true
 loki_storage_size: 1Gi
 loki_minio_persistence_size: 1Gi
-loki_storage_class: local-path
+# Cluster default is local-path, but this role uses smb-nas. The storage
+# backend role must exist before installing/upgrading it.
+loki_storage_class: smb-nas
 loki_storage_retention_period: 24h  # 1 day — CM4 has limited storage
 loki_chunks_cache_enabled: false
 loki_results_cache_enabled: false
