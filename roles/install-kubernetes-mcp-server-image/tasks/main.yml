@@ -1,0 +1,141 @@
+# Build Kubernetes MCP server ARM64 image using kaniko in-cluster.
+
+- name: Create kaniko namespace for MCP build
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ kubernetes_mcp_namespace }}"
+    state: present
+
+- name: Create kaniko PVC for MCP build cache
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: kubernetes-mcp-cache
+        namespace: "{{ kubernetes_mcp_namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "{{ kubernetes_mcp_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ kubernetes_mcp_storage_size }}"
+
+- name: Create kaniko PVC for MCP build workspace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: kubernetes-mcp-workspace
+        namespace: "{{ kubernetes_mcp_namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "{{ kubernetes_mcp_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ kubernetes_mcp_storage_size }}"
+
+- name: Recreate Kubernetes MCP build job when template changes
+  kubernetes.core.k8s:
+    state: absent
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ kubernetes_mcp_namespace }}"
+    name: build-kubernetes-mcp-server-arm64
+
+- name: Create ConfigMap with Kubernetes MCP Dockerfile
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: kubernetes-mcp-dockerfile
+        namespace: "{{ kubernetes_mcp_namespace }}"
+      data:
+        Dockerfile: |
+          {{ lookup('template', 'Dockerfile.j2') }}
+
+- name: Create kaniko Job to build Kubernetes MCP server image
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: build-kubernetes-mcp-server-arm64
+        namespace: "{{ kubernetes_mcp_namespace }}"
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: clone-dockerfile
+                image: alpine:3.20
+                command:
+                  - sh
+                  - -ec
+                  - |
+                    mkdir -p /workspace/source
+                    cp /config/Dockerfile /workspace/source/Dockerfile
+                volumeMounts:
+                  - name: config
+                    mountPath: /config
+                  - name: workspace
+                    mountPath: /workspace
+            containers:
+              - name: kaniko
+                image: gcr.io/kaniko-project/executor:latest
+                args:
+                  - "--dockerfile=/workspace/source/Dockerfile"
+                  - "--context=dir:///workspace/source"
+                  - "--cache=true"
+                  - "--cache-dir=/cache"
+                  - "--destination={{ kubernetes_mcp_registry }}/{{ kubernetes_mcp_image_name }}:{{ kubernetes_mcp_image_tag }}"
+                  - "--insecure"
+                  - "--skip-tls-verify"
+                  - "--snapshot-mode=redo"
+                  - "--compression=zstd"
+                  - "--compression-level=1"
+                volumeMounts:
+                  - name: cache
+                    mountPath: /cache
+                  - name: workspace
+                    mountPath: /workspace
+                resources:
+                  requests:
+                    cpu: "500m"
+                    memory: "2Gi"
+                  limits:
+                    cpu: "2"
+                    memory: "6Gi"
+            nodeSelector:
+              kubernetes.io/hostname: "{{ kubernetes_mcp_node_hostname }}"
+            tolerations:
+              - operator: Exists
+            volumes:
+              - name: config
+                configMap:
+                  name: kubernetes-mcp-dockerfile
+              - name: cache
+                persistentVolumeClaim:
+                  claimName: kubernetes-mcp-cache
+              - name: workspace
+                persistentVolumeClaim:
+                  claimName: kubernetes-mcp-workspace
+            restartPolicy: Never
+        backoffLimit: 3
+
+- name: Wait for Kubernetes MCP kaniko job to complete
+  ansible.builtin.command:
+    cmd: kubectl wait --for=condition=complete job/build-kubernetes-mcp-server-arm64 -n {{ kubernetes_mcp_namespace }} --timeout=3600s
+  register: kubernetes_mcp_wait
+  changed_when: false
+  failed_when: kubernetes_mcp_wait.rc != 0

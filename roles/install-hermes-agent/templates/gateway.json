@@ -7,7 +7,8 @@
         "require_mention": true,
         "mention_patterns": [
           "^\\s*ask\\b",
-          "^\\s*hermes\\b"
+          "^\\s*hermes\\b",
+          "^\\s*tito\\b"
         ]
       }
     }
