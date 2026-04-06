@@ -51,17 +51,90 @@
   kubernetes.core.k8s:
     state: present
     template: pv-cifs.yaml.j2
+  when: cifs_enable_static | bool
+
+- name: Remove PersistentVolume SMB1 when static mode is disabled
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: PersistentVolume
+    name: "{{ cifs_pv_name }}"
+  when: not (cifs_enable_static | bool)
+
+- name: Apply StorageClass SMB1 for dynamic provisioning
+  kubernetes.core.k8s:
+    state: present
+    template: storageclass-cifs.yaml.j2
+  when: cifs_enable_dynamic_test | bool
+
+- name: Remove StorageClass SMB1 when dynamic test is disabled
+  kubernetes.core.k8s:
+    state: absent
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+    name: "{{ cifs_storage_class_name }}"
+  when: not (cifs_enable_dynamic_test | bool)
 
 - name: Aplica PersistentVolumeClaim
   kubernetes.core.k8s:
     state: present
     template: pvc-cifs.yaml.j2
+  when: cifs_enable_static | bool
+
+- name: Remove static PersistentVolumeClaim when static mode is disabled
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: PersistentVolumeClaim
+    name: "{{ cifs_pvc_name }}"
+    namespace: "{{ cifs_namespace }}"
+  when: not (cifs_enable_static | bool)
+
+- name: Apply dynamic PersistentVolumeClaim for CSI test
+  kubernetes.core.k8s:
+    state: present
+    template: pvc-cifs-dynamic.yaml.j2
+  when: cifs_enable_dynamic_test | bool
+
+- name: Remove dynamic PersistentVolumeClaim when dynamic test is disabled
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: PersistentVolumeClaim
+    name: "{{ cifs_dynamic_pvc_name }}"
+    namespace: "{{ cifs_namespace }}"
+  when: not (cifs_enable_dynamic_test | bool)
+
+- name: Apply dynamic pod test (busybox)
+  kubernetes.core.k8s:
+    state: present
+    template: pod-cifs-dynamic.yaml.j2
+  when: cifs_enable_dynamic_test | bool
+
+- name: Remove dynamic pod test when dynamic test is disabled
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: "{{ cifs_dynamic_pod_name }}"
+    namespace: "{{ cifs_namespace }}"
+  when: not (cifs_enable_dynamic_test | bool)
 
 - name: Aplica pod de test (busybox)
   kubernetes.core.k8s:
     state: present
     template: pod-cifs-test.yaml.j2
   register: busybox_test
+  when: cifs_enable_static | bool
+
+- name: Remove static pod test when static mode is disabled
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: smb-test-pod
+    namespace: "{{ cifs_namespace }}"
+  when: not (cifs_enable_static | bool)
 
 - name: Espera pod de test Ready
   kubernetes.core.k8s_info:
@@ -72,6 +145,7 @@
   retries: 20
   delay: 2
   until: stb_pod.resources[0].status.phase == "Running"
+  when: cifs_enable_static | bool
 
 - name: Chequea escritura en PV desde el pod
   shell: |
@@ -81,6 +155,28 @@
   delay: 3
   until: resultado_escritura.rc == 0
   failed_when: resultado_escritura.rc != 0
+  when: cifs_enable_static | bool
+
+- name: Espera pod dinámico Ready
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: "{{ cifs_namespace }}"
+    name: "{{ cifs_dynamic_pod_name }}"
+  register: dyn_pod
+  retries: 20
+  delay: 2
+  until: dyn_pod.resources[0].status.phase == "Running"
+  when: cifs_enable_dynamic_test | bool
+
+- name: Chequea escritura en StorageClass dinámico desde el pod
+  shell: |
+    kubectl exec {{ cifs_dynamic_pod_name }} -n {{ cifs_namespace }} -- /bin/sh -c "echo 'test-ok' > /mnt/smb/prueba-escritura-dinamica.txt"
+  register: resultado_escritura_dinamica
+  retries: 10
+  delay: 3
+  until: resultado_escritura_dinamica.rc == 0
+  failed_when: resultado_escritura_dinamica.rc != 0
+  when: cifs_enable_dynamic_test | bool
 
 - name: Mensaje de resultado quick-fail
   debug:
