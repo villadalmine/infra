@@ -78,6 +78,7 @@ make ai               # all three in sequence
 ```bash
 ./scripts/holmes-chat "Using Prometheus, how many pods are using more than 500 MiB of RAM right now?"
 ./scripts/holmes-chat "Using Prometheus, show the top 5 pods by CPU in namespace monitoring over the last 15m."
+./scripts/holmes-chat "Check whether Grafana latency or error rate spiked in the last 30m."
 ```
 
 The wrapper uses a local `kubectl port-forward` to the Holmes service and prints only the `analysis` field.
