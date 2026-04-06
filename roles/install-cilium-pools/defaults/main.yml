@@ -7,5 +7,12 @@ cilium_lb_pool_start: "192.168.178.200"
 cilium_lb_pool_stop: "192.168.178.210"
 
 cilium_l2_policy_name: "default"
-# Interface regex — matches eth0, eth1, etc.
-cilium_l2_policy_interface: "^eth[0-9]+"
+# Interface regexes — cover wired + Wi-Fi naming variants.
+cilium_l2_policy_interfaces:
+  - "^en.*$"
+  - "^wl.*$"
+  - "^end.*$"
+  - "^eno.*$"
+  - "^ens.*$"
+  - "^enp.*$"
+  - "^enx.*$"
