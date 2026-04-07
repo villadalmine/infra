@@ -100,9 +100,9 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 3. Write Ansible role (`roles/<name>/`) + defaults (`defaults/main.yml`)
 4. Add role to `playbooks/bootstrap.yml`
 5. `ansible-playbook playbooks/bootstrap.yml` → must pass `failed=0`
-6. Create skill in dotfiles: `~/dotfiles/ansible/roles/opencode/files/skills/<name>/SKILL.md`
+6. Create skill in `skills/<name>/SKILL.md` (in this repo)
 7. **Update `README.md`** — add the service to the public or internal services table
-8. Commit + push both repos
+8. Commit
 
 ## Installed component versions
 
@@ -134,7 +134,7 @@ only after the background run proves the change.
 
 ## Skills (deep technical context per component)
 
-Located in `~/dotfiles/ansible/roles/opencode/files/skills/`
+Located in `./skills/` (this repo — self-contained, no dotfiles dependency).
 Read the relevant skill before working on a component.
 
 | Skill | Covers |
@@ -149,14 +149,40 @@ Read the relevant skill before working on a component.
 | `ai` | Registry + LiteLLM proxy + Hermes Agent — ARM64 AI stack |
 | `kagent` | kagent + kmcp — multi-tenant AI agent platform, CRDs, RBAC, LiteLLM integration |
 | `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops, global tolerations |
-| `k8s-ask` | CLI de lenguaje natural → LiteLLM → kubectl tools |
 | `k8s-debug` | Debug pods, network, nodes systematically |
-| `platform-engineering` | Helm, Terraform, CI/CD patterns |
+| `storage` | CIFS/SMB CSI driver, PV/PVC patterns |
+
+## AI Tools (self-contained)
+
+This repo is configured to work with both **OpenCode** and **Claude Code** out of the box.
+
+### OpenCode
+Config: `opencode.json` — points to in-cluster LiteLLM (`litellm.cluster.home`).
+Deploy the AI stack first: `make ai` — then OpenCode routes all models through LiteLLM.
+Override locally (e.g. for direct OpenRouter before cluster is up): create `opencode.local.json`.
+
+### Claude Code
+Config: `.claude/settings.json` — permissions for ansible-playbook, kubectl, helm, make, etc.
+Context: `CLAUDE.md` (this file) is loaded automatically.
+
+### LiteLLM — universal AI router (in-cluster)
+URL: `http://litellm.cluster.home/v1` (after `make ai`)
+Key: `sk-hermes-internal`
+Models available via single OpenRouter API key:
+- `default` → claude-sonnet-4-5 (fallback: cheap)
+- `claude-sonnet` → Anthropic Claude Sonnet 4.5
+- `gemini-flash` → Google Gemini 1.5 Flash
+- `gpt-4o-mini` → OpenAI GPT-4o Mini
+- `free` → qwen3-coder:free (fallback: nemotron:free → qwen-turbo)
+- `cheap` → qwen-turbo
+
+To add a direct provider key (e.g. Anthropic API key bypassing OpenRouter):
+add `ANTHROPIC_API_KEY` to the `litellm-secrets` Secret in the `ai` namespace.
 
 ## Repo paths
 
-- Infra: `/var/home/dalmine/Nextcloud/Repos/infra-ai/infra`
-- Dotfiles (skills): `/home/dalmine/Nextcloud/Repos/dotfiles/ansible/roles/opencode/files/skills/`
+- Infra: this repo (clone anywhere)
+- Skills: `./skills/` (relative to repo root)
 
 ## docs/
 

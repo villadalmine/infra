@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ansible-playbook:*)",
+      "Bash(ansible:*)",
+      "Bash(make:*)",
+      "Bash(nohup make:*)",
+      "Bash(kubectl:*)",
+      "Bash(helm:*)",
+      "Bash(git:*)",
+      "Bash(ssh:*)",
+      "Bash(ping:*)",
+      "Bash(curl:*)",
+      "Bash(dig:*)",
+      "Bash(nmap:*)",
+      "Bash(python3:*)",
+      "Bash(jq:*)",
+      "Bash(cat /var/home/dalmine/Nextcloud/Repos/infra-ai/infra/**)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:artifacthub.io)",
+      "WebFetch(domain:docs.cilium.io)",
+      "WebFetch(domain:grafana.com)",
+      "WebFetch(domain:kagent.dev)",
+      "WebFetch(domain:opencode.ai)",
+      "WebSearch"
+    ]
+  }
+}

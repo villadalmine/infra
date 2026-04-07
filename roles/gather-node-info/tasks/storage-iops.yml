@@ -1,0 +1,57 @@
+---
+# storage-iops.yml — disk write latency test (etcd/control-plane suitability)
+# Writes 500x 4K blocks with fsync — measures sync write speed
+# eMMC: ~3-5ms/op, NVMe: <1ms/op, USB: >10ms/op
+
+- name: "storage-iops | sync write latency test"
+  ansible.builtin.shell: |
+    tmpfile=$(mktemp /tmp/survey_iops_XXXX)
+    result=$(dd if=/dev/zero of="$tmpfile" bs=4k count=500 oflag=dsync 2>&1)
+    rm -f "$tmpfile"
+    # Extract MB/s from dd output (works on GNU dd and busybox dd)
+    speed=$(echo "$result" | grep -oE '[0-9.]+ [MkG]B/s' | tail -1)
+    bytes=$(echo "$result" | grep -oE '[0-9]+ bytes' | tail -1 | awk '{print $1}')
+    secs=$(echo "$result" | grep -oE '[0-9.]+ s' | grep -v 'bytes' | tail -1 | awk '{print $1}')
+    if [ -n "$speed" ]; then
+      echo "$speed"
+    elif [ -n "$bytes" ] && [ -n "$secs" ]; then
+      mb=$(echo "$bytes $secs" | awk '{printf "%.1f", $1/1048576/$2}')
+      echo "${mb} MB/s"
+    else
+      echo "unknown"
+    fi
+  register: _iops_speed
+  changed_when: false
+  ignore_errors: true
+
+- name: "storage-iops | compute ms per op"
+  ansible.builtin.shell: |
+    # 500 ops total, compute ms/op from MB/s
+    speed_raw="{{ _iops_speed.stdout | default('0') | trim }}"
+    # Extract numeric value
+    val=$(echo "$speed_raw" | grep -oE '[0-9.]+' | head -1)
+    unit=$(echo "$speed_raw" | grep -oE '[MkG]B' | head -1)
+    if [ -z "$val" ] || [ "$val" = "0" ]; then
+      echo "unknown"
+    elif [ "$unit" = "MB" ]; then
+      # ms_per_op = (4096 bytes / (val * 1048576 bytes/s)) * 1000 ms/s
+      echo "$val" | awk '{printf "%.2f ms/op (%.1f MB/s)", (4096/($1*1048576))*1000, $1}'
+    else
+      echo "$speed_raw"
+    fi
+  register: _iops_ms
+  changed_when: false
+  ignore_errors: true
+
+- name: "storage-iops | set facts"
+  ansible.builtin.set_fact:
+    survey_disk_write_speed: "{{ _iops_speed.stdout | default('unknown') | trim }}"
+    survey_disk_write_latency: "{{ _iops_ms.stdout | default('unknown') | trim }}"
+
+- name: "storage-iops | warn: slow disk for control-plane"
+  ansible.builtin.set_fact:
+    survey_warnings: "{{ survey_warnings + ['Slow disk write (' + survey_disk_write_latency + ') — NOT recommended for etcd/control-plane (need <2ms/op)'] }}"
+  when:
+    - _iops_ms.stdout is defined
+    - _iops_ms.stdout | regex_search('[0-9.]+') | float > 4.0
+    - _iops_ms.stdout != 'unknown'

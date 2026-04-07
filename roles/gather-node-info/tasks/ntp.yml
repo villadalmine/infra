@@ -1,0 +1,33 @@
+---
+# ntp.yml — NTP/clock sync (etcd critical: skew >1s kills cluster)
+
+- name: "ntp | sync status"
+  ansible.builtin.shell: |
+    timedatectl status 2>/dev/null \
+      | grep -E 'synchronized|NTP service|Time zone' \
+      || chronyc tracking 2>/dev/null \
+      | grep -E 'Reference ID|System time|Stratum' \
+      || ntpq -p 2>/dev/null | head -4 \
+      || echo "NTP status unknown — timedatectl/chronyc/ntpq not found"
+  register: _ntp_status
+  changed_when: false
+  ignore_errors: true
+
+- name: "ntp | synchronized boolean"
+  ansible.builtin.shell: |
+    timedatectl status 2>/dev/null | grep -q 'synchronized: yes' && echo "true" \
+      || chronyc tracking 2>/dev/null | grep -q 'Leap status.*Normal' && echo "true" \
+      || echo "unknown"
+  register: _ntp_synced
+  changed_when: false
+  ignore_errors: true
+
+- name: "ntp | set facts"
+  ansible.builtin.set_fact:
+    survey_ntp_status: "{{ _ntp_status.stdout_lines | default(['unknown']) }}"
+    survey_ntp_synced: "{{ _ntp_synced.stdout | default('unknown') | trim }}"
+
+- name: "ntp | warn: not synced"
+  ansible.builtin.set_fact:
+    survey_warnings: "{{ survey_warnings + ['Clock NOT synchronized — etcd requires NTP sync (skew >1s kills etcd quorum)'] }}"
+  when: survey_ntp_synced == "false"

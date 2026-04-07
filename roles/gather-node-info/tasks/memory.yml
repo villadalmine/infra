@@ -1,0 +1,58 @@
+---
+# memory.yml — RAM total/available, type, swap
+
+- name: "memory | total and available"
+  ansible.builtin.shell: |
+    free -h 2>/dev/null | awk '/^Mem:/{print $2" total, "$7" available"}' \
+      || awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{printf "%.1fGB total, %.1fGB avail", t/1048576, a/1048576}' /proc/meminfo
+  register: _mem_stats
+  changed_when: false
+  ignore_errors: true
+
+- name: "memory | total GB (numeric)"
+  ansible.builtin.shell: |
+    awk '/MemTotal/{printf "%.1f", $2/1048576}' /proc/meminfo
+  register: _mem_gb
+  changed_when: false
+  ignore_errors: true
+
+- name: "memory | type (DDR/LPDDR)"
+  ansible.builtin.shell: |
+    dmidecode -t memory 2>/dev/null \
+      | grep -E '^\s+Type:|^\s+Speed:|^\s+Manufacturer:' \
+      | grep -v 'Unknown\|No Module\|None' \
+      | head -6 \
+      | awk -F: '{print $1": "$2}' | xargs \
+      || grep -i 'lpddr\|ddr' /proc/cpuinfo 2>/dev/null | head -1 | awk -F: '{print $2}' | xargs \
+      || echo "see board model (ARM SoC: LPDDR embedded)"
+  register: _mem_type
+  changed_when: false
+  ignore_errors: true
+
+- name: "memory | swap"
+  ansible.builtin.shell: |
+    free -h 2>/dev/null | awk '/^Swap:/{print $2" total, "$3" used"}' \
+      || awk '/SwapTotal/{t=$2} /SwapFree/{f=$2} END{printf "%.1fGB total, %.1fGB free", t/1048576, f/1048576}' /proc/meminfo
+  register: _mem_swap
+  changed_when: false
+  ignore_errors: true
+
+- name: "memory | swap enabled boolean"
+  ansible.builtin.shell: |
+    awk '/SwapTotal/{print ($2 > 0) ? "true" : "false"}' /proc/meminfo
+  register: _swap_enabled
+  changed_when: false
+  ignore_errors: true
+
+- name: "memory | set facts"
+  ansible.builtin.set_fact:
+    survey_ram_stats: "{{ _mem_stats.stdout | default('unknown') | trim }}"
+    survey_ram_gb: "{{ _mem_gb.stdout | default('0') | trim | float }}"
+    survey_ram_type: "{{ _mem_type.stdout | default('unknown') | trim }}"
+    survey_swap_stats: "{{ _mem_swap.stdout | default('unknown') | trim }}"
+    survey_swap_enabled: "{{ (_swap_enabled.stdout | default('false') | trim) == 'true' }}"
+
+- name: "memory | warn: swap enabled"
+  ansible.builtin.set_fact:
+    survey_warnings: "{{ survey_warnings + ['Swap enabled (' + survey_swap_stats + ') — K8s requires swap off or --fail-swap-on=false'] }}"
+  when: survey_swap_enabled | bool

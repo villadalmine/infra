@@ -1,0 +1,47 @@
+---
+# security.yml — AppArmor, SELinux, firewall
+
+- name: "security | AppArmor status"
+  ansible.builtin.shell: |
+    if aa-status --enabled 2>/dev/null; then
+      echo "ON ($(aa-status 2>/dev/null | grep profiles | head -1 | xargs))"
+    elif [ -d /sys/kernel/security/apparmor ]; then
+      echo "ON (aa-status not available)"
+    else
+      echo "OFF"
+    fi
+  register: _sec_apparmor
+  changed_when: false
+  ignore_errors: true
+
+- name: "security | SELinux status"
+  ansible.builtin.shell: |
+    getenforce 2>/dev/null \
+      || cat /sys/fs/selinux/enforce 2>/dev/null | awk '{print ($1==1)?"Enforcing":"Permissive"}' \
+      || echo "not present"
+  register: _sec_selinux
+  changed_when: false
+  ignore_errors: true
+
+- name: "security | firewall status"
+  ansible.builtin.shell: |
+    if command -v ufw >/dev/null 2>&1; then
+      ufw status 2>/dev/null | head -2 | xargs
+    elif command -v nft >/dev/null 2>&1; then
+      chains=$(nft list ruleset 2>/dev/null | grep -c '^chain' || echo 0)
+      echo "nftables: ${chains} chains"
+    elif command -v iptables >/dev/null 2>&1; then
+      rules=$(iptables -L INPUT --line-numbers 2>/dev/null | grep -c '^[0-9]' || echo 0)
+      echo "iptables: ${rules} INPUT rules"
+    else
+      echo "unknown (no ufw/nft/iptables)"
+    fi
+  register: _sec_firewall
+  changed_when: false
+  ignore_errors: true
+
+- name: "security | set facts"
+  ansible.builtin.set_fact:
+    survey_apparmor: "{{ _sec_apparmor.stdout | default('unknown') | trim }}"
+    survey_selinux: "{{ _sec_selinux.stdout | default('not present') | trim }}"
+    survey_firewall: "{{ _sec_firewall.stdout | default('unknown') | trim }}"

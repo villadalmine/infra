@@ -1,0 +1,66 @@
+---
+# storage.yml — block devices, type, model, size, boot device, /var/lib space
+
+- name: "storage | list block devices"
+  ansible.builtin.shell: |
+    if command -v lsblk >/dev/null 2>&1; then
+      lsblk -d -o NAME,SIZE,TRAN,MODEL,ROTA --noheadings 2>/dev/null \
+        | grep -v '^loop\|^ram' \
+        || lsblk -d --noheadings 2>/dev/null | grep -v '^loop\|^ram'
+    else
+      for d in /sys/block/*/; do
+        dev=$(basename "$d")
+        echo "$dev" | grep -qE '^loop|^ram' && continue
+        size_sectors=$(cat "${d}size" 2>/dev/null || echo 0)
+        size_gb=$(( size_sectors * 512 / 1073741824 ))
+        model=$(cat "${d}device/model" 2>/dev/null | xargs || echo "unknown")
+        echo "$dev  ${size_gb}G  unknown  $model  unknown"
+      done
+    fi
+  register: _storage_raw
+  changed_when: false
+  ignore_errors: true
+
+- name: "storage | boot device"
+  ansible.builtin.shell: |
+    boot_dev=$(findmnt -n -o SOURCE / 2>/dev/null \
+      || grep ' / ' /proc/mounts 2>/dev/null | awk '{print $1}' | head -1)
+    # Strip partition number to get parent device
+    echo "$boot_dev" | sed 's|/dev/||; s|p[0-9]*$||; s|[0-9]*$||'
+  register: _storage_boot
+  changed_when: false
+  ignore_errors: true
+
+- name: "storage | root disk free"
+  ansible.builtin.shell: |
+    df -h / | awk 'NR==2{print $2" total / "$4" free / "$5" used"}'
+  register: _storage_root_df
+  changed_when: false
+  ignore_errors: true
+
+- name: "storage | /var/lib free (etcd + container images)"
+  ansible.builtin.shell: |
+    df -h /var/lib 2>/dev/null | awk 'NR==2{print $2" total / "$4" free / "$5" used"}' \
+      || df -h / | awk 'NR==2{print $2" total / "$4" free / "$5" used (same as /)"}'
+  register: _storage_varlib_df
+  changed_when: false
+  ignore_errors: true
+
+- name: "storage | eMMC type detection"
+  ansible.builtin.shell: |
+    for dev in /sys/block/mmcblk*/; do
+      name=$(basename "$dev")
+      type=$(cat "${dev}device/type" 2>/dev/null || echo "unknown")
+      echo "$name: $type"
+    done
+  register: _storage_emmc
+  changed_when: false
+  ignore_errors: true
+
+- name: "storage | set facts"
+  ansible.builtin.set_fact:
+    survey_storage_raw: "{{ _storage_raw.stdout_lines | default([]) }}"
+    survey_storage_boot_dev: "{{ _storage_boot.stdout | default('unknown') | trim }}"
+    survey_storage_root_df: "{{ _storage_root_df.stdout | default('unknown') | trim }}"
+    survey_storage_varlib_df: "{{ _storage_varlib_df.stdout | default('unknown') | trim }}"
+    survey_storage_emmc: "{{ _storage_emmc.stdout_lines | default([]) }}"

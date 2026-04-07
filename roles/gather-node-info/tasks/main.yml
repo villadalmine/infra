@@ -1,0 +1,232 @@
+---
+# gather-node-info — comprehensive node hardware/software survey
+# Outputs:
+#   1. Human-readable debug per node
+#   2. JSON file in survey-output/<hostname>.json (for AI analysis)
+#
+# Run via: make survey
+# Or:      ansible-playbook playbooks/node-survey.yml -i inventory/hosts.ini
+
+# ── Init ────────────────────────────────────────────────────────────────────
+
+- name: "init | warnings list"
+  ansible.builtin.set_fact:
+    survey_warnings: []
+
+# ── Data collection ─────────────────────────────────────────────────────────
+
+- name: "include | os"
+  ansible.builtin.include_tasks: os.yml
+
+- name: "include | cpu"
+  ansible.builtin.include_tasks: cpu.yml
+
+- name: "include | memory"
+  ansible.builtin.include_tasks: memory.yml
+
+- name: "include | storage"
+  ansible.builtin.include_tasks: storage.yml
+
+- name: "include | storage-iops"
+  ansible.builtin.include_tasks: storage-iops.yml
+
+- name: "include | gpu"
+  ansible.builtin.include_tasks: gpu.yml
+
+- name: "include | network"
+  ansible.builtin.include_tasks: network.yml
+
+- name: "include | nat"
+  ansible.builtin.include_tasks: nat.yml
+
+- name: "include | dns"
+  ansible.builtin.include_tasks: dns.yml
+
+- name: "include | ntp"
+  ansible.builtin.include_tasks: ntp.yml
+
+- name: "include | k8s-readiness"
+  ansible.builtin.include_tasks: k8s-readiness.yml
+
+- name: "include | security"
+  ansible.builtin.include_tasks: security.yml
+
+- name: "include | netstore"
+  ansible.builtin.include_tasks: netstore.yml
+
+# ── Board model ─────────────────────────────────────────────────────────────
+
+- name: "board | detect model"
+  ansible.builtin.shell: |
+    tr -d '\0' < /sys/firmware/devicetree/base/model 2>/dev/null \
+      || cat /sys/class/dmi/id/product_name 2>/dev/null \
+      || grep '^Hardware' /proc/cpuinfo 2>/dev/null | head -1 | awk -F: '{print $2}' | xargs \
+      || echo "Unknown board"
+  register: _board_model
+  changed_when: false
+  ignore_errors: true
+
+- name: "board | set fact"
+  ansible.builtin.set_fact:
+    survey_board: "{{ _board_model.stdout | default('Unknown') | trim }}"
+
+# ── Consolidate structured facts ────────────────────────────────────────────
+
+- name: "output | consolidate node_survey dict"
+  ansible.builtin.set_fact:
+    node_survey:
+      hostname: "{{ inventory_hostname }}"
+      board: "{{ survey_board }}"
+      os: "{{ survey_os }}"
+      kernel: "{{ survey_kernel }}"
+      arch: "{{ survey_arch }}"
+      uptime: "{{ survey_uptime }}"
+      cpu:
+        model: "{{ survey_cpu_model }}"
+        cores: "{{ survey_cpu_cores }}"
+        threads: "{{ survey_cpu_threads }}"
+        mhz_per_cluster: "{{ survey_cpu_mhz }}"
+        vendor: "{{ survey_cpu_vendor }}"
+      ram:
+        total_gb: "{{ survey_ram_gb }}"
+        stats: "{{ survey_ram_stats }}"
+        type: "{{ survey_ram_type }}"
+      swap:
+        enabled: "{{ survey_swap_enabled }}"
+        stats: "{{ survey_swap_stats }}"
+      storage:
+        devices: "{{ survey_storage_raw }}"
+        boot_device: "{{ survey_storage_boot_dev }}"
+        root_df: "{{ survey_storage_root_df }}"
+        varlib_df: "{{ survey_storage_varlib_df }}"
+        emmc_types: "{{ survey_storage_emmc }}"
+        write_speed: "{{ survey_disk_write_speed }}"
+        write_latency: "{{ survey_disk_write_latency }}"
+      gpu_npu: "{{ survey_gpu_list }}"
+      network:
+        interfaces: "{{ survey_net_ifaces }}"
+        inter_node_latency: "{{ survey_net_latency }}"
+        local_ips: "{{ survey_local_ips }}"
+        gateway: "{{ survey_gateway }}"
+        public_ip: "{{ survey_public_ip }}"
+        nat_status: "{{ survey_nat_status }}"
+        is_nat: "{{ survey_is_nat }}"
+      dns:
+        servers: "{{ survey_dns_servers }}"
+        type: "{{ survey_dns_type }}"
+        resolves: "{{ survey_dns_resolves }}"
+        test_result: "{{ survey_dns_test_result }}"
+      ntp:
+        synced: "{{ survey_ntp_synced }}"
+        status: "{{ survey_ntp_status }}"
+      k8s_readiness:
+        cgroups_version: "{{ survey_cgroups_version }}"
+        modules: "{{ survey_k8s_modules }}"
+        ip_forward: "{{ survey_ip_forward }}"
+        ebpf_capable: "{{ survey_ebpf_capable }}"
+        kernel_params: "{{ survey_kernel_params }}"
+        ulimits: "{{ survey_ulimits }}"
+        port_conflicts: "{{ survey_port_conflicts }}"
+        container_runtime: "{{ survey_container_runtime }}"
+        k3s_installed: "{{ survey_k3s_installed }}"
+      security:
+        apparmor: "{{ survey_apparmor }}"
+        selinux: "{{ survey_selinux }}"
+        firewall: "{{ survey_firewall }}"
+      net_storage:
+        active_mounts: "{{ survey_netstore_mounts }}"
+        local_daemons: "{{ survey_netstore_daemons }}"
+        storage_dirs: "{{ survey_netstore_dirs }}"
+        kernel_modules: "{{ survey_netstore_modules }}"
+        network_scan: "{{ survey_netstore_scan }}"
+      warnings: "{{ survey_warnings }}"
+
+# ── Save JSON output (machine-readable for AI analysis) ────────────────────
+
+- name: "output | ensure survey-output dir on localhost"
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/survey-output"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  become: false
+  run_once: false
+
+- name: "output | save JSON to localhost"
+  ansible.builtin.copy:
+    content: "{{ node_survey | to_nice_json }}"
+    dest: "{{ playbook_dir }}/survey-output/{{ inventory_hostname }}.json"
+    mode: '0644'
+  delegate_to: localhost
+  become: false
+
+# ── Human-readable summary ──────────────────────────────────────────────────
+
+- name: "output | human-readable summary"
+  ansible.builtin.debug:
+    msg: |
+
+      ══ {{ inventory_hostname }} ══════════════════════════════════════════
+        Board   : {{ survey_board }}
+        OS      : {{ survey_os }} | kernel {{ survey_kernel }}
+        Arch    : {{ survey_arch }}
+        Uptime  : {{ survey_uptime }}
+
+        CPU     : {{ survey_cpu_model }}
+                  {{ survey_cpu_cores }} cores / {{ survey_cpu_threads }} threads | {{ survey_cpu_vendor }}
+      {% for mhz in survey_cpu_mhz %}
+                  {{ mhz }}
+      {% endfor %}
+
+        RAM     : {{ survey_ram_stats }} | type: {{ survey_ram_type }}
+        Swap    : {{ survey_swap_stats }} {% if survey_swap_enabled %}⚠ ENABLED{% else %}✓ disabled{% endif %}
+
+        Storage :
+      {% for dev in survey_storage_raw %}
+                  {{ dev }}{% if survey_storage_boot_dev in dev %} ← boot (/){% endif %}
+
+      {% endfor %}
+                  root:     {{ survey_storage_root_df }}
+                  /var/lib: {{ survey_storage_varlib_df }}
+                  iops:     {{ survey_disk_write_latency }}
+
+        GPU/NPU :{% for g in survey_gpu_list %} {{ g }}{% endfor %}
+
+        Network :
+      {% for iface in survey_net_ifaces %}
+                  {{ iface }}
+      {% endfor %}
+                  local:  {{ survey_local_ips | join(', ') }}
+                  gw:     {{ survey_gateway }}
+                  public: {{ survey_public_ip }} | {{ survey_nat_status }}
+
+        DNS     : {{ survey_dns_servers }} ({{ survey_dns_type }}) | resolves: {{ survey_dns_resolves }}
+        NTP     : synced={{ survey_ntp_synced }}
+
+        K8s     :
+                  cgroups:  {{ survey_cgroups_version }} {% if survey_cgroups_version == 'v2' %}✓{% else %}⚠{% endif %}
+                  eBPF:     {{ survey_ebpf_capable }}
+                  ip_fwd:   {{ survey_ip_forward }} {% if survey_ip_forward == '1' %}✓{% else %}⚠{% endif %}
+                  ports:    {{ survey_port_conflicts }}
+                  runtime:  {{ survey_container_runtime }}
+                  k3s:      {{ survey_k3s_installed }}
+      {% for mod in survey_k8s_modules %}
+                  {{ mod }}
+      {% endfor %}
+
+        Security: AppArmor={{ survey_apparmor }} | SELinux={{ survey_selinux }}
+                  firewall={{ survey_firewall }}
+
+        NetStore: {{ survey_netstore_scan }}
+                  mounts={{ survey_netstore_mounts | join(', ') }}
+                  daemons={{ survey_netstore_daemons }}
+      {% if survey_warnings | length > 0 %}
+
+        ⚠ WARNINGS:
+      {% for w in survey_warnings %}
+          - {{ w }}
+      {% endfor %}
+      {% else %}
+
+        ✓ No warnings
+      {% endif %}

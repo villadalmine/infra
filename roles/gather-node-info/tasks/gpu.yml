@@ -1,0 +1,51 @@
+---
+# gpu.yml — GPU/NPU detection via device files (no tools required)
+
+- name: "gpu | detect Rockchip NPU"
+  ansible.builtin.stat:
+    path: /dev/rknpu0
+  register: _gpu_rknpu
+  ignore_errors: true
+
+- name: "gpu | detect Mali GPU"
+  ansible.builtin.stat:
+    path: /dev/mali0
+  register: _gpu_mali
+  ignore_errors: true
+
+- name: "gpu | detect DRI GPU (VideoCore / generic)"
+  ansible.builtin.stat:
+    path: /dev/dri/card0
+  register: _gpu_dri
+  ignore_errors: true
+
+- name: "gpu | DRI driver name"
+  ansible.builtin.shell: |
+    grep DRIVER /sys/class/drm/card0/device/uevent 2>/dev/null | cut -d= -f2 \
+      || cat /sys/class/drm/card0/device/driver/module/srcversion 2>/dev/null | head -1 \
+      || echo "unknown"
+  register: _gpu_dri_driver
+  changed_when: false
+  ignore_errors: true
+  when: _gpu_dri.stat.exists | default(false)
+
+- name: "gpu | detect V4L2 device"
+  ansible.builtin.stat:
+    path: /dev/video0
+  register: _gpu_v4l2
+  ignore_errors: true
+
+- name: "gpu | build GPU list"
+  ansible.builtin.set_fact:
+    survey_gpu_list: >-
+      {{
+        ([] + (['Rockchip NPU (/dev/rknpu0)'] if (_gpu_rknpu.stat.exists | default(false)) else []))
+        + (['Mali GPU (/dev/mali0)'] if (_gpu_mali.stat.exists | default(false)) else [])
+        + (['DRI GPU /dev/dri/card0 driver=' + (_gpu_dri_driver.stdout | default('unknown') | trim)] if (_gpu_dri.stat.exists | default(false)) else [])
+        + (['V4L2 /dev/video0 (encoder/camera)'] if (_gpu_v4l2.stat.exists | default(false)) else [])
+      }}
+
+- name: "gpu | no GPU/NPU found"
+  ansible.builtin.set_fact:
+    survey_gpu_list: ["none detected"]
+  when: survey_gpu_list | length == 0

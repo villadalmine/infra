@@ -7,3 +7,10 @@ roles/*/defaults/secrets.yaml
 roles/*/defaults/vault.yml
 secrets/
 vault/
+
+# Survey output — per-run hardware snapshots, not versioned
+playbooks/survey-output/
+survey-output/
+
+# AI tool local config overrides (user-specific)
+opencode.local.json

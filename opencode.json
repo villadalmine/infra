@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "litellm/default",
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LiteLLM (in-cluster — deploy with: make ai)",
+      "options": {
+        "baseURL": "http://litellm.cluster.home/v1",
+        "apiKey": "sk-hermes-internal"
+      },
+      "models": {
+        "default": {
+          "name": "Default (claude-sonnet via OpenRouter, fallback to cheap)",
+          "tools": true
+        },
+        "claude-sonnet": {
+          "name": "Claude Sonnet 4.5 (via OpenRouter)",
+          "tools": true
+        },
+        "gemini-flash": {
+          "name": "Gemini 1.5 Flash (via OpenRouter)",
+          "tools": true
+        },
+        "gpt-4o-mini": {
+          "name": "GPT-4o Mini (via OpenRouter)",
+          "tools": true
+        },
+        "free": {
+          "name": "Free tier (qwen3-coder:free → nemotron:free → qwen-turbo)",
+          "tools": true
+        },
+        "cheap": {
+          "name": "Cheap (qwen-turbo via OpenRouter)",
+          "tools": true
+        }
+      }
+    }
+  }
+}
