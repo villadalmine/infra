@@ -1,0 +1,73 @@
+# cluster flavors — requirements and Ansible tags
+#
+# Each flavor defines what hardware it needs and which make targets to run.
+# The cluster-advisor MCP reads this to determine what's achievable.
+#
+# Add new flavors here as new roles are added to the repo.
+
+flavors:
+
+  minimal:
+    description: "Single node, K3s + networking only. Useful for testing."
+    requires:
+      min_server_nodes: 1
+      min_server_ram_gb: 2
+      cgroups_v2: true
+    make_command: "make core"
+    tags: [core, networking]
+
+  standard:
+    description: "Production-ready cluster with ingress, DNS (Pi-hole), GitOps (ArgoCD)."
+    requires:
+      min_server_nodes: 1
+      min_server_ram_gb: 4
+      cgroups_v2: true
+      ebpf: true
+    make_command: "make services"
+    tags: [core, networking, ingress, services]
+
+  observability:
+    description: "Adds Prometheus + Grafana + Tempo + Loki + Alloy to any cluster."
+    note: "Additive — combine with standard or full-ha"
+    requires:
+      min_cluster_ram_gb: 12
+      min_server_ram_gb: 4
+    make_command: "make observability"
+    tags: [observability]
+
+  ai:
+    description: "AI stack: registry + LiteLLM proxy + Hermes Agent + kagent platform."
+    note: "Additive — combine with standard or full-ha"
+    requires:
+      has_gpu_npu: true
+      min_ai_node_ram_gb: 16
+    make_command: "make ai && make kagent"
+    tags: [ai, kagent]
+    recommended_nodes:
+      ai_worker: "node with GPU/NPU (RK1 with rknpu0 or mali0)"
+
+  full-ha:
+    description: "HA control-plane (3 etcd nodes) + workers + full stack."
+    requires:
+      min_server_nodes: 3
+      min_server_ram_gb: 4
+      max_server_write_latency_ms: 10
+      cgroups_v2: true
+      ebpf: true
+    make_command: "make full"
+    tags: [all]
+    notes:
+      - "etcd strongly prefers NVMe or fast eMMC (<5ms write latency)"
+      - "3 server nodes must have stable IPs (no DHCP rotation)"
+
+  edge:
+    description: "Single node with direct public IP — no NAT. Good for exposed services."
+    requires:
+      min_nodes: 1
+      requires_direct_ip: true
+      min_server_ram_gb: 2
+      cgroups_v2: true
+    make_command: "make ingress"
+    tags: [core, networking, ingress]
+    notes:
+      - "Node must have is_nat=false in survey (public IP = private IP)"

@@ -2,6 +2,11 @@
 # Uses in-cluster LiteLLM proxy as OpenAI-compatible backend.
 # Multi-tenancy: controller watches all namespaces; tenants get RoleBindings in their ns.
 
+- name: Ensure custom Storage backend is installed before deploying kagent
+  ansible.builtin.include_role:
+    name: "{{ kagent_storage_role }}"
+  when: kagent_db_storage_class != 'local-path' and kagent_storage_role is defined
+
 - name: Create kagent namespace
   kubernetes.core.k8s:
     definition:

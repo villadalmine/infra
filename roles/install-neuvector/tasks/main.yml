@@ -7,6 +7,11 @@
 # via a dedicated LoadBalancer Service with Cilium LB-IPAM.
 # DNS entries are added to Pi-hole via dnsmasq customDnsEntries.
 
+- name: Ensure custom Storage backend is installed before deploying NeuVector
+  ansible.builtin.include_role:
+    name: "{{ neuvector_storage_role }}"
+  when: neuvector_pvc_enabled and neuvector_pvc_storage_class != 'local-path' and neuvector_storage_role is defined
+
 - name: Load NeuVector secrets (if secrets.yml exists)
   ansible.builtin.include_vars:
     file: "{{ role_path }}/defaults/secrets.yml"

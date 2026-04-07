@@ -1,5 +1,10 @@
 # Build Kubernetes MCP server ARM64 image using kaniko in-cluster.
 
+- name: Ensure custom Storage backend is installed before running Kubernetes MCP server image build
+  ansible.builtin.include_role:
+    name: "{{ kubernetes_mcp_storage_role }}"
+  when: kubernetes_mcp_storage_class != 'local-path' and kubernetes_mcp_storage_role is defined
+
 - name: Create kaniko namespace for MCP build
   kubernetes.core.k8s:
     definition:
