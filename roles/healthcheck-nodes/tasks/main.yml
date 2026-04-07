@@ -1,0 +1,62 @@
+# healthcheck-nodes — verify node identity and collect resource stats
+# Run via: make healthcheck
+# Or:      ansible-playbook playbooks/healthcheck.yml -i inventory/hosts.ini
+
+# ── Identity check ─────────────────────────────────────────────────────────
+
+- name: Get node hostname
+  ansible.builtin.command: hostname
+  register: node_hostname
+  changed_when: false
+
+- name: Get node primary IP
+  ansible.builtin.shell: hostname -I | awk '{print $1}'
+  register: node_ip
+  changed_when: false
+
+- name: Identity check — hostname matches inventory name
+  ansible.builtin.assert:
+    that:
+      - node_hostname.stdout == inventory_hostname
+    fail_msg: >
+      HOSTNAME MISMATCH on {{ inventory_hostname }}:
+      expected '{{ inventory_hostname }}', got '{{ node_hostname.stdout }}'
+    success_msg: "hostname OK: {{ node_hostname.stdout }}"
+  ignore_errors: true
+
+- name: Identity check — actual IP matches inventory ansible_host
+  ansible.builtin.assert:
+    that:
+      - node_ip.stdout == ansible_host
+    fail_msg: >
+      IP MISMATCH on {{ inventory_hostname }}:
+      inventory has {{ ansible_host }}, node reports {{ node_ip.stdout }}
+    success_msg: "IP OK: {{ node_ip.stdout }}"
+  ignore_errors: true
+
+# ── Resource stats ──────────────────────────────────────────────────────────
+
+- name: Collect CPU usage
+  ansible.builtin.shell: top -bn1 | grep 'Cpu(s)' | awk '{printf "%.0f", $2+$4}'
+  register: node_cpu
+  changed_when: false
+
+- name: Collect RAM stats
+  ansible.builtin.shell: free -m | awk '/Mem:/{printf "%d/%d MB (%.0f%%)", $3, $2, $3/$2*100}'
+  register: node_ram
+  changed_when: false
+
+- name: Collect CPU temperature
+  ansible.builtin.shell: >
+    awk '{printf "%.1f°C", $1/1000}'
+    /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo N/A
+  register: node_temp
+  changed_when: false
+
+- name: Print node stats
+  ansible.builtin.debug:
+    msg: >
+      {{ inventory_hostname }} |
+      CPU: {{ node_cpu.stdout }}% |
+      RAM: {{ node_ram.stdout }} |
+      Temp: {{ node_temp.stdout }}

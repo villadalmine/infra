@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# node-identity-check — verify hostnames and IPs match the Ansible inventory
+# Usage: ./scripts/node-identity-check
+
+set -euo pipefail
+
+INVENTORY="${1:-inventory/hosts.ini}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+cd "$REPO_ROOT"
+
+echo ""
+echo "Node Identity Check — hostname vs actual IP vs inventory"
+echo "========================================================="
+printf "%-28s %-16s %-16s %-10s\n" "NODE" "INVENTORY IP" "ACTUAL IP" "STATUS"
+echo "----------------------------------------------------------------------"
+
+ansible -i "$INVENTORY" all -m shell \
+  -a "echo \$(hostname):\$(hostname -I | awk '{print \$1}')" \
+  --one-line 2>/dev/null | grep "CHANGED\|SUCCESS" | \
+while IFS= read -r line; do
+  node=$(echo "$line" | awk '{print $1}')
+  # one-line format: "node | CHANGED | rc=0 | (stdout) hostname:ip"
+  output=$(echo "$line" | sed 's/.*stdout) //')
+  actual_hostname=$(echo "$output" | cut -d: -f1)
+  actual_ip=$(echo "$output" | cut -d: -f2)
+
+  inv_ip=$(grep "^$node " "$INVENTORY" | grep -oP 'ansible_host=\K[^\s]+' || echo "?")
+
+  if [ "$node" = "$actual_hostname" ] && [ "$inv_ip" = "$actual_ip" ]; then
+    status="✅ OK"
+  elif [ "$node" != "$actual_hostname" ]; then
+    status="❌ hostname='$actual_hostname'"
+  else
+    status="⚠️  IP=$actual_ip (inv=$inv_ip)"
+  fi
+
+  printf "%-28s %-16s %-16s %s\n" "$node" "$inv_ip" "$actual_ip" "$status"
+done
+
+echo ""

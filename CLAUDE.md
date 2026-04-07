@@ -44,6 +44,7 @@ install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
 → install-registry → install-hermes-agent-image
 → install-litellm-proxy → install-hermes-agent
+→ install-holmes → install-kagent
 ```
 
 ## Bootstrap Tags
@@ -63,6 +64,7 @@ all tags up to the layer you need.
 | `ai-registry` | registry only | `networking` |
 | `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
 | `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
+| `kagent` | kagent + kmcp operator (multi-tenant agent platform) | `networking` + LiteLLM |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -116,6 +118,7 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 | Docker Registry | `registry:2` | 2 | 2.x |
 | LiteLLM proxy | `ghcr.io/berriai/litellm` | main-latest | in-cluster |
 | Hermes Agent | `registry.registry:5000/ai/hermes-agent` | 0.7.0 | ARM64 custom build |
+| kagent | `oci://ghcr.io/kagent-dev/kagent/helm/kagent` | 0.8.5 | 0.8.5 (multi-arch) |
 
 Hermes is deployed as a persistent gateway on the high-resource node with a
 mounted `gateway.json` so the webhook platform stays enabled and the pod does
@@ -143,6 +146,8 @@ Read the relevant skill before working on a component.
 | `pihole` | Wildcard DNS, Pi-hole 6 gotchas |
 | `monitoring` | Prometheus, Grafana, Tempo, Alloy — full observability stack |
 | `ai` | Registry + LiteLLM proxy + Hermes Agent — ARM64 AI stack |
+| `kagent` | kagent + kmcp — multi-tenant AI agent platform, CRDs, RBAC, LiteLLM integration |
+| `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops, global tolerations |
 | `k8s-ask` | CLI de lenguaje natural → LiteLLM → kubectl tools |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `platform-engineering` | Helm, Terraform, CI/CD patterns |

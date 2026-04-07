@@ -1,0 +1,11 @@
+---
+# Node health check — identity + resource stats for all cluster nodes
+# Usage:
+#   make healthcheck
+#   ansible-playbook playbooks/healthcheck.yml -i inventory/hosts.ini
+
+- name: Node health check
+  hosts: all
+  gather_facts: false
+  roles:
+    - healthcheck-nodes

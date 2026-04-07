@@ -6,7 +6,7 @@ INVENTORY := inventory/hosts.ini
 BOOTSTRAP := playbooks/bootstrap.yml
 UNINSTALL := playbooks/uninstall.yml
 
-.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build security full clean
+.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats
 
 help: ## Show this help message
 	@echo "Infra Makefile - Simplified Ansible workflow"
@@ -51,6 +51,9 @@ ai-hermes-deploy: ## Deploy Hermes Agent (requires ai-hermes-build to complete f
 ai-holmes: ## Deploy HolmesGPT (OpenAI-compatible backend via LiteLLM)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-holmes
 
+kagent: ## Deploy kagent + kmcp AI agent platform (multi-tenant, LiteLLM backend)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags kagent
+
 security: ## Install NeuVector core (controller, enforcer, manager, scanner)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags security
 
@@ -72,6 +75,15 @@ idempotent: ## Test idempotency - run full bootstrap twice
 	@echo ""
 	@echo "=== Second run (idempotency test) ==="
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY)
+
+healthcheck: ## Run full node health check (identity + stats) via Ansible
+	$(ANSIBLE) playbooks/healthcheck.yml -i $(INVENTORY)
+
+node-identity: ## Check hostnames and IPs match inventory (fast script)
+	@bash scripts/node-identity-check
+
+node-stats: ## Show CPU, RAM, temperature for all nodes (fast script)
+	@bash scripts/node-stats
 
 status: ## Show cluster status
 	@echo "=== Nodes ==="

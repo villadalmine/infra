@@ -1,0 +1,15 @@
+network:
+  version: 2
+  ethernets:
+    {{ eth_iface.stdout }}:
+      match:
+        macaddress: "{{ current_mac.stdout }}"
+      macaddress: "{{ current_mac.stdout }}"
+      dhcp4: false
+      addresses:
+        - {{ rk1_static_ip }}/{{ rk1_prefix }}
+      routes:
+        - to: default
+          via: {{ rk1_gateway }}
+      nameservers:
+        addresses: {{ rk1_dns | to_json }}

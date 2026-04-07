@@ -1,0 +1,12 @@
+---
+# Fix MAC address rotation on RK1 nodes (TuringPi 2 / Rockchip RK3588S).
+# Run manually on RK1 nodes only:
+#   ansible-playbook playbooks/fix-mac.yml -i inventory/hosts.ini
+# Or on a specific node:
+#   ansible-playbook playbooks/fix-mac.yml -i inventory/hosts.ini --limit srv-rk1-nvme-03
+
+- name: Fix MAC address and set static IP on RK1 nodes
+  hosts: rk1_nodes
+  become: true
+  roles:
+    - fix-mac-address
