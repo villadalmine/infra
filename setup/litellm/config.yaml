@@ -1,6 +1,6 @@
-# litellm/config.yaml — local LiteLLM proxy for workstation
+# setup/litellm/config.yaml — local LiteLLM proxy for workstation
 #
-# Start with: mise run litellm   (or: litellm --config litellm/config.yaml)
+# Start with: mise run litellm   (or: litellm --config setup/litellm/config.yaml)
 # Endpoint:   http://localhost:4000/v1
 # Key:        sk-infra-local  (only used locally — not a real secret)
 #

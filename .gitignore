@@ -9,8 +9,7 @@ secrets/
 vault/
 
 # Survey output — per-run hardware snapshots, not versioned
-playbooks/survey-output/
-survey-output/
+/survey/
 
 # AI tool local config overrides (user-specific)
 opencode.local.json

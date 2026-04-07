@@ -2,7 +2,7 @@
 """
 cluster-advisor MCP server
 
-Reads node survey data (playbooks/survey-output/*.json) and skill files (skills/*)
+Reads node survey data (survey/*.json) and skill files (skills/*)
 to answer cluster planning questions:
   - What hardware do I have?
   - What K3s cluster can I build?
@@ -29,7 +29,7 @@ from fastmcp import FastMCP
 # ── Paths ─────────────────────────────────────────────────────────────────────
 # This file lives at mcp/cluster-advisor/server.py → repo root is 2 levels up
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SURVEY_DIR = REPO_ROOT / "playbooks" / "survey-output"
+SURVEY_DIR = REPO_ROOT / "survey"
 SKILLS_DIR = REPO_ROOT / "skills"
 FLAVORS_FILE = Path(__file__).resolve().parent / "flavors.yaml"
 
@@ -47,7 +47,7 @@ Primary workflow:
   3. node_profile(name) — deep-dive on a specific node
   4. get_skill(name)    — read technical docs for any component
 
-Survey data lives in: playbooks/survey-output/<hostname>.json
+Survey data lives in: survey/<hostname>.json
 Run the survey with: make survey
 """,
 )
@@ -156,7 +156,7 @@ def list_nodes() -> str:
     nodes = _load_surveys()
     if not nodes:
         return (
-            "No survey data found in playbooks/survey-output/\n"
+            "No survey data found in survey/\n"
             "Run: make survey"
         )
 
