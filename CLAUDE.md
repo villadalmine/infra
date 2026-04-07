@@ -139,6 +139,9 @@ Read the relevant skill before working on a component.
 
 | Skill | Covers |
 |---|---|
+| `onboarding` | First-time setup: mise, SSH keys, sudoers, inventory format |
+| `survey` | gather-node-info role: what it collects, JSON output, node profiles |
+| `infra-ops` | 10-node topology, all make targets, RK1 MAC fix, health checks |
 | `k3s` | Server flags, kubeconfig, upgrades |
 | `cilium` | CNI, LB-IPAM, L2, Gateway API, BPF |
 | `gateway` | Shared Gateway, HTTPRoutes, DNS setup |
@@ -148,7 +151,6 @@ Read the relevant skill before working on a component.
 | `monitoring` | Prometheus, Grafana, Tempo, Alloy — full observability stack |
 | `ai` | Registry + LiteLLM proxy + Hermes Agent — ARM64 AI stack |
 | `kagent` | kagent + kmcp — multi-tenant AI agent platform, CRDs, RBAC, LiteLLM integration |
-| `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops, global tolerations |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |
 
@@ -165,19 +167,21 @@ Override locally (e.g. for direct OpenRouter before cluster is up): create `open
 Config: `.claude/settings.json` — permissions for ansible-playbook, kubectl, helm, make, etc.
 Context: `CLAUDE.md` (this file) is loaded automatically.
 
-### LiteLLM — universal AI router (in-cluster)
-URL: `http://litellm.cluster.home/v1` (after `make ai`)
-Key: `sk-hermes-internal`
-Models available via single OpenRouter API key:
-- `default` → claude-sonnet-4-5 (fallback: cheap)
-- `claude-sonnet` → Anthropic Claude Sonnet 4.5
-- `gemini-flash` → Google Gemini 1.5 Flash
-- `gpt-4o-mini` → OpenAI GPT-4o Mini
-- `free` → qwen3-coder:free (fallback: nemotron:free → qwen-turbo)
-- `cheap` → qwen-turbo
+### LiteLLM — universal AI router
+- **Local (workstation):** `http://localhost:4000` — start with `make litellm`
+  Config: `litellm/config.yaml` — edit to add/remove providers
+- **In-cluster (after `make ai`):** `http://litellm.cluster.home/v1`
+  Key: `sk-hermes-internal`
 
-To add a direct provider key (e.g. Anthropic API key bypassing OpenRouter):
-add `ANTHROPIC_API_KEY` to the `litellm-secrets` Secret in the `ai` namespace.
+Models: `default`, `claude-sonnet`, `claude-opus`, `gemini-flash`, `gpt-4o-mini`, `free`, `cheap`
+All route through OpenRouter by default (one `OPENROUTER_API_KEY` covers everything).
+
+### MCP Servers
+Configured in `.mcp.json` (Claude Code) and `opencode.json` → `mcp` key (OpenCode).
+- `kubernetes` — `npx -y kubernetes-mcp-server@latest` — requires `~/.kube/config`
+  Available after `make core` deploys K3s and kubeconfig is fetched.
+
+Full AI setup guide: `docs/ai-setup.md`
 
 ## Repo paths
 

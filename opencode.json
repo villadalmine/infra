@@ -40,5 +40,14 @@
         }
       }
     }
+  },
+  "mcp": {
+    "kubernetes": {
+      "type": "local",
+      "command": ["npx", "-y", "kubernetes-mcp-server@latest"],
+      "environment": {
+        "KUBECONFIG": "${HOME}/.kube/config"
+      }
+    }
   }
 }
