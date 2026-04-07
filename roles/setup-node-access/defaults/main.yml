@@ -1,0 +1,13 @@
+---
+# SSH public key to copy to nodes.
+# Auto-detected from common locations if not set.
+# Override: make setup-nodes SSH_KEY=~/.ssh/other.pub
+ssh_public_key_file: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub"
+
+# Sudoers mode:
+#   full    → NOPASSWD: ALL  (homelab / full trust — simplest)
+#   minimal → specific commands only (auditable, production-like)
+sudoers_mode: "full"
+
+# Path for the sudoers drop-in file on each node
+sudoers_file: "/etc/sudoers.d/ansible-operator"

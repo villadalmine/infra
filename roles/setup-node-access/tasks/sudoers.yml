@@ -1,0 +1,54 @@
+---
+# sudoers.yml — manage /etc/sudoers.d/ansible-operator
+#
+# Pattern:
+#   1. Dry-run with diff — shows exactly what would change
+#   2. If changes detected: pause and ask for approval
+#   3. Apply only after approval, with visudo validation (safe — no lockout risk)
+#   4. If already up to date: skip silently
+#
+# Re-run anytime with: make setup-sudoers
+# Each run shows the diff and asks approval — never applies silently.
+
+- name: "sudoers | preview changes (dry-run + diff)"
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "{{ sudoers_file }}"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: "visudo -cf %s"
+  check_mode: true
+  diff: true
+  register: _sudoers_check
+
+- name: "sudoers | approve changes"
+  ansible.builtin.pause:
+    prompt: |
+
+      ──────────────────────────────────────────────────────────
+        Sudoers change detected on {{ inventory_hostname }}
+        File: {{ sudoers_file }}
+
+        The diff above shows what will be written.
+        This is the only time you'll be asked — future Ansible
+        runs will not require any sudo password on this node.
+
+        Press Enter to apply   /   Ctrl+C then A to abort all
+      ──────────────────────────────────────────────────────────
+  when: _sudoers_check.changed
+
+- name: "sudoers | apply"
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "{{ sudoers_file }}"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: "visudo -cf %s"
+  when: _sudoers_check.changed
+
+- name: "sudoers | already up to date"
+  ansible.builtin.debug:
+    msg: "{{ sudoers_file }} is already up to date — no changes needed"
+  when: not _sudoers_check.changed

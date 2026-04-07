@@ -1,0 +1,19 @@
+---
+# setup-node-access — one-time node access configuration
+#
+# Run via: make setup-nodes   (first time — needs password)
+#          make setup-sudoers (update sudoers only — already passwordless)
+#
+# What this role does:
+#   1. Copies your SSH public key so future connections need no password
+#   2. Creates /etc/sudoers.d/ansible-operator so Ansible never needs a password
+#
+# After this runs once, all other playbooks work without any interaction.
+
+- name: "include | ssh-keys"
+  ansible.builtin.include_tasks: ssh-keys.yml
+  tags: [ssh-keys, setup]
+
+- name: "include | sudoers"
+  ansible.builtin.include_tasks: sudoers.yml
+  tags: [sudoers, setup]
