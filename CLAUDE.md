@@ -13,7 +13,7 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |
-| Storage | `local-path` (default StorageClass) |
+| Storage | `smb-nas` / `smb-nas-pg` (default for PVC-backed roles) + `local-path` (K3s built-in) |
 
 ## Key commands
 
@@ -98,6 +98,9 @@ Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config
 1. `helm install` manually on cluster → verify working
 2. `helm uninstall` to clean up
 3. Write Ansible role (`roles/<name>/`) + defaults (`defaults/main.yml`)
+   - If the role uses a PVC: add `<role>_storage_class: "smb-nas"` and `<role>_storage_role: "install-cifs-nas"` to defaults
+   - Add `include_role: install-cifs-nas` as first task, guarded by `when: <role>_storage_class != 'local-path' and <role>_storage_role is defined`
+   - See `skills/storage/SKILL.md` for the full pattern
 4. Add role to `playbooks/bootstrap.yml`
 5. `ansible-playbook playbooks/bootstrap.yml` → must pass `failed=0`
 6. Create skill in `skills/<name>/SKILL.md` (in this repo)

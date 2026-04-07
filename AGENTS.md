@@ -238,6 +238,12 @@ ansible -i inventory/hosts.ini all -m shell -a "hostname; hostname -I | awk '{pr
 - **HTTP services**: always `ClusterIP` + `HTTPRoute`. Never `LoadBalancer`. Never `Ingress`.
   Exception: NeuVector (self-signed HTTPS backend) → dedicated LoadBalancer at `.204`
 - Never kubectl-apply resources manually that Ansible manages — it will diverge
+- **Storage dependency pattern**: every role that uses `smb-nas` (or `smb-nas-pg`) declares
+  `<role>_storage_role: "install-cifs-nas"` in its defaults and calls `include_role` as its
+  **first task** guarded by `when: <role>_storage_class != 'local-path' and <role>_storage_role is defined`.
+  `install-cifs-nas` is idempotent — safe to call from multiple roles in the same playbook run.
+  Roles: pihole, kube-prometheus-stack, loki, tempo, registry, neuvector, hermes-agent,
+  hermes-agent-image, kagent, kubernetes-mcp-server-image.
 - **Never commit before running the playbook and verifying it passes.** Write → deploy → fix → commit.
 - `k3s_token` in `roles/install-k3s/defaults/main.yml` is a placeholder — use Ansible Vault for production
 
@@ -290,10 +296,10 @@ DiskPressure eviction loops when all images pile onto one node.
 
 ## NAS Storage
 
-| StorageClass | uid/gid | Used by |
-|-------------|---------|---------|
-| `smb-nas` | 1000/1000 | Pi-hole, Prometheus, Loki, Tempo, registry, Hermes |
-| `smb-nas-pg` | 999/999 | kagent PostgreSQL (postgres requires uid=999) |
+| StorageClass | uid/gid | Created by | Used by |
+|-------------|---------|------------|--------|
+| `smb-nas` | 1000/1000 | `install-cifs-nas` | Pi-hole, Prometheus, Loki, Tempo, registry, Hermes, kaniko builds |
+| `smb-nas-pg` | 999/999 | `install-kagent` (inline) | kagent PostgreSQL (postgres requires uid=999) |
 
 NAS: LG N2R1 @ `192.168.178.102`, share `//192.168.178.102/service`, SMB1 only.
 
@@ -361,7 +367,7 @@ ssh dalmine@192.168.178.85
 | `argocd` | GitOps, ApplicationSets, sync waves |
 | `pihole` | wildcard DNS, Pi-hole 6 gotchas |
 | `monitoring` | Prometheus, Grafana, Tempo, Loki, Alloy |
-| `storage` | CSI SMB, StorageClasses, PVC patterns |
+| `storage` | CSI SMB, StorageClasses, dependency pattern (all PVC-backed roles) |
 | `ai` | registry + LiteLLM + Hermes Agent |
 | `kagent` | AI agent platform, CRDs, RBAC, LiteLLM integration |
 | `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops |

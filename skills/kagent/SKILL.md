@@ -176,6 +176,19 @@ Key values in `roles/install-kagent/defaults/main.yml`:
 | `kagent_chart_version` | `0.8.5` | Chart version |
 | `kagent_llm_model` | `free` | LiteLLM model group |
 | `kagent_llm_base_url` | LiteLLM svc URL | OpenAI-compatible endpoint |
-| `kagent_db_storage_class` | `smb-nas` | PostgreSQL PVC storage class |
+| `kagent_db_storage_class` | `smb-nas-pg` | PostgreSQL PVC storage class (uid=999 required) |
+| `kagent_storage_role` | `install-cifs-nas` | Storage backend auto-installed before deploy |
 | `kagent_tenant_namespaces` | `[tenant-demo]` | Namespaces to provision with RBAC |
 | `kagent_agents_enabled` | `true` | Toggle all built-in agents |
+
+## Storage
+
+kagent uses `smb-nas-pg` StorageClass (NOT `smb-nas`) for its bundled PostgreSQL.
+`smb-nas-pg` uses `uid=999/gid=999` — postgres requires owning its data directory.
+Using `smb-nas` (uid=1000) causes `FATAL: data directory has wrong ownership`.
+
+`smb-nas-pg` is **created inline by `install-kagent/tasks/main.yml`** (not by `install-cifs-nas`).
+`install-cifs-nas` is called first as a dependency to ensure the CSI driver is available,
+then kagent creates its own `smb-nas-pg` StorageClass on top of it.
+
+See `skills/storage/SKILL.md` for the storage dependency pattern.

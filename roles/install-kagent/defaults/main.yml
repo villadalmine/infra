@@ -11,9 +11,10 @@ kagent_llm_base_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
 kagent_llm_api_key: "sk-hermes-internal"
 
 # Storage for bundled PostgreSQL
-# Uses smb-nas-pg (custom StorageClass created by install-cifs-nas): same NAS share
+# Uses smb-nas-pg (custom StorageClass created inline by this role): same NAS share
 # as smb-nas but with uid=999,gid=999 so postgres can own its data directory.
 # The default smb-nas uses uid=1000 which causes postgres "wrong ownership" error.
+# kagent_storage_role ensures the CSI driver (install-cifs-nas) is installed first.
 kagent_db_storage_class: smb-nas-pg
 kagent_db_storage_size: 5Gi
 kagent_storage_role: "install-cifs-nas"

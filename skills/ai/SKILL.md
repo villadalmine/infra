@@ -270,6 +270,28 @@ curl http://localhost:4000/v1/models -H "Authorization: Bearer sk-hermes-interna
 
 ---
 
+## Storage Dependency
+
+All AI build/deploy roles use `smb-nas` StorageClass by default.
+The storage backend (`install-cifs-nas`) is **auto-installed** as the first task — no need to run `make storage` separately.
+
+| Role | Storage var | StorageClass |
+|------|-------------|-------------|
+| `install-registry` | `registry_storage_class` | `smb-nas` |
+| `install-hermes-agent` | `hermes_storage_class` | `smb-nas` |
+| `install-hermes-agent-image` | `kaniko_storage_class` | `smb-nas` |
+| `install-kubernetes-mcp-server-image` | `kubernetes_mcp_storage_class` | `smb-nas` |
+
+To override to local-path (no NAS):
+```bash
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai \
+  -e "registry_storage_class=local-path hermes_storage_class=local-path kaniko_storage_class=local-path"
+```
+
+See `skills/storage/SKILL.md` for the full pattern documentation.
+
+---
+
 ## Repo Paths
 
 - Roles: `roles/install-registry/`, `roles/install-litellm-proxy/`, `roles/install-hermes-agent-image/`, `roles/install-hermes-agent/`
