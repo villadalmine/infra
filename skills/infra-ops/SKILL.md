@@ -1,19 +1,26 @@
 # infra-ops — Node Operations, Health Checks, RK1 Maintenance
 
-Operational knowledge for the 8-node ARM64 K3s homelab cluster.
+Operational knowledge for the 10-node ARM64 K3s homelab cluster.
 
 ## Cluster Topology
 
-### Super6C CM4 nodes (8GB RAM, K3s server + agent)
+### Super6C CM4 nodes — NVMe (8GB RAM, K3s server)
 
-| Node | IP |
-|------|----|
-| `srv-super6c-01-nvme` | 192.168.178.85 |
-| `srv-super6c-02-nvme` | 192.168.178.86 |
-| `srv-super6c-03-nvme` | 192.168.178.87 |
-| `srv-super6c-04-emmc` | 192.168.178.133 (not in K3s) |
+| Node | IP | Role |
+|------|----|------|
+| `srv-super6c-01-nvme` | 192.168.178.85 | K3s server |
+| `srv-super6c-02-nvme` | 192.168.178.86 | K3s server |
+| `srv-super6c-03-nvme` | 192.168.178.87 | K3s server |
 
-### TuringPi 2 RK1 nodes (32GB RAM, Rockchip RK3588S, K3s agent-only)
+### Super6C CM4 nodes — eMMC (8GB RAM)
+
+| Node | IP | Role |
+|------|----|------|
+| `srv-super6c-04-emmc` | 192.168.178.133 | standalone (not in K3s) |
+| `srv-super6c-05-emmc` | 192.168.178.104 | K3s server |
+| `srv-super6c-06-emmc` | 192.168.178.105 | K3s server |
+
+### TuringPi 2 RK1 nodes (32GB RAM, Rockchip RK3588S, K3s agent)
 
 | Node | IP | MAC (fixed) |
 |------|----|-------------|
@@ -23,8 +30,41 @@ Operational knowledge for the 8-node ARM64 K3s homelab cluster.
 | `srv-rk1-nvme-04` | 192.168.178.54 | `8e:f8:04:7e:96:92` |
 
 Identify RK1 vs CM4: `free -h | grep Mem` → 31GB = RK1, 7.6GB = CM4.
+Storage: NVMe nodes have Samsung/WD NVMe (~476GB). eMMC nodes have ~29GB onboard only.
 
 ---
+
+## Make Targets Reference
+
+### First-time setup
+```bash
+make deps          # install workstation tools (mise + pip + ansible collections)
+make setup-nodes   # copy SSH key + configure sudo (needs password once)
+make setup-sudoers # update sudoers only (shows diff, asks approval)
+make survey        # collect hardware info → playbooks/survey-output/*.json
+make litellm       # start local LiteLLM AI proxy (needs OPENROUTER_API_KEY)
+```
+
+### Cluster bootstrap
+```bash
+make core          # K3s + kubeconfig
+make networking    # + Cilium + LB-IPAM + Gateway API
+make ingress       # + cert-manager + Gateway
+make services      # + Pi-hole + ArgoCD + helm-dashboard
+make observability # + Prometheus + Grafana + Tempo + Loki + Alloy
+make ai            # + registry + hermes image build + LiteLLM + Hermes
+make full          # everything
+make clean         # destroy cluster (prompts for confirmation)
+```
+
+### Day-to-day ops
+```bash
+make status        # kubectl get nodes + pods + helm releases
+make logs          # logs of failing pods
+make node-identity # fast: hostname/IP table (no Ansible)
+make node-stats    # fast: CPU%/RAM/temp per node
+make healthcheck   # Ansible asserts (fails if mismatch)
+```
 
 ## Health Checks
 
