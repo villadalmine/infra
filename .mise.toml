@@ -1,0 +1,56 @@
+# .mise.toml — workstation tool versions for infra-ai/infra
+#
+# Install mise: curl https://mise.run | sh
+# Then run:     mise install
+#
+# mise detects your OS and CPU architecture automatically.
+# Tools are installed to ~/.local/share/mise/ — no system-wide changes.
+
+[tools]
+# Python — for Ansible, LiteLLM, kubernetes module
+python = "3.13"
+
+# Node — for OpenCode (optional AI tool)
+node = "22"
+
+# kubectl — must be within 1 minor version of your K3s server
+# K3s v1.35.x → kubectl 1.35.x
+"aqua:kubernetes/kubectl" = "1.33.2"
+
+# Helm — K8s package manager
+"aqua:helm/helm" = "3.17.3"
+
+# nova — check for outdated Helm releases
+"aqua:FairwindsOps/nova" = "3.10.3"
+
+[env]
+# Use a virtualenv inside the repo for Python packages
+# mise creates it automatically at .venv/
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.setup]
+description = "Install all workstation dependencies (run once after mise install)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "==> Installing Python packages..."
+pip install -r requirements.txt
+echo ""
+echo "==> Installing Ansible collections..."
+ansible-galaxy collection install -r requirements.yml
+echo ""
+echo "==> Done. Your workstation is ready."
+echo ""
+echo "Next steps:"
+echo "  1. cp inventory/hosts.ini.example inventory/hosts.ini"
+echo "  2. Edit inventory/hosts.ini with your node IPs"
+echo "  3. make setup-nodes"
+echo "  4. make survey"
+"""
+
+[tasks.litellm]
+description = "Start local LiteLLM proxy (uses litellm/config.yaml)"
+run = """
+#!/usr/bin/env bash
+litellm --config litellm/config.yaml --port 4000
+"""

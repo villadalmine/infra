@@ -4,10 +4,10 @@
   "provider": {
     "litellm": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "LiteLLM (in-cluster — deploy with: make ai)",
+      "name": "LiteLLM (local — start with: mise run litellm)",
       "options": {
-        "baseURL": "http://litellm.cluster.home/v1",
-        "apiKey": "sk-hermes-internal"
+        "baseURL": "http://localhost:4000/v1",
+        "apiKey": "sk-infra-local"
       },
       "models": {
         "default": {
@@ -16,6 +16,10 @@
         },
         "claude-sonnet": {
           "name": "Claude Sonnet 4.5 (via OpenRouter)",
+          "tools": true
+        },
+        "claude-opus": {
+          "name": "Claude Opus 4 (via OpenRouter)",
           "tools": true
         },
         "gemini-flash": {

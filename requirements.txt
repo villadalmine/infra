@@ -1,0 +1,13 @@
+# Python packages for workstation — installed by: mise run setup
+# (or manually: pip install -r requirements.txt)
+
+# Ansible — cluster automation
+ansible>=9.0,<11
+ansible-lint>=6.0    # optional but recommended
+
+# Kubernetes Python client — required by ansible kubernetes.core collection
+kubernetes>=29.0
+
+# LiteLLM — local AI proxy (routes to OpenRouter, Claude, Gemini, Ollama, etc.)
+# Start with: mise run litellm   (or: litellm --config litellm/config.yaml)
+litellm[proxy]>=1.50
