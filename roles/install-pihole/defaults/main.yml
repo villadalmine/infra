@@ -15,6 +15,7 @@ pihole_hostname: "pihole.cluster.home"
 # backend role must exist before installing/upgrading it.
 pihole_storage_size: "2Gi"
 pihole_storage_class: "smb-nas"
+pihole_storage_role: "install-cifs-nas"
 
 # Wildcard DNS record: *.cluster.home → 192.168.178.200 (the shared Gateway IP)
 # Pi-hole custom DNS entries for this are added as a ConfigMap-mounted dnsmasq config.

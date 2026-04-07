@@ -24,6 +24,11 @@
     - gateway.networking.k8s.io_referencegrants.yaml
     - gateway.networking.k8s.io_grpcroutes.yaml
 
+- name: Apply Gateway API Experimental TLSRoute CRD
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ gateway_api_experimental_base_url }}/gateway.networking.k8s.io_tlsroutes.yaml"
+
 - name: Wait for Gateway API CRDs to be established
   kubernetes.core.k8s_info:
     api_version: apiextensions.k8s.io/v1
@@ -41,3 +46,4 @@
     - httproutes.gateway.networking.k8s.io
     - referencegrants.gateway.networking.k8s.io
     - grpcroutes.gateway.networking.k8s.io
+    - tlsroutes.gateway.networking.k8s.io

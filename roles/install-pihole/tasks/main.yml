@@ -20,6 +20,11 @@
 #
 # wait:false + kubectl rollout status — see install-cilium/tasks/main.yml for rationale.
 
+- name: Ensure custom Storage backend is installed before deploying Pi-hole
+  ansible.builtin.include_role:
+    name: "{{ pihole_storage_role }}"
+  when: pihole_storage_class != 'local-path' and pihole_storage_role is defined
+
 - name: Add Pi-hole Helm repository
   kubernetes.core.helm_repository:
     name: mojo2600

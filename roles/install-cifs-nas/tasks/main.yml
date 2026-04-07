@@ -1,4 +1,18 @@
 ---
+- name: Ensure NAS is awake using Wake-on-LAN
+  community.general.wakeonlan:
+    mac: "{{ cifs_nas_mac }}"
+  delegate_to: localhost
+
+- name: Wait for NAS SMB service to be available (port 445)
+  ansible.builtin.wait_for:
+    host: "{{ cifs_nas_ip }}"
+    port: 445
+    state: started
+    delay: 5
+    timeout: 180
+  delegate_to: localhost
+
 - name: Aplica Secret para credenciales CIFS
   kubernetes.core.k8s:
     state: present

@@ -71,6 +71,14 @@
             allowedRoutes:
               namespaces:
                 from: All
+          - name: tls-passthrough
+            protocol: TLS
+            port: 443
+            tls:
+              mode: Passthrough
+            allowedRoutes:
+              namespaces:
+                from: All
     state: present
 
 - name: Wait for Gateway to be programmed and have an address

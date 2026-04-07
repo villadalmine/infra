@@ -6,7 +6,7 @@ INVENTORY := inventory/hosts.ini
 BOOTSTRAP := playbooks/bootstrap.yml
 UNINSTALL := playbooks/uninstall.yml
 
-.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey
+.PHONY: help core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey
 
 help: ## Show this help message
 	@echo "Infra Makefile - Simplified Ansible workflow"
@@ -19,12 +19,15 @@ core: ## Install K3s + kubeconfig only
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core
 
 networking: ## Install core + networking (Cilium, LB-IPAM, Gateway API)
-	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags networking
 
 ingress: ## Install networking + ingress (cert-manager, Gateway)
-	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,ingress
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ingress
 
-services: ## Install ingress + services (Pi-hole, ArgoCD, helm-dashboard, registry)
+dns-metrics: ## Install DNS and Metrics (Pi-hole)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags dns-metrics
+
+services: ## Install ingress + services (ArgoCD, helm-dashboard, registry)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,ingress,services
 
 observability: ## Install networking + observability (Prometheus, Grafana, Tempo, Loki, Alloy, version-checker)

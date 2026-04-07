@@ -156,7 +156,8 @@ Bootstrap tags:
 | `core` | k3s + kubeconfig | — |
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
-| `services` | pihole + argocd + helm-dashboard | `ingress` |
+| `dns-metrics`| pihole | `ingress`, `storage` |
+| `services` | argocd + helm-dashboard | `ingress` |
 | `storage` | cifs-nas (SMB CSI driver) | `networking` |
 | `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
 | `security` | neuvector | `services`, `storage` |

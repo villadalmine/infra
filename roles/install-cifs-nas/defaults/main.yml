@@ -1,4 +1,5 @@
 cifs_nas_ip: "192.168.178.102"         # NAS LG N2R1 IP (tested)
+cifs_nas_mac: "00:e0:91:80:fb:f0"      # MAC para Wake-on-LAN
 cifs_nas_share: "service"           # share raíz en el NAS (subcarpeta Torrent existe dentro)
 cifs_nas_user: "admin"
 cifs_nas_pass: "elendil123"

@@ -10,7 +10,8 @@
 #   core           → k3s + kubeconfig + node sysctls
 #   networking     → gateway-api-crds + cilium + cilium-pools  (requires core)
 #   ingress        → cert-manager + gateway                    (requires networking)
-#   services       → pihole + argocd + helm-dashboard          (requires ingress + storage for Pi-hole)
+#   dns-metrics    → pihole                                    (requires ingress + storage for Pi-hole)
+#   services       → argocd + helm-dashboard                   (requires ingress)
 #   observability  → prometheus + tempo + loki + alloy         (requires networking + storage for Prometheus/Loki)
 #   storage        → storage backends / PVC backends             (requires networking)
 #   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
@@ -55,7 +56,7 @@
     - role: install-gateway
       tags: [ingress]
     - role: install-pihole
-      tags: [services]
+      tags: [dns-metrics]
     - role: install-argocd
       tags: [services]
     - role: install-helm-dashboard
@@ -68,8 +69,6 @@
       tags: [observability]
     - role: install-alloy
       tags: [observability]
-    - role: install-cifs-nas
-      tags: [storage]
 
     # AI stack (ARM64 build required)
     - role: install-cifs-nas
