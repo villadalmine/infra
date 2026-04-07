@@ -1,0 +1,86 @@
+# Managed by infra-ai/infra — roles/setup-node-access
+# Last applied: {{ ansible_date_time.iso8601 }}
+# To update run: make setup-sudoers
+# DO NOT EDIT MANUALLY — changes will be overwritten on next run
+
+# Allow Ansible to run commands without an interactive terminal
+# (required: some distros have 'Defaults requiretty' which breaks Ansible)
+Defaults:{{ ansible_user }} !requiretty
+
+# Preserve environment variables needed by Ansible and tools
+Defaults:{{ ansible_user }} env_keep += "HOME PATH ANSIBLE_* KUBECONFIG"
+
+{% if sudoers_mode == 'full' %}
+# ── Full access (homelab / trusted operator) ─────────────────────────────────
+# Simple and reliable. Ansible can do anything root can do.
+# Change to sudoers_mode=minimal for granular control.
+{{ ansible_user }} ALL=(ALL) NOPASSWD: ALL
+
+{% else %}
+# ── Minimal access — commands required by infra-ai roles ─────────────────────
+# Add new commands here when roles need additional sudo access, then:
+#   make setup-sudoers   (shows diff + asks approval before applying)
+
+# hardware survey (gather-node-info role)
+{{ ansible_user }} ALL=(ALL) NOPASSWD: \
+    /usr/bin/dd, \
+    /usr/bin/find, \
+    /usr/sbin/ethtool, \
+    /usr/bin/lsblk, \
+    /usr/bin/lscpu, \
+    /usr/bin/dmidecode, \
+    /usr/sbin/aa-status
+
+# system management
+{{ ansible_user }} ALL=(ALL) NOPASSWD: \
+    /bin/systemctl, \
+    /usr/bin/systemctl, \
+    /usr/bin/apt-get, \
+    /usr/bin/apt, \
+    /usr/bin/dpkg, \
+    /usr/bin/timedatectl, \
+    /bin/hostname, \
+    /usr/bin/hostnamectl
+
+# networking
+{{ ansible_user }} ALL=(ALL) NOPASSWD: \
+    /sbin/ip, \
+    /usr/sbin/ip, \
+    /usr/sbin/nft, \
+    /sbin/iptables, \
+    /usr/sbin/iptables, \
+    /sbin/ip6tables, \
+    /usr/sbin/ip6tables, \
+    /usr/bin/ss, \
+    /bin/netstat
+
+# k3s install, management and uninstall
+{{ ansible_user }} ALL=(ALL) NOPASSWD: \
+    /usr/local/bin/k3s, \
+    /usr/local/bin/k3s-uninstall.sh, \
+    /usr/local/bin/k3s-agent-uninstall.sh
+
+# file and directory operations (configs, certificates, kubeconfig)
+{{ ansible_user }} ALL=(ALL) NOPASSWD: \
+    /bin/mkdir, \
+    /usr/bin/tee, \
+    /bin/chmod, \
+    /bin/chown, \
+    /bin/cp, \
+    /bin/rm, \
+    /usr/bin/install, \
+    /usr/bin/rsync
+
+# container runtime (used by k3s)
+{{ ansible_user }} ALL=(ALL) NOPASSWD: \
+    /usr/bin/containerd, \
+    /usr/bin/ctr, \
+    /usr/local/bin/crictl
+
+# kernel module management (K8s networking requirements)
+{{ ansible_user }} ALL=(ALL) NOPASSWD: \
+    /sbin/modprobe, \
+    /usr/sbin/modprobe, \
+    /sbin/sysctl, \
+    /usr/sbin/sysctl
+{% endif %}

@@ -1,0 +1,23 @@
+---
+# ssh-keys.yml — copy operator's SSH public key to the node
+# After this task, SSH connections from this machine need no password.
+
+- name: "ssh-keys | read local public key"
+  ansible.builtin.set_fact:
+    _ssh_pubkey_content: "{{ lookup('file', ssh_public_key_file) }}"
+  delegate_to: localhost
+  become: false
+  run_once: false
+
+- name: "ssh-keys | ensure .ssh directory exists"
+  ansible.builtin.file:
+    path: "~{{ ansible_user }}/.ssh"
+    state: directory
+    mode: '0700'
+    owner: "{{ ansible_user }}"
+
+- name: "ssh-keys | authorize public key"
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user }}"
+    key: "{{ _ssh_pubkey_content }}"
+    state: present

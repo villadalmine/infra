@@ -5,12 +5,16 @@
     mode: "0755"
 
 - name: Fetch kubeconfig from server to localhost
+  # ARCHITECTURE NOTE:
+  # We delegate only to the first control-plane node (server_nodes[0]) rather than looping over all masters.
+  # Because this cluster DOES NOT support a control-plane API behind a High Availability (HA) service
+  # (e.g. an external LoadBalancer/VIP), fetching certificates from multiple independent nodes would
+  # overwrite the client config locally, resulting in mismatched certificates and x509 "unknown authority" errors.
   ansible.builtin.fetch:
     src: /etc/rancher/k3s/k3s.yaml
     dest: ~/.kube/config
     flat: true
-  delegate_to: "{{ item }}"
-  with_items: "{{ groups['server_nodes'] }}"
+  delegate_to: "{{ groups['server_nodes'][0] }}"
   changed_when: false
 
 - name: Replace localhost reference with IP name
