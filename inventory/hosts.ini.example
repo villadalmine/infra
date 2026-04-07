@@ -1,0 +1,69 @@
+# inventory/hosts.ini.example — copy this to hosts.ini and fill in your nodes
+#
+# Usage:
+#   cp inventory/hosts.ini.example inventory/hosts.ini
+#   # Edit with your actual node hostnames and IPs
+#   make setup-nodes   # configure SSH access (run once)
+#   make survey        # collect hardware info
+
+# ── Node list ─────────────────────────────────────────────────────────────────
+# Format: <hostname> ansible_host=<ip>
+#
+# Hostname: becomes the node's name in Ansible and in K8s
+# ansible_host: the actual IP address of the node
+#
+# Examples of valid hostnames:
+#   node01, srv-pi-01, worker-gpu-01, cm4-nvme-02
+
+[all]
+node01 ansible_host=192.168.1.10
+node02 ansible_host=192.168.1.11
+node03 ansible_host=192.168.1.12
+# node04 ansible_host=192.168.1.13
+# node05 ansible_host=192.168.1.14
+
+# ── K3s server nodes (control plane + etcd) ────────────────────────────────
+# Recommended: 1 or 3 nodes (HA). NVMe/fast storage preferred for etcd.
+# Minimum: 4 cores, 4GB RAM, <5ms disk write latency (check with: make survey)
+
+[server_nodes]
+node01
+# node02
+# node03
+
+# ── K3s agent nodes (workers) ──────────────────────────────────────────────
+# Can have any storage. More RAM = more pods.
+
+[agent_nodes]
+node02
+node03
+# node04
+# node05
+
+# ── Standalone nodes (not in K3s cluster) ──────────────────────────────────
+# Useful for testing or running services outside the cluster
+
+[standalone]
+# node-standalone ansible_host=192.168.1.20
+
+# ── Convenience groups ─────────────────────────────────────────────────────
+[k3s_nodes:children]
+server_nodes
+agent_nodes
+
+# ── Connection settings ─────────────────────────────────────────────────────
+[all:vars]
+# The user Ansible will use for all operations.
+# This user needs to exist on the nodes and be able to sudo/su to root.
+# Common values: ubuntu (Ubuntu), pi (Raspberry Pi OS), root, admin
+ansible_user=ubuntu
+
+# SSH private key on THIS machine (your workstation).
+# Run 'ssh-keygen -t ed25519' if you don't have one yet.
+ansible_ssh_private_key_file=~/.ssh/id_ed25519
+
+# How to escalate to root. Options: sudo, su, doas
+ansible_become_method=sudo
+
+# Leave this as-is — auto-detects Python on the remote node
+ansible_python_interpreter=auto_silent

@@ -1,0 +1,19 @@
+---
+# Node access setup — SSH keys + sudoers
+#
+# First-time run (needs password):
+#   make setup-nodes
+#   (or: bash scripts/setup-node-access)
+#
+# Update sudoers only (already passwordless):
+#   make setup-sudoers
+#
+# This playbook only configures access — it installs nothing.
+# After it runs once, all other playbooks work without passwords.
+
+- name: Configure node access (SSH keys + sudoers)
+  hosts: all
+  gather_facts: true
+  become: true
+  roles:
+    - setup-node-access

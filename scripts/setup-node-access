@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# scripts/setup-node-access — first-time node access setup
+#
+# Usage:
+#   make setup-nodes                           # auto-detect everything
+#   make setup-nodes SSH_KEY=~/.ssh/other.pub  # specify SSH key
+#   make setup-nodes SUDOERS_MODE=minimal      # granular commands only
+#
+# What this script does:
+#   1. Reads your inventory to find nodes
+#   2. Shows exactly what it will do on each node
+#   3. Asks for confirmation
+#   4. Connects once with your current password
+#   5. Copies your SSH key + configures passwordless sudo
+#
+# After this runs: no more passwords — ever.
+
+set -euo pipefail
+
+# ── Config (overridable via env) ─────────────────────────────────────────────
+INVENTORY="${INVENTORY:-inventory/hosts.ini}"
+PLAYBOOK="playbooks/setup-node-access.yml"
+SSH_KEY="${SSH_KEY:-}"
+SUDOERS_MODE="${SUDOERS_MODE:-full}"
+
+# ── Go to repo root ──────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
+# ── Colors ───────────────────────────────────────────────────────────────────
+BOLD='\033[1m'
+CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+# ── Check inventory exists ───────────────────────────────────────────────────
+if [ ! -f "$INVENTORY" ]; then
+  echo -e "${RED}ERROR: $INVENTORY not found.${RESET}"
+  echo ""
+  echo "Create it from the example:"
+  echo "  cp inventory/hosts.ini.example inventory/hosts.ini"
+  echo "  # Edit it with your node IPs"
+  exit 1
+fi
+
+# ── Parse inventory ──────────────────────────────────────────────────────────
+get_ini_var() {
+  # reads key=value from [all:vars] section
+  awk -v key="$1" '
+    /^\[all:vars\]/ { in_vars=1; next }
+    /^\[/ { in_vars=0 }
+    in_vars && $0 ~ "^"key"=" {
+      sub("^"key"=", ""); gsub(/^"|"$/, ""); print; exit
+    }
+  ' "$INVENTORY"
+}
+
+ANSIBLE_USER="$(get_ini_var ansible_user)"
+ANSIBLE_USER="${ANSIBLE_USER:-ubuntu}"
+
+BECOME_METHOD="$(get_ini_var ansible_become_method)"
+BECOME_METHOD="${BECOME_METHOD:-sudo}"
+
+# Get node list (hostname + IP pairs)
+NODE_LIST=$(awk '
+  /^\[/ { in_all=0 }
+  /^\[all\]/ { in_all=1; next }
+  in_all && /^[a-zA-Z0-9_-]+ ansible_host=/ {
+    split($2, a, "="); printf "  %-30s %s\n", $1, a[2]
+  }
+' "$INVENTORY")
+
+NODE_COUNT=$(echo "$NODE_LIST" | grep -c '\S' || true)
+
+# ── Auto-detect SSH key ──────────────────────────────────────────────────────
+if [ -z "$SSH_KEY" ]; then
+  for key in ~/.ssh/id_ed25519 ~/.ssh/id_ecdsa ~/.ssh/id_rsa; do
+    if [ -f "${key}.pub" ]; then
+      SSH_KEY="${key}.pub"
+      break
+    fi
+  done
+fi
+
+if [ -z "$SSH_KEY" ]; then
+  echo -e "${RED}ERROR: No SSH public key found.${RESET}"
+  echo ""
+  echo "Generate one with:  ssh-keygen -t ed25519"
+  echo "Or specify one with: make setup-nodes SSH_KEY=~/.ssh/yourkey.pub"
+  exit 1
+fi
+
+# ── Print header ─────────────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}═══════════════════════════════════════════════════════════${RESET}"
+echo -e "${BOLD}  Node Access Setup${RESET}"
+echo -e "${BOLD}═══════════════════════════════════════════════════════════${RESET}"
+echo ""
+echo "This script configures your nodes for passwordless Ansible access."
+echo "You provide credentials once — after this, no passwords are needed."
+echo ""
+echo -e "${BOLD}What it will do on each node:${RESET}"
+echo ""
+echo -e "  ${GREEN}1.${RESET} Add your SSH public key to ~/.ssh/authorized_keys"
+echo -e "     ${DIM}→ Future SSH connections won't need a password${RESET}"
+echo ""
+echo -e "  ${GREEN}2.${RESET} Create ${CYAN}/etc/sudoers.d/ansible-operator${RESET}"
+if [ "$SUDOERS_MODE" = "full" ]; then
+  echo -e "     Mode: ${YELLOW}full${RESET} — NOPASSWD: ALL (full root access)"
+  echo -e "     ${DIM}→ Use SUDOERS_MODE=minimal for command-by-command control${RESET}"
+else
+  echo -e "     Mode: ${YELLOW}minimal${RESET} — specific commands only (auditable)"
+  echo -e "     ${DIM}→ Use SUDOERS_MODE=full for simpler setup${RESET}"
+fi
+echo -e "     ${DIM}→ You will see exactly what goes in this file and approve it${RESET}"
+echo -e "     ${DIM}→ Validated with visudo before writing (no lockout risk)${RESET}"
+echo ""
+echo -e "${BOLD}Nodes (${NODE_COUNT}) from ${INVENTORY}:${RESET}"
+echo "$NODE_LIST"
+echo ""
+echo -e "  ${BOLD}Connect as   :${RESET} ${CYAN}${ANSIBLE_USER}${RESET}"
+echo -e "  ${BOLD}Escalate via :${RESET} ${CYAN}${BECOME_METHOD}${RESET}"
+echo -e "  ${BOLD}SSH key      :${RESET} ${CYAN}${SSH_KEY}${RESET}"
+echo ""
+
+if [ "$ANSIBLE_USER" = "root" ]; then
+  echo -e "${DIM}Connecting as root — no password escalation needed.${RESET}"
+  echo -e "${DIM}You may still be asked for the SSH password if key auth isn't set up yet.${RESET}"
+else
+  echo -e "${YELLOW}You will be asked for the ${BECOME_METHOD} password of '${ANSIBLE_USER}'.${RESET}"
+  echo -e "${YELLOW}This is a one-time operation.${RESET}"
+fi
+
+echo ""
+echo -e "${BOLD}Press Enter to continue, Ctrl+C to abort${RESET}"
+read -r
+
+# ── Build ansible-playbook command ───────────────────────────────────────────
+EXTRA_VARS="ssh_public_key_file=${SSH_KEY} sudoers_mode=${SUDOERS_MODE}"
+
+CMD=(ansible-playbook "$PLAYBOOK"
+  -i "$INVENTORY"
+  -e "$EXTRA_VARS"
+  --diff
+)
+
+# Ask for become password if user is not root
+if [ "$ANSIBLE_USER" != "root" ]; then
+  CMD+=(-K)
+fi
+
+# ── Run ──────────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${DIM}Running: ${CMD[*]}${RESET}"
+echo ""
+
+"${CMD[@]}"
+
+echo ""
+echo -e "${GREEN}${BOLD}Done.${RESET}"
+echo ""
+echo -e "Your nodes are now configured. From here on:"
+echo -e "  ${GREEN}✓${RESET} SSH connections need no password"
+echo -e "  ${GREEN}✓${RESET} Ansible runs need no password"
+echo -e "  ${GREEN}✓${RESET} All other make targets work directly"
+echo ""
+echo -e "Next step: ${CYAN}make survey${RESET} — collect hardware info from all nodes"
+echo ""

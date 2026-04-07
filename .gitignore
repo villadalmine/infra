@@ -14,3 +14,11 @@ survey-output/
 
 # AI tool local config overrides (user-specific)
 opencode.local.json
+
+# Python virtualenv (created by mise)
+.venv/
+__pycache__/
+*.pyc
+
+# mise local overrides (user-specific tool versions)
+.mise.local.toml

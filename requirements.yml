@@ -1,0 +1,12 @@
+---
+# Ansible collections — installed by: mise run setup
+# (or manually: ansible-galaxy collection install -r requirements.yml)
+
+collections:
+  # SSH authorized_key module (used by setup-node-access role)
+  - name: ansible.posix
+    version: ">=1.5"
+
+  # Kubernetes resources (used by bootstrap roles)
+  - name: kubernetes.core
+    version: ">=3.0"
