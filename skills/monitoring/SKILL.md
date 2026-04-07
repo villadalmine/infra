@@ -223,6 +223,27 @@ Tempo datasource features enabled:
 
 ---
 
+## Storage Dependency
+
+All monitoring roles use `smb-nas` StorageClass by default.
+The storage backend (`install-cifs-nas`) is **auto-installed** as the first task of each role — no need to run `make storage` first.
+
+| Role | Storage var | Default SC |
+|------|-------------|------------|
+| `install-kube-prometheus-stack` | `kube_prometheus_stack_storage_class` | `smb-nas` |
+| `install-loki` | `loki_storage_class` | `smb-nas` |
+| `install-tempo` | `tempo_storage_class` | `smb-nas` |
+
+To override to local-path (no NAS required):
+```bash
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability \
+  -e "kube_prometheus_stack_storage_class=local-path loki_storage_class=local-path tempo_storage_class=local-path"
+```
+
+See `skills/storage/SKILL.md` for full pattern documentation.
+
+---
+
 ## Ansible Roles
 
 | Role | File |
@@ -296,16 +317,6 @@ kubectl port-forward -n monitoring svc/alloy 12345:12345
 ---
 
 ## Troubleshooting
-
-### CRITICAL: NEVER delete Helm secrets or uninstall releases on upgrade failure
-→ If `helm upgrade` fails with "release: already exists" or "another operation in progress":
-  1. Check `helm status <release> -n <namespace>` — the release may already be deployed
-  2. Check `helm history <release> -n <namespace>` — see if the upgrade actually succeeded
-  3. Check `kubectl get pods -n <namespace> -l app.kubernetes.io/name=<release>` — pods may be running fine
-  4. If the release is "deployed" and pods are healthy, the upgrade likely succeeded despite the error
-→ Deleting Helm secrets (`kubectl delete secret sh.helm.release.v1.*`) or running `helm uninstall`
-  destroys the release state and makes idempotent re-runs impossible. Only do this as absolute
-  last resort after confirming the release is genuinely corrupted.
 
 ### CRITICAL: NEVER delete Helm secrets or uninstall releases on upgrade failure
 → If `helm upgrade` fails with "release: already exists" or "another operation in progress":
