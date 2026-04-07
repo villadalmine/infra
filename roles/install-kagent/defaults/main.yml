@@ -1,0 +1,25 @@
+kagent_namespace: kagent
+kagent_release_name: kagent
+kagent_chart: "oci://ghcr.io/kagent-dev/kagent/helm/kagent"
+kagent_chart_version: "0.8.5"
+kagent_hostname: kagent.cluster.home
+kagent_node: srv-rk1-nvme-01
+
+# LiteLLM proxy as OpenAI-compatible backend (already deployed in ai namespace)
+kagent_llm_model: "free"
+kagent_llm_base_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+kagent_llm_api_key: "sk-hermes-internal"
+
+# Storage for bundled PostgreSQL
+# Uses smb-nas-pg (custom StorageClass created by this role): same NAS share
+# as smb-nas but with uid=999,gid=999 so postgres can own its data directory.
+# The default smb-nas uses uid=1000 which causes postgres "wrong ownership" error.
+kagent_db_storage_class: smb-nas-pg
+kagent_db_storage_size: 5Gi
+
+# Namespaces to create with tenant RBAC (kagent writer + getter RoleBindings)
+kagent_tenant_namespaces:
+  - tenant-demo
+
+# Built-in agents (k8s, helm, prometheus, cilium, istio, kgateway, argo)
+kagent_agents_enabled: true

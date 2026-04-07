@@ -1,0 +1,8 @@
+# Static IP for each RK1 node — override per host in host_vars or via -e
+# These defaults match the inventory IPs
+rk1_static_ip: "{{ ansible_host }}"
+rk1_prefix: "24"
+rk1_gateway: "192.168.178.1"
+rk1_dns:
+  - 192.168.178.1
+  - 8.8.8.8

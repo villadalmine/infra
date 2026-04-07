@@ -2,537 +2,367 @@
 
 ## Project Purpose
 
-Ansible-managed K3s cluster bootstrap on Raspberry Pi CM4 nodes.
-Target: multi-node cluster — `srv-rk1-01` (server, 192.168.178.133) + `srv-super6c-cm4-eemc-nvme` (agent, 192.168.178.104).
+Ansible-managed K3s cluster on ARM64 nodes (Ubuntu 24.04), managed entirely via Ansible.
+**Never apply changes manually — always run the bootstrap playbook.**
 
-**Stack:** K3s + Cilium CNI + cert-manager + Gateway API + Pi-hole + ArgoCD
+**Stack:** K3s + Cilium CNI + cert-manager + Gateway API + Pi-hole + ArgoCD + observability (Prometheus/Grafana/Tempo/Loki/Alloy) + AI stack (LiteLLM + Hermes + HolmesGPT + kagent)
 
 > **MetalLB removed.** Cilium LB-IPAM + L2 Announcements replaces MetalLB entirely.
-> No external load balancer needed.
+
+---
+
+## Cluster Topology
+
+### Control plane + agent nodes (Super6C CM4 — 8GB RAM each)
+
+| Node | IP | Role |
+|------|----|------|
+| `srv-super6c-01-nvme` | 192.168.178.85 | K3s server + agent |
+| `srv-super6c-02-nvme` | 192.168.178.86 | K3s server + agent |
+| `srv-super6c-03-nvme` | 192.168.178.87 | K3s server + agent |
+| `srv-super6c-04-emmc` | 192.168.178.133 | standalone (not in K3s) |
+
+### Agent-only nodes (TuringPi 2 RK1 — 32GB RAM each, Rockchip RK3588S)
+
+| Node | IP | MAC (fixed) |
+|------|----|-------------|
+| `srv-rk1-nvme-01` | 192.168.178.30 | `ce:16:3f:8e:19:cf` |
+| `srv-rk1-nvme-02` | 192.168.178.48 | `86:df:be:ad:dd:97` |
+| `srv-rk1-nvme-03` | 192.168.178.51 | `72:1d:5a:f8:35:48` |
+| `srv-rk1-nvme-04` | 192.168.178.54 | `8e:f8:04:7e:96:92` |
+
+### Inventory groups
+
+```ini
+[server_nodes]   srv-super6c-01-nvme, srv-super6c-02-nvme, srv-super6c-03-nvme
+[agent_nodes]    server_nodes + all rk1_nodes
+[rk1_nodes]      srv-rk1-nvme-01..04   ← used by fix-mac playbook
+[k3s_nodes]      server_nodes + agent_nodes
+```
+
+### Shared infrastructure
+
+| IP | What it is |
+|----|------------|
+| `192.168.178.1` | Router / default gateway |
+| `192.168.178.102` | LG N2R1 NAS (SMB1, share: `//192.168.178.102/service`) |
+| `192.168.178.200` | Cilium shared Gateway (HTTP/HTTPS) |
+| `192.168.178.203` | Pi-hole DNS (TCP+UDP port 53) |
+| `192.168.178.204` | NeuVector dedicated LoadBalancer |
+
+---
 
 ## Repository Layout
 
 ```text
-~/projects/infra/
-├── AGENTS.md                        ← project rules (this file)
-├── opencode.jsonc                   ← OpenCode project config (context7 local)
+infra/
+├── AGENTS.md                          ← project rules (this file)
+├── CLAUDE.md                          ← AI assistant instructions + component versions
+├── README.md                          ← services table + quick start
+├── Makefile                           ← shortcut targets (make help)
 ├── ansible.cfg
 ├── inventory/
-│   └── hosts.ini                    ← srv-rk1-01 @ .133, srv-super6c-cm4-eemc-nvme @ .105
-└── playbooks/
-    ├── bootstrap.yml                ← full cluster bootstrap (order matters — see below)
-    ├── security.yml                 ← NeuVector monitor (run AFTER bootstrap + password change)
-    └── uninstall.yml                ← full teardown
+│   └── hosts.ini
+├── playbooks/
+│   ├── bootstrap.yml                  ← full cluster bootstrap (order matters)
+│   ├── healthcheck.yml                ← node identity + resource stats via Ansible
+│   ├── fix-mac.yml                    ← fix MAC address rotation on RK1 nodes
+│   ├── security.yml                   ← NeuVector monitor (after password change)
+│   └── uninstall.yml                  ← full teardown + reboot
+├── scripts/
+│   ├── node-identity-check            ← fast: hostname/IP vs inventory table
+│   ├── node-stats                     ← fast: CPU/RAM/temp table
+│   ├── setup-dns-split.sh             ← workstation DNS split (Fedora Silverblue)
+│   └── holmes-chat                    ← HolmesGPT CLI wrapper
 └── roles/
-    ├── install-k3s/                 ← K3s server/agent install
-    ├── get-kubeconfig/              ← fetch kubeconfig to ~/.kube/config
-    ├── install-gateway-api-crds/    ← Gateway API CRDs v1.4.1 (standard channel)
-    ├── install-cilium/              ← Cilium CNI via Helm (kube-proxy replacement + Gateway API + L2 announcements)
-    ├── install-cilium-pools/        ← CiliumLoadBalancerIPPool + CiliumL2AnnouncementPolicy
-    ├── install-cert-manager/        ← cert-manager + internal CA + wildcard *.cluster.home cert
-    ├── install-gateway/             ← shared Cilium Gateway at .200 (all HTTP/HTTPS services)
-    ├── install-pihole/              ← Pi-hole DNS at .203 + *.cluster.home → .200 wildcard
-    ├── install-argocd/              ← ArgoCD via Helm (ClusterIP + HTTPRoute, not LoadBalancer)
+    ├── install-k3s/                   ← K3s server/agent install + inotify sysctl
+    ├── get-kubeconfig/                ← fetch kubeconfig to ~/.kube/config
+    ├── install-gateway-api-crds/      ← Gateway API CRDs (standard channel)
+    ├── install-cilium/                ← CNI + kube-proxy replacement + L2 + Gateway API
+    ├── install-cilium-pools/          ← CiliumLoadBalancerIPPool + L2AnnouncementPolicy
+    ├── install-cert-manager/          ← internal CA + wildcard *.cluster.home cert
+    ├── install-gateway/               ← shared Cilium Gateway at .200
+    ├── install-pihole/                ← DNS at .203 + wildcard *.cluster.home → .200
+    ├── install-argocd/                ← ClusterIP + HTTPRoute
+    ├── install-helm-dashboard/        ← Helm release management UI
     ├── install-kube-prometheus-stack/ ← Prometheus + Grafana + AlertManager
-    ├── install-tempo/               ← Grafana Tempo distributed tracing
-    ├── install-loki/                ← Grafana Loki log aggregation
-    ├── install-alloy/               ← Grafana Alloy OTLP pipeline
-    ├── install-version-checker/     ← Container image version tracking (Prometheus + Grafana)
-    ├── install-helm-dashboard/      ← Helm release management UI (read-only)
-    ├── install-neuvector/           ← Container runtime security (LoadBalancer at .204)
-    ├── install-neuvector-monitor/   ← NeuVector Prometheus exporter (separate playbook)
-    ├── install-registry/            ← Docker registry:2 for ARM64 images (100Gi PVC)
-    ├── install-hermes-agent-image/  ← Kaniko job to build Hermes Agent ARM64
-    ├── install-hermes-agent/        ← Hermes Agent AI assistant (OpenRouter)
-    ├── install-cifs-nas/            ← CSI SMB driver + PV/PVC for LG N2R1 NAS (SMB1)
-    └── uninstall/                   ← K3s uninstall script + cleanup
+    ├── install-tempo/                 ← Grafana Tempo (grafana-community chart, pinned v1.26.7)
+    ├── install-loki/                  ← Grafana Loki SingleBinary + MinIO
+    ├── install-alloy/                 ← Grafana Alloy OTLP pipeline
+    ├── install-version-checker/       ← image version tracking
+    ├── install-neuvector/             ← container runtime security (LoadBalancer at .204)
+    ├── install-neuvector-monitor/     ← NeuVector Prometheus exporter (security.yml)
+    ├── install-cifs-nas/              ← CSI SMB driver + StorageClasses (smb-nas, smb-nas-pg)
+    ├── install-registry/              ← Docker registry:2 for ARM64 builds
+    ├── install-hermes-agent-image/    ← Kaniko ARM64 build job
+    ├── install-hermes-agent/          ← Hermes Agent + LiteLLM proxy
+    ├── install-holmes/                ← HolmesGPT SRE assistant
+    ├── install-kagent/                ← kagent + kmcp AI agent platform
+    ├── fix-mac-address/               ← fix MAC rotation on RK1 nodes (TuringPi 2)
+    ├── healthcheck-nodes/             ← identity asserts + resource stats
+    └── uninstall/                     ← K3s uninstall + cleanup + reboot
 ```
 
-## Cluster Facts
+---
 
-| Key | Value |
-|-----|-------|
-| Node (server) | `srv-rk1-01` / `cm4-unknow-3` |
-| Node (agent) | `srv-super6c-cm4-eemc-nvme` |
-| IP (server) | `192.168.178.133` |
-| IP (agent) | `192.168.178.104` |
-| OS | Ubuntu 24.04.3 LTS (ARM64) |
-| K3s | `v1.35.1+k3s1` |
-| Cilium | `1.19.2` (helm chart) |
-| Gateway API CRDs | `v1.4.1` (standard channel) |
-| LB-IPAM | Cilium native — pool `192.168.178.200-210` (`CiliumLoadBalancerIPPool`) |
-| ArgoCD | `9.4.17` (chart) / `v3.3.6` (app) — `argocd.cluster.home` via Gateway |
-| Pi-hole | chart `2.30.0` (mojo2600) — DNS at `.203`, web UI at `pihole.cluster.home` |
-| Gateway | shared Cilium Gateway at `192.168.178.200` (all HTTP/HTTPS services) |
-| SSH | `dalmine@192.168.178.133`, key `~/.ssh/id_ed25519` |
-| kubeconfig | `~/.kube/config` (fetched by `get-kubeconfig` role) |
+## Makefile Targets
 
-## K3s Disabled Components
+```bash
+make help             # Show all targets
+make core             # K3s + kubeconfig
+make networking       # + Cilium, LB-IPAM, Gateway API CRDs
+make ingress          # + cert-manager, Gateway
+make services         # + Pi-hole, ArgoCD, helm-dashboard
+make storage          # SMB CSI driver (required before services/observability PVCs)
+make observability    # + Prometheus, Grafana, Tempo, Loki, Alloy
+make ai               # Full AI stack (registry + hermes build + deploy)
+make kagent           # kagent + kmcp AI agent platform
+make security         # NeuVector core
+make full             # All roles
+make clean            # Full uninstall (5s countdown, destructive)
 
-`servicelb`, `traefik`, `metrics-server`, `local-storage`, `flannel` (CNI),
-`kube-proxy`, `network-policy`, `cloud-controller`
+# Node health
+make healthcheck      # Ansible: identity asserts + resource stats (all nodes)
+make node-identity    # Fast script: hostname/IP vs inventory table
+make node-stats       # Fast script: CPU/RAM/temp table
 
-## Bootstrap Role Order (CRITICAL)
-
-```
-install-k3s              (remote SSH)
-  → get-kubeconfig
-  → install-gateway-api-crds   # CRDs must exist before Cilium enables gatewayAPI
-  → install-cilium              # wait:false + kubectl rollout status
-  → install-cilium-pools        # CiliumLoadBalancerIPPool + CiliumL2AnnouncementPolicy
-                                # Must run AFTER install-cilium (CRDs registered by operator)
-  → install-cert-manager        # wildcard *.cluster.home TLS cert must exist before gateway
-  → install-gateway             # shared Gateway at .200 — needs cert-manager wildcard
-  → install-pihole              # HTTPRoute needs the Gateway to exist
-  → install-argocd              # ClusterIP + HTTPRoute at argocd.cluster.home
-  → install-kube-prometheus-stack ← Prometheus + Grafana + AlertManager
-  → install-tempo               ← Grafana Tempo distributed tracing
-  → install-loki                ← Grafana Loki log aggregation
-  → install-alloy               ← Grafana Alloy OTLP pipeline
-  → install-version-checker       ← Container image version tracking
-  → install-helm-dashboard        ← Helm release management UI (read-only)
-  → install-neuvector             ← NeuVector core (controller, enforcer, manager, scanner)
-  → install-cifs-nas              ← CSI SMB driver + PV/PVC for LG N2R1 NAS (SMB1, tag: storage)
+# RK1 maintenance
+# ansible-playbook playbooks/fix-mac.yml -i inventory/hosts.ini --limit srv-rk1-nvme-XX
 ```
 
-After bootstrap, run `security.yml` to install the NeuVector Prometheus exporter:
+---
+
+## Bootstrap Role Order (CRITICAL — order matters)
+
 ```
-install-neuvector-monitor       ← Prometheus exporter + Grafana dashboard
+install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
+→ install-cilium-pools → install-cert-manager → install-gateway
+→ install-pihole → install-argocd → install-helm-dashboard
+→ install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
+→ install-version-checker → install-neuvector
+→ install-cifs-nas (storage — must precede PVC-backed services)
+→ install-registry → install-hermes-agent-image
+→ install-litellm-proxy → install-hermes-agent
+→ install-holmes → install-kagent
 ```
 
-Do NOT reorder. Cilium's operator will error if Gateway API CRDs are missing
-when `gatewayAPI.enabled=true`. `install-cilium-pools` CRDs only exist after
-the Cilium operator is running.
+**Storage dependency**: `install-cifs-nas` must run before any role that uses `smb-nas` PVCs
+(Pi-hole, NeuVector, Prometheus, Loki, Tempo, registry, Hermes, kagent postgres).
 
-## Node Tuning
-
-- `install-k3s` persists `fs.inotify.max_user_watches` and
-  `fs.inotify.max_user_instances` via `/etc/sysctl.d/99-k3s-inotify.conf` on
-  every k3s node.
-- This is cluster-wide tuning for fsnotify-heavy workloads such as Pi-hole,
-  file watchers, and config reloaders.
-- If you see `failed to create fsnotify watcher: too many open files`, check
-  the sysctl file first before changing application pods.
-
-## Bootstrap Tags
-
-Each role is tagged for selective deployment. Tags are cumulative — include
-all tags up to the layer you need.
+Bootstrap tags:
 
 | Tag | Roles | Requires |
 |-----|-------|----------|
 | `core` | k3s + kubeconfig | — |
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `ingress` | cert-manager + gateway | `networking` |
-| `services` | pihole + argocd | `ingress` |
+| `services` | pihole + argocd + helm-dashboard | `ingress` |
+| `storage` | cifs-nas (SMB CSI driver) | `networking` |
 | `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
-| `security`      → neuvector                                   (requires networking + storage; PVC via smb-nas) |
-| `storage`       → storage backends / PVC backends              | `networking` |
-| `ai-registry`   | registry only | `networking`, `storage` |
+| `security` | neuvector | `services`, `storage` |
+| `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking`, `storage` |
+| `kagent` | kagent + kmcp | `networking`, LiteLLM deployed |
 
-Pi-hole and NeuVector use `smb-nas`. Those roles require the storage backend
-role to be installed first.
+---
 
-Prometheus, Loki, Tempo, NeuVector, the registry, Hermes, and kaniko use `smb-nas`.
-Hermes also uses a dedicated workspace PVC on `smb-nas` to avoid node ephemeral-storage pressure.
-Those roles require the storage backend role to be installed first.
+## RK1 Node Maintenance (TuringPi 2)
 
-Hermes gateway state lives in `/opt/data` and the webhook platform is mounted
-from `hermes-gateway-config` so the pod stays alive under Ansible-managed rollouts.
-HolmesGPT lives in the same `ai` namespace, reuses the Hermes OpenRouter secret
-pattern, and should be validated with Helm/manual proof before Ansible.
+### MAC address rotation bug
 
-When validating Ansible changes that may take more than a minute, first prove
-the desired state manually or with Helm, then run Ansible in the background
-with redirected logs and monitor it separately. If the background run succeeds,
-re-run the same Ansible command in the normal foreground path before committing.
+RK1 modules (Rockchip RK3588S on TuringPi 2) use locally-administered MACs
+that can change between reboots, causing DHCP to assign a different IP each boot.
 
-For Pi-hole and Gateway troubleshooting, always check the LAN-side VIP path too:
-`ip neigh show <vip>`, `arp -n <vip>`, `dig @<vip> <hostname>`, and Cilium L2
-announcement leases. If the VIP is unreachable, the service may be healthy in
-cluster but not announced on the correct host interface.
+**Symptoms**: node expected at `.30` shows up at `.67` or not at all.
 
-Remember: `192.168.178.203` is Pi-hole DNS and `192.168.178.200` is the shared
-HTTP/HTTPS Gateway. `dig @192.168.178.203` validates DNS reachability; `curl`
-to `https://<name>.cluster.home` only works after DNS resolves the name to `.200`.
+**Fix applied**: `playbooks/fix-mac.yml` — pins current MAC via:
+1. `/etc/systemd/network/10-<iface>-mac.link` (systemd-networkd link file)
+2. `/etc/netplan/60-static.yaml` (static IP, disables DHCP)
+3. `/etc/cloud/cloud.cfg.d/99-disable-network.cfg` (prevents cloud-init overwrite)
 
 ```bash
-# Minimal cluster (kubectl works, no networking)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
+# Run on a specific node (current IP may differ from inventory if MAC rotated)
+ansible-playbook playbooks/fix-mac.yml -i inventory/hosts.ini \
+  --limit srv-rk1-nvme-01 \
+  -e "ansible_host=192.168.178.67 rk1_static_ip=192.168.178.30"
 
-# Cluster with networking (deploy ClusterIPs, internal services)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
-
-# Full stack with public URLs (HTTPS + DNS + GitOps)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
-
-# Add observability to an existing cluster
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
-
-# Full bootstrap (all roles)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
+# Run on all RK1 nodes (when IPs are correct)
+ansible-playbook playbooks/fix-mac.yml -i inventory/hosts.ini
 ```
 
-## Security Playbook (NeuVector Monitor)
+### TuringPi 2 power consumption
 
-NeuVector is split into two parts:
-1. **Core** (in bootstrap.yml) — controller, enforcer, manager, scanner
-2. **Monitor** (in security.yml) — Prometheus exporter + Grafana dashboard
+Each RK1 module: ~10–25W under load (RK3588S TDP ~15W + NVMe + RAM).
+4 modules at full load: **60–100W peak** — can exceed PSU capacity on startup.
 
-The monitor requires the admin password to be changed in the NeuVector UI first.
+**If nodes fail to boot with all 4 powered simultaneously**:
+power on one at a time, wait 30s between each.
+
+### Finding a node that changed IP
 
 ```bash
-# Step 1: Run bootstrap (installs NeuVector core with random password)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
-
-# Step 2: Login to NeuVector UI at https://neuvector.cluster.home
-#         Change the admin password
-
-# Step 3: Edit roles/install-neuvector-monitor/defaults/secrets.yml
-#         Set neuvector_monitor_password to your new password
-
-# Step 4: Install the monitor/exporter
-ansible-playbook playbooks/security.yml -i inventory/hosts.ini
+# Scan subnet for RK1 nodes (31GB RAM = RK1)
+for ip in $(seq 1 254); do
+  ssh -o ConnectTimeout=2 -o BatchMode=yes dalmine@192.168.178.$ip \
+    "free -h | grep Mem" 2>/dev/null | grep -q "31G" && \
+    echo "192.168.178.$ip is an RK1"
+done
 ```
 
-Roles are idempotent — running `--tags observability` on a cluster that already
-has `core` + `networking` will skip those roles automatically.
+---
 
-## AI Stack (ARM64 Build Required)
-
-Hermes Agent official Docker image is amd64-only. For ARM64 (Raspberry Pi CM4),
-we build a custom image in-cluster using kaniko.
-
-**Workflow:**
-```bash
-# Option 1: Install AI stack incrementally (recommended for debugging)
-make storage              # Prepare the active PVC backend(s) first
-make ai-registry          # Docker registry:2 with PVC backend (~1 min)
-make ai-hermes-build      # Kaniko build (~15 min on CM4)
-make ai-hermes-deploy     # Deploy Hermes Agent (~2 min)
-
-# Option 2: Install all at once
-make ai                   # registry + build + deploy (~20 min total)
-
-# Option 3: Via Ansible tags
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-registry
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-hermes-build
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-hermes-deploy
-```
-
-**Makefile targets:**
-```bash
-make help                 # Show all available targets
-make core                 # K3s + kubeconfig only
-make networking           # + Cilium, LB-IPAM, Gateway API
-make ingress              # + cert-manager, Gateway
-make services             # + Pi-hole, ArgoCD, helm-dashboard, registry
-make observability        # + Prometheus, Grafana, Tempo, Loki, Alloy, version-checker
-make ai                   # Full AI stack (registry + hermes build + deploy)
-make ai-registry          # Registry only
-make ai-hermes-build      # Kaniko build only (~15 min)
-make ai-hermes-deploy     # Hermes deployment only
-make security             # NeuVector core
-make security-monitor     # NeuVector Prometheus exporter
-make storage              # CIFS/NAS CSI SMB driver + PV/PVC
-make full                 # All roles
-make clean                # Full uninstall
-make idempotent           # Test idempotency (run twice)
-make status               # Show cluster status
-make logs                 # Show failing pod logs
-```
-
-## Ansible Workflow
+## Node Health Checks
 
 ```bash
-cd ~/projects/infra
+# Fast scripts (no Ansible overhead)
+make node-identity      # hostname / actual IP / inventory IP — all must match
+make node-stats         # CPU% / RAM / temp per node
 
-# Full bootstrap from scratch
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
+# Ansible with asserts (fails if any mismatch)
+make healthcheck
 
-# Selective bootstrap with tags (see Bootstrap Tags section above)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
-
-# Resume from a specific role (e.g. after tweaking IP pool)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini \
-  --start-at-task "Create CiliumLoadBalancerIPPool"
-
-# Full teardown
-ansible-playbook playbooks/uninstall.yml -i inventory/hosts.ini
+# Manual one-liner
+ansible -i inventory/hosts.ini all -m shell -a "hostname; hostname -I | awk '{print \$1}'"
 ```
+
+---
 
 ## Golden Rules
 
-- All roles run on `localhost` (Helm/kubectl) except `install-k3s` and `uninstall` (remote via SSH)
+- All roles run on `localhost` (Helm/kubectl) except `install-k3s`, `uninstall`, `fix-mac-address` (remote SSH)
 - Role defaults in `roles/<role>/defaults/main.yml` — change versions there
-- `install-cilium-pools` must run after `install-cilium` (CRDs only exist once operator is up)
 - `install-gateway-api-crds` must run before `install-cilium`
+- `install-cilium-pools` must run after `install-cilium` (CRDs only exist once operator is up)
 - `install-cert-manager` must run before `install-gateway` (wildcard TLS cert must exist in gateway namespace)
-- `install-gateway` must run before `install-pihole` (HTTPRoute needs the Gateway to exist)
-- `k3s_token` in `roles/install-k3s/defaults/main.yml` is a placeholder — use Ansible Vault for production
+- `install-cifs-nas` must run before any PVC-backed service
+- **HTTP services**: always `ClusterIP` + `HTTPRoute`. Never `LoadBalancer`. Never `Ingress`.
+  Exception: NeuVector (self-signed HTTPS backend) → dedicated LoadBalancer at `.204`
 - Never kubectl-apply resources manually that Ansible manages — it will diverge
-- Always `git pull --rebase` before pushing — another agent may have pushed
 - **Never commit before running the playbook and verifying it passes.** Write → deploy → fix → commit.
-- **Playbooks must be OS-agnostic.** Never hardcode OS-specific tasks that `fatal` on other platforms.
-  OS-specific tasks must use `when: ansible_facts['system'] == 'Darwin'` (or Linux/Windows) and
-  must never block the play on other OSes. A missing `when` guard that causes a fatal on Linux
-  or Windows is a bug.
-- **Zero manual steps.** If `ansible-playbook playbooks/bootstrap.yml` requires any manual
-  intervention before, during, or after the run, it is a bug. Fix it in Ansible. No exceptions.
-  This includes Helm stuck states, kubeconfig setup, DNS config, CA cert placement — everything.
+- `k3s_token` in `roles/install-k3s/defaults/main.yml` is a placeholder — use Ansible Vault for production
+
+---
 
 ## Cilium — Critical Knowledge
 
 ### rollOutPods flags (REQUIRED)
-Always set these three values in the Cilium Helm chart:
+
 ```yaml
 rollOutCiliumPods: true
 operator.rollOutPods: true
 envoy.rollOutPods: true
 ```
-These inject a hash of `cilium-config` ConfigMap into pod template annotations.
-Without them, `helm upgrade` updates the ConfigMap but pods keep running with
-stale in-memory config — **silent deadlock**: agent waits forever for CRDs that
-the stale operator never registers.
 
-### Envoy CRDs (ciliumenvoyconfigs, ciliumclusterwideenvoyconfigs)
-Registered by the operator ONLY when `enable-envoy-config=true`, which is set
-automatically when `gatewayAPI.enabled=true` or `ingressController.enabled=true`.
-If the operator is stale (started before those flags), it won't register them and
-the agent hangs. The `rollOutPods` flags above prevent this entirely.
-
-### ztunnel — NOT for Cilium
-`ztunnel` is the Istio Ambient Mesh L4 proxy. It is NOT part of Cilium.
-Cilium has its own service mesh via `cilium-envoy` + `CiliumEnvoyConfig`.
-Never install ztunnel alongside Cilium.
+Without these, `helm upgrade` updates the ConfigMap but pods keep running with
+stale in-memory config — silent deadlock.
 
 ### externalTrafficPolicy — MUST be Cluster with L2 Announcements
-`externalTrafficPolicy: Local` is **incompatible** with Cilium L2 Announcements.
-L2 Announcements may announce a VIP on nodes that have no local pod, and with
-`Local` policy traffic arriving at such nodes is dropped silently.
-Always use `Cluster` — Cilium handles load balancing entirely in BPF.
 
-### Helm stuck states
-If a `helm install/upgrade` is interrupted (Ansible timeout, Ctrl+C, network drop),
-Helm leaves the release in `failed` or `pending-*` state. Subsequent runs hang or
-fail immediately. **This is handled automatically** — every Helm role detects a stuck
-release and purges its state secrets before attempting install/upgrade.
-
-Manual diagnosis:
-```bash
-helm history cilium -n kube-system
-kubectl get secrets -n kube-system -l owner=helm,name=cilium
-kubectl delete secret <stuck-secret-name> -n kube-system
-```
+`externalTrafficPolicy: Local` is incompatible with Cilium L2 Announcements.
+Always use `Cluster`.
 
 ### GatewayClass status
-After enabling `gatewayAPI.enabled=true`:
+
 - `Unknown` — operator/agent not yet running with new config
-- `True` — fully operational; `cilium` GatewayClass ready for Gateway resources
-
-## Cilium LB-IPAM + L2 Announcements (replaces MetalLB)
-
-MetalLB was removed. Cilium handles both IP allocation and ARP natively.
-
-### Why Cilium over MetalLB
-MetalLB requires `kubernetes.io/service-name` on EndpointSlices to elect a node
-for L2 announcement. Cilium's Gateway API creates EndpointSlices without that
-label — causing MetalLB to never respond to ARP for the Gateway VIP. This is
-a fundamental incompatibility with no clean fix.
-
-### How it works
-- **LB-IPAM**: always enabled, dormant until first `CiliumLoadBalancerIPPool` is created
-- **L2 Announcements**: responds to ARP for LoadBalancer IPs via leader election (Kubernetes Leases)
-- One node holds the lease per service and responds to ARP with its MAC address
-- Leader election via `cilium-l2announce-<namespace>-<service>` leases in `kube-system`
+- `True` — fully operational
 
 ### Requesting a specific IP
-Use the `lbipam.cilium.io/ips` annotation (replaces `metallb.universe.tf/loadBalancerIPs`):
+
 ```yaml
 annotations:
   lbipam.cilium.io/ips: "192.168.178.203"
+  lbipam.cilium.io/sharing-key: "pihole-dns"  # share TCP+UDP on same IP
 ```
 
-### Sharing an IP across services (e.g. TCP+UDP on same port 53)
-Use `lbipam.cilium.io/sharing-key` (replaces `metallb.universe.tf/allow-shared-ip`):
-```yaml
-annotations:
-  lbipam.cilium.io/ips: "192.168.178.203"
-  lbipam.cilium.io/sharing-key: "pihole-dns"
-```
+---
 
-### Health checks
-```bash
-# IP pool status
-kubectl get ciliumloadbalancerippool
+## Scheduling — Global Tolerations Required
 
-# L2 policy
-kubectl get ciliuml2announcementpolicy
+The K3s control plane node (`srv-super6c-04-emmc`) has intermittent network
+instability, causing transient `unreachable:NoExecute` taints that the scheduler
+sees on ALL nodes simultaneously.
 
-# Active leases (which node announces each service)
-kubectl -n kube-system get lease | grep cilium-l2announce
+**Fix**: add `tolerations: [{operator: Exists}]` to all Helm deployments.
+**Do NOT** combine with `nodeSelector` pointing to a single node — this causes
+DiskPressure eviction loops when all images pile onto one node.
 
-# Verify ARP from Mac
-arp -n 192.168.178.200
-arp -n 192.168.178.203
-```
+---
 
-### k8sClientRateLimit sizing
-L2 Announcements generate continuous lease-renewal API traffic.
-Formula: `QPS = #services * (1 / leaseRenewDeadline)`
-Currently: 5 services × (1/5s) = 1 QPS → set to 10 QPS / 20 burst (headroom).
+## NAS Storage
 
-## Service Architecture
+| StorageClass | uid/gid | Used by |
+|-------------|---------|---------|
+| `smb-nas` | 1000/1000 | Pi-hole, Prometheus, Loki, Tempo, registry, Hermes |
+| `smb-nas-pg` | 999/999 | kagent PostgreSQL (postgres requires uid=999) |
 
-Every HTTP/HTTPS service: `ClusterIP` + `HTTPRoute` → shared Gateway at `.200`
-Hostname: `<service>.cluster.home`
-Pi-hole wildcard `*.cluster.home → .200` covers all DNS automatically.
+NAS: LG N2R1 @ `192.168.178.102`, share `//192.168.178.102/service`, SMB1 only.
 
-### IP Map
+---
 
-| IP | Service |
-|----|---------|
-| `.200` | Cilium shared Gateway (`cluster-gateway` in `gateway` ns) |
-| `.203` | Pi-hole DNS port 53 (TCP+UDP shared IP via Cilium LB-IPAM) |
+## AI Stack
 
-Exceptions: Pi-hole DNS port 53 gets its own LoadBalancer at `.203`.
-Port 53 cannot share the HTTP Gateway.
+| Service | Namespace | URL | Notes |
+|---------|-----------|-----|-------|
+| LiteLLM proxy | `ai` | cluster-internal only | OpenRouter fallback: free→free2→cheap |
+| Hermes Agent | `ai` | `hermes.cluster.home` | ARM64 custom build via kaniko |
+| HolmesGPT | `ai` | `holmes.cluster.home` | SRE assistant |
+| kagent | `kagent` | `kagent.cluster.home` | AI agent platform + kmcp, multi-tenant |
 
-### NAS Storage
+kagent uses `smb-nas-pg` StorageClass for bundled PostgreSQL.
+Built-in agents need `tolerations: [{operator: Exists}]` patched onto Agent CRDs after deploy.
 
-| Resource | Details |
-|----------|---------|
-| NAS | LG N2R1 @ `192.168.178.102` (SMB1 only) |
-| Share | `//192.168.178.102/service` (subdirs: `Torrent`, `DLNA`, etc.) |
-| CSI Driver | `smb.csi.k8s.io` (Helm chart `csi-driver-smb` in `kube-system`) |
-| PV | `smb-nas-pv` (5Gi, RWX, `storageClassName: ""`) |
-| PVC | `smb-nas-pvc` (default namespace) |
-| mountOptions | `vers=1.0`, `uid=1000`, `gid=1000`, `file_mode=0777`, `dir_mode=0777`, `noperm` |
-| Credentials | `roles/install-cifs-nas/defaults/secrets.yml` (gitignored) |
+---
 
-## Pi-hole 6.x — Critical Knowledge
+## Pi-hole — Critical Knowledge
 
-### DNS not listening on port 53 (solved)
-Pi-hole 6.x FTL defaults to `dns.listeningMode=LOCAL` which internally maps to
-dnsmasq's `local-service` directive. If you also add `local-service=false` via
-`dnsmasq.customSettings` in the chart values, dnsmasq sees a **duplicate keyword**
-and FTL exits with:
-```
-CRIT: Error in dnsmasq configuration: illegal repeated keyword at line 3 of /etc/dnsmasq.d/02-custom.conf
-```
-FTL then starts without a DNS listener (only port 80 comes up).
+- Use `extraEnvVars: {FTLCONF_dns_listeningMode: "ALL"}` (map format, not list)
+- Do NOT use `customSettings: [local-service=false]` — causes duplicate keyword error
+- liveness probe: `initialDelaySeconds: 30, failureThreshold: 18, periodSeconds: 10` (210s window for first boot)
 
-**Fix**: Remove `customSettings: [local-service=false]` entirely. Instead set
-`FTLCONF_dns_listeningMode=ALL` via `extraEnvVars`.
-
-### FTLCONF env vars (Pi-hole 6.x)
-Pi-hole 6 uses `FTLCONF_*` environment variables for FTL settings:
-- `FTLCONF_dns_listeningMode=ALL` — accept queries from all networks
-- `FTLCONF_dns_upstreams=8.8.8.8;8.8.4.4` — upstream resolvers (set via `DNS1`/`DNS2`)
-
-### DNS TCP+UDP shared IP (Cilium LB-IPAM)
-Chart v2.30.0 creates two separate LoadBalancer services: `pihole-dns-tcp` and
-`pihole-dns-udp`. Share the same IP via Cilium annotations:
-```yaml
-lbipam.cilium.io/ips: "192.168.178.203"
-lbipam.cilium.io/sharing-key: "pihole-dns"
-```
-**Note:** `externalTrafficPolicy: Cluster` required (L2 Announcements incompatible with Local).
-
-### Wildcard DNS
-`dnsmasq.customDnsEntries: [address=/cluster.home/192.168.178.200]` covers all
-`*.cluster.home` and `cluster.home` itself. No per-service DNS entries needed.
-
-## Hubble Observability
-
-Hubble relay is enabled in Cilium (`hubble.relay.enabled=true`). To use the CLI:
-```bash
-# Port-forward relay to localhost
-kubectl port-forward -n kube-system svc/hubble-relay 4245:80 &
-
-# Observe all flows
-hubble observe --follow
-
-# Observe traffic to/from gateway
-hubble observe --to-label "io.cilium.k8s.namespace=gateway" --follow
-
-# Observe dropped packets only
-hubble observe --verdict DROPPED --follow
-```
-
-## Current Status
-
-### Working ✅
-- `install-k3s` — K3s v1.35.1, multi-node (server + agent), both Ready
-- `install-gateway-api-crds` — Gateway API CRDs v1.4.1 established
-- `install-cilium` — Cilium 1.19.2, GatewayClass `cilium` Ready, Hubble relay enabled, L2 Announcements enabled
-- `install-cilium-pools` — `CiliumLoadBalancerIPPool` + `CiliumL2AnnouncementPolicy` active
-- `install-cert-manager` — SelfSigned CA, wildcard `*.cluster.home` cert Ready
-- `install-gateway` — `cluster-gateway` at `.200`, `PROGRAMMED=True`
-- `install-pihole` — DNS port 53 listening (TCP+UDP at `.203`), wildcard `*.cluster.home → .200` resolving, web UI via HTTPRoute
-- `install-argocd` — ClusterIP + HTTPRoute at `argocd.cluster.home`, repo-server probes tuned for ARM64
-- `install-kube-prometheus-stack` — Prometheus + Grafana + AlertManager, datasources for Tempo + Loki
-- `install-tempo` — Tempo single-binary, metricsGenerator → Prometheus
-- `install-loki` — Loki SingleBinary + MinIO 1Gi, Grafana datasource with `X-Scope-OrgId: fake`
-- `install-alloy` — Alloy DaemonSet, OTLP receiver → Tempo
-- Full bootstrap: `ansible-playbook playbooks/bootstrap.yml` → `failed=0`
-- ARP verified: `.200` and `.203` both resolve to `2c:cf:67:27:1e:24` ✅
-- HTTP verified: `curl http://argocd.cluster.home` → `200 OK` ✅
-- HTTP verified: `curl http://pihole.cluster.home/admin` → `308` (correct Pi-hole redirect) ✅
-- DNS verified: `dig argocd.cluster.home @192.168.178.203` → `192.168.178.200` ✅
-- Mac Wi-Fi DNS configured to `.203` ✅
-- `install-cifs-nas` — CSI SMB driver + PV/PVC + pod test (SMB1, NAS LG N2R1 at `.102`) ✅
-
-### Known issues
-- `loki-chunks-cache-0` stays Pending — optional cache, non-critical, safe to ignore
-- `kubernetes.core.helm` 6.2.0 bug: reports "release does not exist" + "already exists" simultaneously on `upgrade -i`. All roles now check `helm_info.status.status` and skip install when `deployed`.
-
-### Next Steps
-- HTTPS routing (`https://argocd.cluster.home`) — cert-manager wildcard cert is ready, needs TLS listener on Gateway
-- ArgoCD app-of-apps / GitOps handover via handover.yml
-- Add Loki log forwarding to Alloy config (currently only traces → Tempo)
-- Add Loki log forwarding to Alloy config (currently only traces → Tempo)
+---
 
 ## Useful Commands
 
 ```bash
+# Node health
+make node-identity
+make node-stats
+
 # Cluster status
 kubectl get nodes -o wide
-kubectl get pods -A
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
 
-# Cilium health
-kubectl get pods -n kube-system -l k8s-app=cilium
-kubectl get gatewayclass
-kubectl get crd | grep -E "gateway|cilium"
-
-# LB-IPAM + L2 announcements
+# Cilium
 kubectl get ciliumloadbalancerippool
 kubectl get ciliuml2announcementpolicy
 kubectl -n kube-system get lease | grep cilium-l2announce
 
-# Helm release state
-helm history cilium -n kube-system
-helm get values cilium -n kube-system
+# Helm releases
+helm list -A
 
-# ArgoCD admin password
+# ArgoCD password
 kubectl get secret argocd-initial-admin-secret -n argocd \
   -o jsonpath='{.data.password}' | base64 -d
 
-# SSH to node
-ssh dalmine@192.168.178.133
-
-# K3s logs on node
-ssh dalmine@192.168.178.133 'sudo journalctl -u k3s -f'
+# SSH to a node
+ssh dalmine@192.168.178.85
 ```
 
-## Available OpenCode Skills
+---
 
-Load these when working on the relevant component:
+## Available Skills (dotfiles repo)
 
-- `k3s` — K3s server flags, service management, node operations
-- `cilium` — CNI operations, upgrades, BPF/kube-proxy replacement, Gateway API, LB-IPAM, L2 Announcements
-- `argocd` — ApplicationSets, sync waves, app management, GitOps patterns
-- `monitoring` — Prometheus + Grafana + Tempo + Loki + Alloy full observability stack
-- `cifs-nas` — CSI SMB driver, PV/PVC, SMB1 mountOptions, NAS LG N2R1
-- `k8s-debug` — systematic pod/network/node debugging (global skill)
-- `platform-engineering` — Helm, Terraform, CI/CD best practices (global skill)
+| Skill | Covers |
+|-------|--------|
+| `k3s` | server flags, kubeconfig, upgrades |
+| `cilium` | CNI, LB-IPAM, L2, Gateway API, BPF |
+| `gateway` | shared Gateway, HTTPRoutes, DNS |
+| `cert-manager` | internal CA, wildcard cert |
+| `argocd` | GitOps, ApplicationSets, sync waves |
+| `pihole` | wildcard DNS, Pi-hole 6 gotchas |
+| `monitoring` | Prometheus, Grafana, Tempo, Loki, Alloy |
+| `storage` | CSI SMB, StorageClasses, PVC patterns |
+| `ai` | registry + LiteLLM + Hermes Agent |
+| `kagent` | AI agent platform, CRDs, RBAC, LiteLLM integration |
+| `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops |
+| `k8s-debug` | debug pods, network, nodes |
+| `platform-engineering` | Helm, Terraform, CI/CD |

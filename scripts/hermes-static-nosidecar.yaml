@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hermes-config-nosidecar
+  namespace: ai
+data:
+  config.yaml: |
+    model:
+      default: openai/gpt-4o-mini
+      provider: openrouter
+
+    fallback_model:
+      provider: openrouter
+      model: qwen/qwen3-coder:free
+
+    terminal:
+      backend: local
+      cwd: .
+      timeout: 180
+      docker_mount_cwd_to_workspace: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hermes-agent-nosidecar
+  namespace: ai
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-agent-nosidecar
+  namespace: ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hermes-agent-nosidecar
+  template:
+    metadata:
+      labels:
+        app: hermes-agent-nosidecar
+      annotations:
+        hermes-config-rev: "1"
+    spec:
+      serviceAccountName: hermes-agent-nosidecar
+      nodeSelector:
+        kubernetes.io/hostname: srv-rk1-nvme-01
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+        - name: hermes-agent
+          image: registry.registry:5000/ai/hermes-agent:0.7.0
+          imagePullPolicy: IfNotPresent
+          workingDir: /opt/data
+          command: ["hermes", "gateway", "run"]
+          args: ["--replace"]
+          env:
+            - name: HOME
+              value: /opt/data
+            - name: HERMES_HOME
+              value: /opt/data
+          envFrom:
+            - secretRef:
+                name: hermes-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: hermes-data
+              mountPath: /opt/data
+            - name: hermes-home
+              mountPath: /opt/data/.hermes
+            - name: hermes-config
+              mountPath: /opt/data/config.yaml
+              subPath: config.yaml
+            - name: hermes-env
+              mountPath: /opt/data/.env
+              subPath: .env
+            - name: hermes-gateway-config
+              mountPath: /opt/data/gateway.json
+              subPath: gateway.json
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: hermes-data
+          emptyDir: {}
+        - name: hermes-home
+          emptyDir: {}
+        - name: hermes-config
+          configMap:
+            name: hermes-config-nosidecar
+        - name: hermes-env
+          secret:
+            secretName: hermes-secrets
+        - name: hermes-gateway-config
+          configMap:
+            name: hermes-gateway-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# node-stats — show CPU, RAM and temperature for all cluster nodes
+# Usage: ./scripts/node-stats
+
+set -euo pipefail
+
+INVENTORY="${1:-inventory/hosts.ini}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+cd "$REPO_ROOT"
+
+echo ""
+echo "Node Resource Stats"
+echo "==================="
+printf "%-28s %-8s %-22s %-8s\n" "NODE" "CPU%" "RAM used/total" "TEMP"
+echo "----------------------------------------------------------------------"
+
+ansible -i "$INVENTORY" all -m shell -a "
+cpu=\$(top -bn1 | grep 'Cpu(s)' | awk '{printf \"%.0f\", \$2+\$4}')
+ram_used=\$(free -m | awk '/Mem:/{print \$3}')
+ram_total=\$(free -m | awk '/Mem:/{print \$2}')
+temp=\$(awk '{printf \"%.1f\", \$1/1000}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 'N/A')
+echo \"\${cpu}:\${ram_used}:\${ram_total}:\${temp}\"
+" --one-line 2>/dev/null | grep "CHANGED\|SUCCESS" | \
+while IFS= read -r line; do
+  node=$(echo "$line" | awk '{print $1}')
+  # one-line format: "node | CHANGED | rc=0 | (stdout) cpu:ram_used:ram_total:temp"
+  output=$(echo "$line" | sed 's/.*stdout) //')
+  cpu=$(echo "$output" | cut -d: -f1)
+  ram_used=$(echo "$output" | cut -d: -f2)
+  ram_total=$(echo "$output" | cut -d: -f3)
+  temp=$(echo "$output" | cut -d: -f4)
+
+  printf "%-28s %-8s %-22s %-8s\n" \
+    "$node" \
+    "${cpu}%" \
+    "${ram_used}/${ram_total} MB" \
+    "${temp}°C"
+done
+
+echo ""

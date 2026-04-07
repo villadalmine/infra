@@ -1,0 +1,328 @@
+# Deploy kagent AI agent platform with kmcp (MCP server lifecycle manager).
+# Uses in-cluster LiteLLM proxy as OpenAI-compatible backend.
+# Multi-tenancy: controller watches all namespaces; tenants get RoleBindings in their ns.
+
+- name: Create kagent namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ kagent_namespace }}"
+    state: present
+
+- name: Create tenant namespaces with kagent label
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ item }}"
+        labels:
+          kagent.dev/tenant: "true"
+    state: present
+  loop: "{{ kagent_tenant_namespaces }}"
+
+# ── Create StorageClass for postgres: smb-nas but with uid=999 ───────────
+# The default smb-nas uses uid=1000 but postgres runs as uid=999 and
+# requires the data directory to be owned by its own UID.
+- name: Create smb-nas-pg StorageClass (uid=999 for postgres)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: smb-nas-pg
+      provisioner: smb.csi.k8s.io
+      reclaimPolicy: Retain
+      volumeBindingMode: Immediate
+      mountOptions:
+        - vers=1.0
+        - uid=999
+        - gid=999
+        - file_mode=0700
+        - dir_mode=0700
+        - noperm
+        - mfsymlinks
+        - cache=strict
+        - noserverino
+      parameters:
+        csi.storage.k8s.io/node-stage-secret-name: smbcreds
+        csi.storage.k8s.io/node-stage-secret-namespace: default
+        csi.storage.k8s.io/provisioner-secret-name: smbcreds
+        csi.storage.k8s.io/provisioner-secret-namespace: default
+        source: "//192.168.178.102/service/Torrent"
+    state: present
+
+# ── Step 1: install CRDs chart first (required before main chart) ─────────
+- name: Install or upgrade kagent-crds
+  kubernetes.core.helm:
+    name: "kagent-crds"
+    chart_ref: "oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds"
+    chart_version: "{{ kagent_chart_version }}"
+    release_namespace: "{{ kagent_namespace }}"
+    create_namespace: false
+    wait: true
+    wait_timeout: "120s"
+    values: {}
+
+- name: Wait for kagent CRDs to be established
+  ansible.builtin.command:
+    cmd: >
+      kubectl wait --for=condition=Established crd
+      agents.kagent.dev
+      modelconfigs.kagent.dev
+      mcpservers.kagent.dev
+      --timeout=60s
+  changed_when: false
+
+# ── Step 2: install main chart ────────────────────────────────────────────
+- name: Install or upgrade kagent
+  kubernetes.core.helm:
+    name: "{{ kagent_release_name }}"
+    chart_ref: "{{ kagent_chart }}"
+    chart_version: "{{ kagent_chart_version }}"
+    release_namespace: "{{ kagent_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      # ── LLM provider: reuse in-cluster LiteLLM proxy ──────────────────────
+      providers:
+        default: openAI
+        openAI:
+          provider: OpenAI
+          model: "{{ kagent_llm_model }}"
+          apiKey: "{{ kagent_llm_api_key }}"
+          config:
+            baseUrl: "{{ kagent_llm_base_url }}"
+
+      # ── Global tolerations: needed because the control plane node has transient
+      # network issues that cause ephemeral unreachable taints on all nodes.
+      # Without tolerations, scheduler rejects all nodes as "untolerated taint".
+      # No nodeSelector: let K8s distribute pods across all healthy nodes.
+      tolerations:
+        - operator: Exists
+
+      # ── Controller: watch all namespaces ──────────────────────────────────
+      controller:
+        watchNamespaces: []
+        tolerations:
+          - operator: Exists
+        agentDeployment:
+          serviceAccountName: "kagent-agent-exec"
+
+      # ── UI ────────────────────────────────────────────────────────────────
+      ui:
+        tolerations:
+          - operator: Exists
+
+      # ── Database: bundled PostgreSQL on smb-nas ───────────────────────────
+      database:
+        postgres:
+          bundled:
+            storageClassName: "{{ kagent_db_storage_class }}"
+            storage: "{{ kagent_db_storage_size }}"
+
+      # ── RBAC: cluster-scoped (controller needs write access to manage agents)
+      rbac:
+        clusterScoped: true
+
+      # ── kmcp: MCP server lifecycle manager (bundled) ─────────────────────
+      kmcp:
+        enabled: true
+        tolerations:
+          - operator: Exists
+
+      # ── Tools subchart ────────────────────────────────────────────────────
+      kagent-tools:
+        tolerations:
+          - operator: Exists
+
+      # ── Built-in agents ───────────────────────────────────────────────────
+      agents:
+        k8s-agent:
+          enabled: "{{ kagent_agents_enabled }}"
+        kgateway-agent:
+          enabled: "{{ kagent_agents_enabled }}"
+        istio-agent:
+          enabled: "{{ kagent_agents_enabled }}"
+        argo-rollouts-agent:
+          enabled: "{{ kagent_agents_enabled }}"
+        helm-agent:
+          enabled: "{{ kagent_agents_enabled }}"
+        cilium-agent:
+          enabled: "{{ kagent_agents_enabled }}"
+        prometheus-agent:
+          enabled: "{{ kagent_agents_enabled }}"
+
+# ── Patch postgres deployment: add tolerations + nodeSelector ────────────
+# The bundled postgres template doesn't support global tolerations,
+# so we patch it directly after helm install.
+# Patch deployments that don't inherit global tolerations (postgres, grafana-mcp, querydoc)
+- name: Patch {{ item }} deployment with tolerations (no nodeSelector)
+  kubernetes.core.k8s:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ item }}"
+    namespace: "{{ kagent_namespace }}"
+    definition:
+      spec:
+        template:
+          spec:
+            tolerations:
+              - operator: Exists
+    merge_type: strategic-merge
+    state: present
+  loop:
+    - kagent-postgresql
+    - kagent-grafana-mcp
+    - kagent-querydoc
+
+# ── Agent ServiceAccount with read + kubectl exec permissions ─────────────
+# Agents can: get/list/watch everything + exec into pods + read logs
+# Agents CANNOT: create/update/delete K8s resources
+
+- name: Create kagent-agent-exec ServiceAccount
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: kagent-agent-exec
+        namespace: "{{ kagent_namespace }}"
+    state: present
+
+- name: Create ClusterRole for agent pods (read + exec, no write)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: kagent-agent-exec
+      rules:
+        # Read-only access to all core resources
+        - apiGroups: [""]
+          resources: ["*"]
+          verbs: ["get", "list", "watch"]
+        # kubectl exec and logs
+        - apiGroups: [""]
+          resources: ["pods/exec", "pods/log"]
+          verbs: ["create", "get"]
+        # Read-only for apps, batch, networking, etc.
+        - apiGroups: ["apps", "batch", "networking.k8s.io", "gateway.networking.k8s.io"]
+          resources: ["*"]
+          verbs: ["get", "list", "watch"]
+        # Read kagent CRDs
+        - apiGroups: ["kagent.dev"]
+          resources: ["agents", "modelconfigs", "toolservers", "mcpservers", "remotemcpservers", "memories"]
+          verbs: ["get", "list", "watch"]
+        # Read RBAC (to explain permissions)
+        - apiGroups: ["rbac.authorization.k8s.io"]
+          resources: ["*"]
+          verbs: ["get", "list", "watch"]
+    state: present
+
+- name: Bind kagent-agent-exec SA to ClusterRole
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: kagent-agent-exec
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: kagent-agent-exec
+      subjects:
+        - kind: ServiceAccount
+          name: kagent-agent-exec
+          namespace: "{{ kagent_namespace }}"
+    state: present
+
+# ── Tenant RBAC: each tenant namespace can manage its own agents ──────────
+# Tenants get writer + getter RoleBindings (namespace-scoped) so they can
+# create/edit/delete Agent and MCPServer CRDs in their own namespace only.
+
+- name: Bind tenant namespaces to kagent writer role
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: kagent-tenant-writer
+        namespace: "{{ item }}"
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: "{{ kagent_release_name }}-writer-role"
+      subjects:
+        - kind: ServiceAccount
+          name: default
+          namespace: "{{ item }}"
+    state: present
+  loop: "{{ kagent_tenant_namespaces }}"
+
+- name: Bind tenant namespaces to kagent getter role
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: kagent-tenant-getter
+        namespace: "{{ item }}"
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: "{{ kagent_release_name }}-getter-role"
+      subjects:
+        - kind: ServiceAccount
+          name: default
+          namespace: "{{ item }}"
+    state: present
+  loop: "{{ kagent_tenant_namespaces }}"
+
+# ── Wait for core components ───────────────────────────────────────────────
+
+- name: Wait for kagent controller rollout
+  ansible.builtin.command:
+    cmd: >
+      kubectl rollout status deployment/{{ kagent_release_name }}-controller
+      -n {{ kagent_namespace }} --timeout=180s
+  register: kagent_controller_rollout
+  until: kagent_controller_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Wait for kagent UI rollout
+  ansible.builtin.command:
+    cmd: >
+      kubectl rollout status deployment/{{ kagent_release_name }}-ui
+      -n {{ kagent_namespace }} --timeout=180s
+  register: kagent_ui_rollout
+  until: kagent_ui_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+# ── HTTPRoute: expose UI at kagent.cluster.home ───────────────────────────
+
+- name: Create HTTPRoute for kagent UI
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: kagent
+        namespace: "{{ kagent_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ kagent_hostname }}"
+        rules:
+          - backendRefs:
+              - name: "{{ kagent_release_name }}-ui"
+                port: 8080
+    state: present
