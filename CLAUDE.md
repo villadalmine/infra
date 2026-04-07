@@ -1,14 +1,15 @@
 # infra-ai/infra — Homelab K3s Infrastructure
 
-Single-node K3s on Raspberry Pi CM4 (ARM64, Ubuntu 24.04).
+10-node K3s cluster on ARM64 (Ubuntu 24.04) — Super6C CM4 + TuringPi 2 RK1.
 Managed entirely via Ansible. **Never apply changes manually — always run the bootstrap playbook.**
 
 ## Cluster
 
 | | |
 |---|---|
-| Server | `srv-rk1-01` @ `192.168.178.133`, ARM64, Ubuntu 24.04 |
-| Agent | `srv-super6c-cm4-eemc-nvme` @ `192.168.178.104`, ARM64, Ubuntu 24.04 |
+| K3s servers | `srv-super6c-01-nvme` (.85), `srv-super6c-02-nvme` (.86), `srv-super6c-03-nvme` (.87), `srv-super6c-05-emmc` (.104), `srv-super6c-06-emmc` (.105) |
+| K3s agents | `srv-rk1-nvme-01` (.30), `srv-rk1-nvme-02` (.48), `srv-rk1-nvme-03` (.51), `srv-rk1-nvme-04` (.54) |
+| Standalone | `srv-super6c-04-emmc` (.133) — not in K3s cluster |
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |

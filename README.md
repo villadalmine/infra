@@ -148,8 +148,16 @@ foreground only after the background run is clean.
 
 | IP | What it is |
 |---|---|
-| `192.168.178.133` | K3s server (`srv-rk1-01`) |
-| `192.168.178.104` | K3s agent (`srv-super6c-cm4-eemc-nvme`) |
+| `192.168.178.85` | K3s server (`srv-super6c-01-nvme`) |
+| `192.168.178.86` | K3s server (`srv-super6c-02-nvme`) |
+| `192.168.178.87` | K3s server (`srv-super6c-03-nvme`) |
+| `192.168.178.104` | K3s server (`srv-super6c-05-emmc`) |
+| `192.168.178.105` | K3s server (`srv-super6c-06-emmc`) |
+| `192.168.178.30` | K3s agent (`srv-rk1-nvme-01`) |
+| `192.168.178.48` | K3s agent (`srv-rk1-nvme-02`) |
+| `192.168.178.51` | K3s agent (`srv-rk1-nvme-03`) |
+| `192.168.178.54` | K3s agent (`srv-rk1-nvme-04`) |
+| `192.168.178.133` | Standalone CM4 (`srv-super6c-04-emmc`) |
 | `192.168.178.200` | Shared Cilium Gateway (all HTTP/HTTPS via LB-IPAM) |
 | `192.168.178.203` | Pi-hole DNS — wildcard `*.cluster.home → .200` |
 | `192.168.178.204` | NeuVector HTTPS (dedicated LoadBalancer) |
