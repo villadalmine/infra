@@ -2,6 +2,16 @@
 # Run via: make healthcheck
 # Or:      ansible-playbook playbooks/healthcheck.yml -i inventory/hosts.ini
 
+# ── Ping check ─────────────────────────────────────────────────────────────
+
+- name: Ping all nodes
+  ansible.builtin.ping:
+  register: node_ping
+
+- name: Print ping result
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} | ping: {{ 'OK' if node_ping.ping == 'pong' else 'FAIL' }}"
+
 # ── Identity check ─────────────────────────────────────────────────────────
 
 - name: Get node hostname
