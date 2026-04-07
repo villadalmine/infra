@@ -1,6 +1,11 @@
 # Build Hermes Agent ARM64 image using kaniko in-cluster.
 # Clones the hermes-agent repo, builds with kaniko, pushes to local registry.
 
+- name: Ensure custom Storage backend is installed before running Hermes Agent image build
+  ansible.builtin.include_role:
+    name: "{{ kaniko_storage_role }}"
+  when: kaniko_storage_class != 'local-path' and kaniko_storage_role is defined
+
 - name: Create kaniko namespace
   kubernetes.core.k8s:
     definition:

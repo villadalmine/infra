@@ -9,6 +9,11 @@
 # metricsGenerator: generates RED metrics from traces → remote_write to Prometheus.
 # Processors: service-graphs, span-metrics (enabled via overrides.defaults).
 
+- name: Ensure custom Storage backend is installed before deploying Tempo
+  ansible.builtin.include_role:
+    name: "{{ tempo_storage_role }}"
+  when: tempo_storage_class != 'local-path' and tempo_storage_role is defined
+
 - name: Add grafana-community Helm repository
   kubernetes.core.helm_repository:
     name: grafana-community

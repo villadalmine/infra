@@ -2,6 +2,11 @@
 # Simple ARM64-compatible registry for storing custom images.
 # Exposed via HTTPRoute at registry.cluster.home
 
+- name: Ensure custom Storage backend is installed before deploying Registry
+  ansible.builtin.include_role:
+    name: "{{ registry_storage_role }}"
+  when: registry_storage_class != 'local-path' and registry_storage_role is defined
+
 - name: Create registry namespace
   kubernetes.core.k8s:
     definition:

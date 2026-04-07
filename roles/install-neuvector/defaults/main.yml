@@ -7,6 +7,7 @@ neuvector_pvc_enabled: true
 # Cluster default is local-path, but this role uses smb-nas. The storage
 # backend role must exist before installing/upgrading it.
 neuvector_pvc_storage_class: "smb-nas"
+neuvector_storage_role: "install-cifs-nas"
 neuvector_pvc_size: "5Gi"
 neuvector_scanner_enabled: true
 neuvector_scanner_replicas: 1  # CM4 has limited resources

@@ -11,3 +11,7 @@ kubernetes>=29.0
 # LiteLLM — local AI proxy (routes to OpenRouter, Claude, Gemini, Ollama, etc.)
 # Start with: mise run litellm   (or: litellm --config litellm/config.yaml)
 litellm[proxy]>=1.50
+
+# MCP server toolkit — used by mcp/cluster-advisor/server.py
+fastmcp>=2.0
+pyyaml>=6.0

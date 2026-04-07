@@ -2,6 +2,11 @@
 # SingleBinary mode with MinIO for object storage
 # wait:false + kubectl rollout status — avoids Helm timeout on ARM64 slow pulls.
 
+- name: Ensure custom Storage backend is installed before deploying Loki
+  ansible.builtin.include_role:
+    name: "{{ loki_storage_role }}"
+  when: loki_storage_class != 'local-path' and loki_storage_role is defined
+
 - name: Add Grafana Helm repository
   kubernetes.core.helm_repository:
     name: grafana

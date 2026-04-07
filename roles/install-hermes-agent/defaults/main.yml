@@ -21,6 +21,7 @@ hermes_node_hostname: "srv-rk1-nvme-01"
 # backend role must exist before installing/upgrading it.
 hermes_storage_size: "100Gi"
 hermes_storage_class: "smb-nas"
+hermes_storage_role: "install-cifs-nas"
 
 # Platform integrations (set via secrets.yml)
 hermes_telegram_enabled: true

@@ -48,6 +48,10 @@
       "environment": {
         "KUBECONFIG": "${HOME}/.kube/config"
       }
+    },
+    "cluster-advisor": {
+      "type": "local",
+      "command": ["python", "mcp/cluster-advisor/server.py"]
     }
   }
 }

@@ -7,6 +7,11 @@
 #
 # wait:false + kubectl rollout status — avoids Helm timeout on ARM64 slow pulls.
 
+- name: Ensure custom Storage backend is installed before deploying kube-prometheus-stack
+  ansible.builtin.include_role:
+    name: "{{ kube_prometheus_stack_storage_role }}"
+  when: kube_prometheus_stack_storage_class != 'local-path' and kube_prometheus_stack_storage_role is defined
+
 - name: Add prometheus-community Helm repository
   kubernetes.core.helm_repository:
     name: prometheus-community

@@ -6,3 +6,4 @@ kubernetes_mcp_namespace: kaniko
 kubernetes_mcp_storage_class: "smb-nas"
 kubernetes_mcp_storage_size: "10Gi"
 kubernetes_mcp_node_hostname: "srv-rk1-nvme-01"
+kubernetes_mcp_storage_role: "install-cifs-nas"
