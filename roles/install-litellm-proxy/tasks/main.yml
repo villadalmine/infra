@@ -43,6 +43,7 @@
       data:
         config.yaml: |
           model_list:
+            # ── Free tier (OpenRouter :free models) ──────────────────────────
             - model_name: free
               litellm_params:
                 model: openrouter/qwen/qwen3-coder:free
@@ -51,17 +52,42 @@
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENROUTER_API_KEY
+
+            # ── Cheap paid tier ──────────────────────────────────────────────
             - model_name: cheap
               litellm_params:
                 model: openrouter/qwen/qwen-turbo
                 api_key: os.environ/OPENROUTER_API_KEY
 
+            # ── Premium models (via OpenRouter — one key covers all) ─────────
+            - model_name: claude-sonnet
+              litellm_params:
+                model: openrouter/anthropic/claude-sonnet-4-5
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: gemini-flash
+              litellm_params:
+                model: openrouter/google/gemini-flash-1.5
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: gpt-4o-mini
+              litellm_params:
+                model: openrouter/openai/gpt-4o-mini
+                api_key: os.environ/OPENROUTER_API_KEY
+
+            # ── Default alias → claude-sonnet with fallback ──────────────────
+            - model_name: default
+              litellm_params:
+                model: openrouter/anthropic/claude-sonnet-4-5
+                api_key: os.environ/OPENROUTER_API_KEY
+
           litellm_settings:
             fallbacks:
+              - {"default": ["claude-sonnet", "cheap"]}
               - {"free": ["free2", "cheap"]}
               - {"free2": ["cheap"]}
+              - {"claude-sonnet": ["cheap"]}
             request_timeout: 120
             num_retries: 1
+            set_verbose: false
 
           general_settings:
             master_key: "{{ litellm_master_key }}"
@@ -150,6 +176,30 @@
           - name: http
             port: "{{ litellm_port }}"
             targetPort: "{{ litellm_port }}"
+
+- name: Expose LiteLLM proxy via HTTPRoute (litellm.cluster.home)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: litellm-proxy
+        namespace: "{{ litellm_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "litellm.cluster.home"
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+            backendRefs:
+              - name: litellm-proxy
+                port: "{{ litellm_port }}"
 
 - name: Create NetworkPolicy for LiteLLM proxy (egress to OpenRouter only)
   kubernetes.core.k8s:

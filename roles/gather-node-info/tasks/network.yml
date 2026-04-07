@@ -1,0 +1,42 @@
+---
+# network.yml — NICs, speed, driver, inter-node latency
+
+- name: "network | list interfaces with speed and driver"
+  ansible.builtin.shell: |
+    for iface in $(ls /sys/class/net/ | grep -v '^lo$\|^docker\|^cni\|^flannel\|^calico\|^cilium\|^tunl'); do
+      [ -e "/sys/class/net/$iface/address" ] || continue
+      mac=$(cat "/sys/class/net/$iface/address" 2>/dev/null || echo "?")
+      speed=$(cat "/sys/class/net/$iface/speed" 2>/dev/null || echo "?")
+      operstate=$(cat "/sys/class/net/$iface/operstate" 2>/dev/null || echo "unknown")
+      driver=$(
+        ethtool -i "$iface" 2>/dev/null | awk '/^driver:/{print $2}' \
+          || grep '^DRIVER' "/sys/class/net/$iface/device/uevent" 2>/dev/null | cut -d= -f2 \
+          || echo "?"
+      )
+      echo "${iface} | ${mac} | ${speed}Mbps | ${driver} | ${operstate}"
+    done
+  register: _net_ifaces
+  changed_when: false
+  ignore_errors: true
+
+- name: "network | inter-node latency (ping peers)"
+  ansible.builtin.shell: |
+    {% for peer_ip in survey_peers | default([]) %}
+    {% if peer_ip != ansible_host %}
+    result=$(ping -c 4 -q "{{ peer_ip }}" 2>/dev/null | awk '/^rtt/{print $4}')
+    if [ -n "$result" ]; then
+      echo "{{ peer_ip }}: ${result} ms (min/avg/max/mdev)"
+    else
+      echo "{{ peer_ip }}: unreachable"
+    fi
+    {% endif %}
+    {% endfor %}
+    true
+  register: _net_latency
+  changed_when: false
+  ignore_errors: true
+
+- name: "network | set facts"
+  ansible.builtin.set_fact:
+    survey_net_ifaces: "{{ _net_ifaces.stdout_lines | default([]) }}"
+    survey_net_latency: "{{ _net_latency.stdout_lines | default([]) }}"

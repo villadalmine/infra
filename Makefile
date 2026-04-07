@@ -6,7 +6,7 @@ INVENTORY := inventory/hosts.ini
 BOOTSTRAP := playbooks/bootstrap.yml
 UNINSTALL := playbooks/uninstall.yml
 
-.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats
+.PHONY: help core networking ingress services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey
 
 help: ## Show this help message
 	@echo "Infra Makefile - Simplified Ansible workflow"
@@ -75,6 +75,9 @@ idempotent: ## Test idempotency - run full bootstrap twice
 	@echo ""
 	@echo "=== Second run (idempotency test) ==="
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY)
+
+survey: ## Full hardware survey — CPU/RAM/storage/GPU/NIC/K8s-readiness + JSON output in survey-output/
+	$(ANSIBLE) playbooks/node-survey.yml -i $(INVENTORY)
 
 healthcheck: ## Run full node health check (identity + stats) via Ansible
 	$(ANSIBLE) playbooks/healthcheck.yml -i $(INVENTORY)

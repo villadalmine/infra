@@ -1,0 +1,62 @@
+---
+# nat.yml — local IP, gateway, public IP, NAT detection
+
+- name: "nat | local IPs"
+  ansible.builtin.shell: |
+    ip -4 addr show 2>/dev/null \
+      | grep -v '127\.' \
+      | grep 'inet ' \
+      | awk '{print $NF": "$2}' \
+      || ifconfig 2>/dev/null \
+      | grep 'inet ' \
+      | grep -v '127\.' \
+      | awk '{print $2}'
+  register: _nat_local_ips
+  changed_when: false
+  ignore_errors: true
+
+- name: "nat | default gateway"
+  ansible.builtin.shell: |
+    ip route show default 2>/dev/null | awk '/default/{print $3}' | head -1 \
+      || route -n 2>/dev/null | awk '/^0\.0\.0\.0/{print $2}' | head -1 \
+      || echo "unknown"
+  register: _nat_gw
+  changed_when: false
+  ignore_errors: true
+
+- name: "nat | public IP"
+  ansible.builtin.shell: |
+    curl -s --max-time 4 https://api.ipify.org 2>/dev/null \
+      || wget -q -T4 -O- https://api.ipify.org 2>/dev/null \
+      || python3 -c "import urllib.request; print(urllib.request.urlopen('https://api.ipify.org',timeout=4).read().decode())" 2>/dev/null \
+      || echo "no-internet"
+  register: _nat_public_ip
+  changed_when: false
+  ignore_errors: true
+
+- name: "nat | detect NAT (local RFC1918 vs public)"
+  ansible.builtin.shell: |
+    local_ip="{{ ansible_host }}"
+    public_ip="{{ _nat_public_ip.stdout | default('no-internet') | trim }}"
+    if [ "$public_ip" = "no-internet" ]; then
+      echo "no-internet"
+    elif echo "$local_ip" | grep -qE '^10\.|^172\.(1[6-9]|2[0-9]|3[01])\.|^192\.168\.'; then
+      if [ "$local_ip" != "$public_ip" ]; then
+        echo "NAT (private $local_ip → public $public_ip)"
+      else
+        echo "direct (public IP on interface)"
+      fi
+    else
+      echo "direct ($local_ip)"
+    fi
+  register: _nat_status
+  changed_when: false
+  ignore_errors: true
+
+- name: "nat | set facts"
+  ansible.builtin.set_fact:
+    survey_local_ips: "{{ _nat_local_ips.stdout_lines | default([]) }}"
+    survey_gateway: "{{ _nat_gw.stdout | default('unknown') | trim }}"
+    survey_public_ip: "{{ _nat_public_ip.stdout | default('no-internet') | trim }}"
+    survey_nat_status: "{{ _nat_status.stdout | default('unknown') | trim }}"
+    survey_is_nat: "{{ 'NAT' in (_nat_status.stdout | default('')) }}"

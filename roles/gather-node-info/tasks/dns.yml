@@ -1,0 +1,48 @@
+---
+# dns.yml — nameservers, resolver type, resolution test
+
+- name: "dns | nameservers"
+  ansible.builtin.shell: |
+    resolvectl status 2>/dev/null \
+      | grep -E 'DNS Servers|Current DNS Server' \
+      | awk -F: '{print $2}' \
+      | xargs \
+      || grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' | xargs \
+      || echo "unknown"
+  register: _dns_servers
+  changed_when: false
+  ignore_errors: true
+
+- name: "dns | resolver type"
+  ansible.builtin.shell: |
+    ns="{{ _dns_servers.stdout | default('') | trim }}"
+    if echo "$ns" | grep -qE '^127\.0\.0\.(1|53)|^::1'; then
+      echo "local (systemd-resolved or dnsmasq)"
+    elif echo "$ns" | grep -qE '^192\.168\.|^10\.|^172\.(1[6-9]|2[0-9]|3[01])\.'; then
+      echo "LAN DNS (possible Pi-hole or local resolver at $ns)"
+    elif echo "$ns" | grep -qE '1\.1\.1\.1|8\.8\.8|9\.9\.9|208\.67'; then
+      echo "public DNS ($ns)"
+    else
+      echo "unknown ($ns)"
+    fi
+  register: _dns_type
+  changed_when: false
+  ignore_errors: true
+
+- name: "dns | resolution test"
+  ansible.builtin.shell: |
+    dig +short google.com 2>/dev/null | grep -E '^[0-9]' | head -1 \
+      || nslookup google.com 2>/dev/null | awk '/^Address:/{print $2}' | grep -v '#' | head -1 \
+      || host google.com 2>/dev/null | awk '/has address/{print $4}' | head -1 \
+      || getent hosts google.com 2>/dev/null | awk '{print $1}' | head -1 \
+      || echo "FAILED"
+  register: _dns_test
+  changed_when: false
+  ignore_errors: true
+
+- name: "dns | set facts"
+  ansible.builtin.set_fact:
+    survey_dns_servers: "{{ _dns_servers.stdout | default('unknown') | trim }}"
+    survey_dns_type: "{{ _dns_type.stdout | default('unknown') | trim }}"
+    survey_dns_resolves: "{{ (_dns_test.stdout | default('FAILED') | trim) != 'FAILED' }}"
+    survey_dns_test_result: "{{ _dns_test.stdout | default('FAILED') | trim }}"

@@ -1,0 +1,77 @@
+---
+# netstore.yml — detect CSI-compatible network storage (NFS, SMB, iSCSI, Ceph, GlusterFS, MinIO, etc.)
+
+- name: "netstore | active network mounts"
+  ansible.builtin.shell: |
+    grep -E '\bnfs[0-9]?\b|cifs|iscsi|gluster|ceph|s3fs|sshfs' /proc/mounts 2>/dev/null \
+      | awk '{print $1" → "$2" ("$3")"}' \
+      || echo "none"
+  register: _ns_mounts
+  changed_when: false
+  ignore_errors: true
+
+- name: "netstore | local storage daemons"
+  ansible.builtin.shell: |
+    found=""
+    for proc in ceph-mon ceph-osd ceph-mgr glusterd iscsid rpcbind nfsd smbd; do
+      pgrep -x "$proc" >/dev/null 2>&1 && found="${found}${proc} "
+    done
+    echo "${found:-none}"
+  register: _ns_daemons
+  changed_when: false
+  ignore_errors: true
+
+- name: "netstore | storage directories (previous installs)"
+  ansible.builtin.shell: |
+    found=""
+    for dir in /var/lib/ceph /var/lib/glusterd /var/openebs /var/lib/longhorn /var/lib/rook; do
+      [ -d "$dir" ] && found="${found}${dir} "
+    done
+    echo "${found:-none}"
+  register: _ns_dirs
+  changed_when: false
+  ignore_errors: true
+
+- name: "netstore | storage kernel modules"
+  ansible.builtin.shell: |
+    found=""
+    for mod in rbd ceph gluster iscsi_tcp nfs cifs; do
+      grep -qw "$mod" /proc/modules 2>/dev/null && found="${found}${mod} "
+    done
+    echo "${found:-none}"
+  register: _ns_modules
+  changed_when: false
+  ignore_errors: true
+
+- name: "netstore | network port scan (gateway + known NAS IPs)"
+  ansible.builtin.shell: |
+    _scan() {
+      nc -z -w1 "$1" "$2" 2>/dev/null \
+        || timeout 1 bash -c "cat < /dev/null > /dev/tcp/$1/$2" 2>/dev/null
+    }
+    gw=$(ip route show default 2>/dev/null | awk '{print $3}' | head -1)
+    found=""
+    for ip in $gw {{ survey_scan_ips | default('192.168.178.102') }}; do
+      [ -z "$ip" ] && continue
+      _scan "$ip" 111  && found="${found}NFS@${ip} "   || true
+      _scan "$ip" 2049 && found="${found}NFS-data@${ip} " || true
+      _scan "$ip" 445  && found="${found}SMB@${ip} "   || true
+      _scan "$ip" 3260 && found="${found}iSCSI@${ip} " || true
+      _scan "$ip" 3300 && found="${found}Ceph-v2@${ip} " || true
+      _scan "$ip" 6789 && found="${found}Ceph-v1@${ip} " || true
+      _scan "$ip" 24007 && found="${found}GlusterFS@${ip} " || true
+      _scan "$ip" 9000 && found="${found}MinIO@${ip} " || true
+      _scan "$ip" 5705 && found="${found}StorageOS@${ip} " || true
+    done
+    echo "${found:-none detected}"
+  register: _ns_scan
+  changed_when: false
+  ignore_errors: true
+
+- name: "netstore | set facts"
+  ansible.builtin.set_fact:
+    survey_netstore_mounts: "{{ _ns_mounts.stdout_lines | default(['none']) }}"
+    survey_netstore_daemons: "{{ _ns_daemons.stdout | default('none') | trim }}"
+    survey_netstore_dirs: "{{ _ns_dirs.stdout | default('none') | trim }}"
+    survey_netstore_modules: "{{ _ns_modules.stdout | default('none') | trim }}"
+    survey_netstore_scan: "{{ _ns_scan.stdout | default('none detected') | trim }}"

@@ -1,0 +1,61 @@
+---
+# cpu.yml — CPU model, cores, threads, MHz (big.LITTLE aware)
+
+- name: "cpu | model"
+  ansible.builtin.shell: |
+    lscpu 2>/dev/null | grep -E '^Model name' | head -1 | awk -F: '{print $2}' | xargs \
+      || grep 'model name' /proc/cpuinfo 2>/dev/null | head -1 | awk -F: '{print $2}' | xargs \
+      || grep 'Hardware' /proc/cpuinfo 2>/dev/null | head -1 | awk -F: '{print $2}' | xargs \
+      || grep 'CPU implementer\|CPU part' /proc/cpuinfo 2>/dev/null | head -2 | awk -F: '{print $2}' | xargs \
+      || echo "Unknown CPU"
+  register: _cpu_model
+  changed_when: false
+  ignore_errors: true
+
+- name: "cpu | core count"
+  ansible.builtin.shell: |
+    nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "1"
+  register: _cpu_cores
+  changed_when: false
+  ignore_errors: true
+
+- name: "cpu | thread count"
+  ansible.builtin.shell: |
+    lscpu 2>/dev/null | grep '^CPU(s):' | awk '{print $2}' \
+      || grep -c '^processor' /proc/cpuinfo 2>/dev/null \
+      || echo "unknown"
+  register: _cpu_threads
+  changed_when: false
+  ignore_errors: true
+
+- name: "cpu | max MHz per policy (big.LITTLE aware)"
+  ansible.builtin.shell: |
+    # Each cpufreq policy = one cluster of cores (big or LITTLE)
+    for policy in /sys/devices/system/cpu/cpufreq/policy*/; do
+      max=$(cat "${policy}cpuinfo_max_freq" 2>/dev/null)
+      cpus=$(cat "${policy}related_cpus" 2>/dev/null || cat "${policy}affected_cpus" 2>/dev/null)
+      [ -n "$max" ] && echo "cpus [${cpus}]: $(( max / 1000 ))MHz"
+    done \
+      || lscpu 2>/dev/null | grep -i 'MHz\|GHz' | awk -F: '{print $1": "$2}' | xargs \
+      || grep 'cpu MHz' /proc/cpuinfo 2>/dev/null | sort -t: -k2 -rn | head -2 | awk -F: '{print $2"MHz"}' | xargs \
+      || echo "unknown"
+  register: _cpu_mhz
+  changed_when: false
+  ignore_errors: true
+
+- name: "cpu | vendor / implementer"
+  ansible.builtin.shell: |
+    lscpu 2>/dev/null | grep 'Vendor ID' | awk -F: '{print $2}' | xargs \
+      || grep 'CPU implementer' /proc/cpuinfo 2>/dev/null | head -1 | awk -F: '{print $2}' | xargs \
+      || echo "unknown"
+  register: _cpu_vendor
+  changed_when: false
+  ignore_errors: true
+
+- name: "cpu | set facts"
+  ansible.builtin.set_fact:
+    survey_cpu_model: "{{ _cpu_model.stdout | default('Unknown') | trim }}"
+    survey_cpu_cores: "{{ _cpu_cores.stdout | default('?') | trim }}"
+    survey_cpu_threads: "{{ _cpu_threads.stdout | default('?') | trim }}"
+    survey_cpu_mhz: "{{ _cpu_mhz.stdout_lines | default(['unknown']) }}"
+    survey_cpu_vendor: "{{ _cpu_vendor.stdout | default('unknown') | trim }}"

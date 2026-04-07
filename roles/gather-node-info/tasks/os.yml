@@ -1,0 +1,37 @@
+---
+# os.yml — OS distro, kernel, arch, uptime
+
+- name: "os | detect OS"
+  ansible.builtin.shell: |
+    lsb_release -ds 2>/dev/null \
+      || grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d'"' -f2 \
+      || cat /etc/issue 2>/dev/null | head -1 | tr -d '\n' \
+      || echo "Unknown OS"
+  register: _os_name
+  changed_when: false
+  ignore_errors: true
+
+- name: "os | kernel version"
+  ansible.builtin.command: uname -r
+  register: _os_kernel
+  changed_when: false
+  ignore_errors: true
+
+- name: "os | architecture"
+  ansible.builtin.command: uname -m
+  register: _os_arch
+  changed_when: false
+  ignore_errors: true
+
+- name: "os | uptime"
+  ansible.builtin.shell: uptime -p 2>/dev/null || uptime
+  register: _os_uptime
+  changed_when: false
+  ignore_errors: true
+
+- name: "os | set facts"
+  ansible.builtin.set_fact:
+    survey_os: "{{ _os_name.stdout | default('Unknown') | trim }}"
+    survey_kernel: "{{ _os_kernel.stdout | default('Unknown') | trim }}"
+    survey_arch: "{{ _os_arch.stdout | default('Unknown') | trim }}"
+    survey_uptime: "{{ _os_uptime.stdout | default('Unknown') | trim }}"

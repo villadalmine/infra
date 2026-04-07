@@ -1,0 +1,138 @@
+---
+# k8s-readiness.yml — cgroups, kernel modules, BPF, kernel params, ulimits, ports, runtime
+
+- name: "k8s | cgroups version"
+  ansible.builtin.shell: |
+    cgtype=$(stat -fc %T /sys/fs/cgroup/ 2>/dev/null \
+      || grep -oE 'cgroup2?fs' /proc/filesystems 2>/dev/null | tail -1)
+    case "$cgtype" in
+      cgroup2fs) echo "v2" ;;
+      tmpfs)     echo "v1" ;;
+      *)         echo "unknown ($cgtype)" ;;
+    esac
+  register: _k8s_cgroups
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | required kernel modules"
+  ansible.builtin.shell: |
+    for mod in br_netfilter overlay ip_vs nf_conntrack vxlan; do
+      if modprobe --dry-run "$mod" 2>/dev/null \
+        || grep -qw "$mod" /proc/modules 2>/dev/null \
+        || lsmod 2>/dev/null | grep -qw "$mod"; then
+        echo "$mod: OK"
+      else
+        echo "$mod: MISSING"
+      fi
+    done
+  register: _k8s_modules
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | ip_forward"
+  ansible.builtin.shell: cat /proc/sys/net/ipv4/ip_forward
+  register: _k8s_ipforward
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | BPF syscall support"
+  ansible.builtin.shell: |
+    config_file="/boot/config-$(uname -r)"
+    if [ -f "$config_file" ]; then
+      grep -q 'CONFIG_BPF_SYSCALL=y' "$config_file" && echo "yes" || echo "no"
+    elif [ -f /proc/config.gz ]; then
+      zcat /proc/config.gz 2>/dev/null | grep -q 'CONFIG_BPF_SYSCALL=y' && echo "yes" || echo "no"
+    else
+      # Try sysctl probe
+      bpf_disabled=$(cat /proc/sys/kernel/unprivileged_bpf_disabled 2>/dev/null)
+      [ -n "$bpf_disabled" ] && echo "yes (sysctl present)" || echo "unknown (no kernel config)"
+    fi
+  register: _k8s_bpf
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | kernel params"
+  ansible.builtin.shell: |
+    for param in vm.max_map_count fs.inotify.max_user_watches fs.inotify.max_user_instances \
+                 net.core.somaxconn net.ipv4.ip_forward kernel.pid_max; do
+      val=$(sysctl -n "$param" 2>/dev/null || cat "/proc/sys/$(echo $param | tr . /)" 2>/dev/null || echo "N/A")
+      echo "${param}=${val}"
+    done
+  register: _k8s_params
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | ulimits"
+  ansible.builtin.shell: |
+    echo "nofile=$(ulimit -n 2>/dev/null || cat /proc/self/limits 2>/dev/null | awk '/open files/{print $4}' || echo '?')"
+    echo "nproc=$(ulimit -u 2>/dev/null || cat /proc/self/limits 2>/dev/null | awk '/processes/{print $3}' || echo '?')"
+    echo "threads-max=$(cat /proc/sys/kernel/threads-max 2>/dev/null || echo '?')"
+  register: _k8s_ulimits
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | port conflicts"
+  ansible.builtin.shell: |
+    conflicts=""
+    for port in 6443 2379 2380 10250 10257 10259 4240; do
+      if ss -tlnp 2>/dev/null | grep -q ":${port} " \
+        || netstat -tlnp 2>/dev/null | grep -q ":${port} "; then
+        proc=$(ss -tlnp 2>/dev/null | grep ":${port} " | grep -oP 'users:\(\("\K[^"]+' | head -1 \
+          || netstat -tlnp 2>/dev/null | grep ":${port} " | awk '{print $7}' | head -1)
+        conflicts="${conflicts}${port}(${proc}) "
+      fi
+    done
+    echo "${conflicts:-none}"
+  register: _k8s_ports
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | container runtime"
+  ansible.builtin.shell: |
+    containerd --version 2>/dev/null | head -1 \
+      || docker --version 2>/dev/null | head -1 \
+      || crio --version 2>/dev/null | head -1 \
+      || podman --version 2>/dev/null | head -1 \
+      || echo "none"
+  register: _k8s_runtime
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | K3s installed"
+  ansible.builtin.shell: |
+    k3s --version 2>/dev/null | head -1 || echo "not installed"
+  register: _k8s_k3s
+  changed_when: false
+  ignore_errors: true
+
+- name: "k8s | set facts"
+  ansible.builtin.set_fact:
+    survey_cgroups_version: "{{ _k8s_cgroups.stdout | default('unknown') | trim }}"
+    survey_k8s_modules: "{{ _k8s_modules.stdout_lines | default([]) }}"
+    survey_ip_forward: "{{ _k8s_ipforward.stdout | default('0') | trim }}"
+    survey_ebpf_capable: "{{ _k8s_bpf.stdout | default('unknown') | trim }}"
+    survey_kernel_params: "{{ _k8s_params.stdout_lines | default([]) }}"
+    survey_ulimits: "{{ _k8s_ulimits.stdout_lines | default([]) }}"
+    survey_port_conflicts: "{{ _k8s_ports.stdout | default('none') | trim }}"
+    survey_container_runtime: "{{ _k8s_runtime.stdout | default('none') | trim }}"
+    survey_k3s_installed: "{{ _k8s_k3s.stdout | default('not installed') | trim }}"
+
+- name: "k8s | warn: cgroups v1"
+  ansible.builtin.set_fact:
+    survey_warnings: "{{ survey_warnings + ['cgroups v1 detected — K8s 1.25+ prefers cgroups v2 (Cilium eBPF features may be limited)'] }}"
+  when: survey_cgroups_version == 'v1'
+
+- name: "k8s | warn: port conflicts"
+  ansible.builtin.set_fact:
+    survey_warnings: "{{ survey_warnings + ['K8s port conflicts: ' + survey_port_conflicts] }}"
+  when: survey_port_conflicts != 'none'
+
+- name: "k8s | warn: container runtime exists"
+  ansible.builtin.set_fact:
+    survey_warnings: "{{ survey_warnings + ['Existing container runtime: ' + survey_container_runtime + ' — may conflict with K3s bundled containerd'] }}"
+  when: survey_container_runtime != 'none'
+
+- name: "k8s | warn: K3s already installed"
+  ansible.builtin.set_fact:
+    survey_warnings: "{{ survey_warnings + ['K3s already installed (' + survey_k3s_installed + ') — clean install recommended'] }}"
+  when: "'not installed' not in survey_k3s_installed"

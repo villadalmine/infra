@@ -1,0 +1,23 @@
+---
+# Node hardware survey — comprehensive info for K8s cluster planning
+# Outputs human-readable summary + JSON per node in survey-output/
+#
+# Usage:
+#   make survey
+#   ansible-playbook playbooks/node-survey.yml -i inventory/hosts.ini
+#
+# Optional vars:
+#   survey_scan_ips: "192.168.178.102 192.168.178.103"  # extra IPs to scan for network storage
+#   survey_peers: auto-populated from inventory (all ansible_host values)
+
+- name: Node hardware survey
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    # Pass all node IPs so each node can ping its peers for latency measurement
+    survey_peers: "{{ groups['all'] | map('extract', hostvars, 'ansible_host') | list }}"
+    # Extra IPs to scan for network storage services (NFS/SMB/iSCSI/etc)
+    survey_scan_ips: "192.168.178.102"
+  roles:
+    - gather-node-info
