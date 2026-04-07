@@ -172,7 +172,7 @@ Context: `CLAUDE.md` (this file) is loaded automatically.
 
 ### LiteLLM — universal AI router
 - **Local (workstation):** `http://localhost:4000` — start with `make litellm`
-  Config: `litellm/config.yaml` — edit to add/remove providers
+  Config: `setup/litellm/config.yaml` — edit to add/remove providers
 - **In-cluster (after `make ai`):** `http://litellm.cluster.home/v1`
   Key: `sk-hermes-internal`
 

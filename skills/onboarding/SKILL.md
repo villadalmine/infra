@@ -57,12 +57,12 @@ eval "$(~/.local/bin/mise activate bash)"
 mise installs tools to `~/.local/share/mise/` — no sudo, no system changes.
 Tools are isolated per-project via `.mise.toml` in the repo root.
 
-**Python packages installed (`requirements.txt`):**
+**Python packages installed (`setup/requirements.txt`):**
 - `ansible` — cluster automation
 - `kubernetes` — required by `kubernetes.core` Ansible collection
 - `litellm[proxy]` — local AI model router
 
-**Ansible collections installed (`requirements.yml`):**
+**Ansible collections installed (`setup/requirements.yml`):**
 - `ansible.posix` — authorized_key module
 - `kubernetes.core` — K8s resource management
 
@@ -142,7 +142,7 @@ make setup-sudoers   # shows diff + asks approval — never applies silently
 
 ## Step 4 — Survey (`make survey`)
 
-Collects hardware info from all nodes. Results in `playbooks/survey-output/`.
+Collects hardware info from all nodes. Results in `survey/` (gitignored).
 See `skills/survey/SKILL.md` for full documentation.
 
 ---

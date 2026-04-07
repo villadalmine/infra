@@ -41,7 +41,7 @@ Storage: NVMe nodes have Samsung/WD NVMe (~476GB). eMMC nodes have ~29GB onboard
 make deps          # install workstation tools (mise + pip + ansible collections)
 make setup-nodes   # copy SSH key + configure sudo (needs password once)
 make setup-sudoers # update sudoers only (shows diff, asks approval)
-make survey        # collect hardware info → playbooks/survey-output/*.json
+make survey        # collect hardware info → survey/*.json
 make litellm       # start local LiteLLM AI proxy (needs OPENROUTER_API_KEY)
 ```
 

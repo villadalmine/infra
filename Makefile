@@ -43,7 +43,7 @@ litellm: ## Start local LiteLLM proxy (AI router — needed for OpenCode AI feat
 	@echo "  export OPENROUTER_API_KEY=sk-or-..."
 	@echo "  export ANTHROPIC_API_KEY=sk-ant-...  (optional)"
 	@echo ""
-	@litellm --config litellm/config.yaml --port 4000
+	@litellm --config setup/litellm/config.yaml --port 4000
 
 help: ## Show this help message
 	@echo "Infra Makefile - Simplified Ansible workflow"

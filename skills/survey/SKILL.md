@@ -14,7 +14,7 @@ metadata:
 
 ```bash
 make survey
-# Output: playbooks/survey-output/<hostname>.json (one file per node)
+# Output: survey/<hostname>.json (one file per node)
 # Also prints human-readable summary per node during run
 ```
 
@@ -56,18 +56,18 @@ Runs `roles/gather-node-info` against all nodes in inventory.
 
 ```bash
 # All nodes
-ls playbooks/survey-output/
+ls survey/
 
 # Quick summary of a node
-cat playbooks/survey-output/srv-rk1-nvme-01.json | python3 -m json.tool | less
+cat survey/srv-rk1-nvme-01.json | python3 -m json.tool | less
 
 # Find nodes with NVMe
-grep -l '"nvme"' playbooks/survey-output/*.json
+grep -l '"nvme"' survey/*.json
 
 # Find nodes with warnings
 python3 -c "
 import json, glob
-for f in glob.glob('playbooks/survey-output/*.json'):
+for f in glob.glob('survey/*.json'):
     d = json.load(open(f))
     if d['warnings']:
         print(f.split('/')[-1].replace('.json',''), d['warnings'])
@@ -76,7 +76,7 @@ for f in glob.glob('playbooks/survey-output/*.json'):
 # Node comparison — RAM
 python3 -c "
 import json, glob
-for f in sorted(glob.glob('playbooks/survey-output/*.json')):
+for f in sorted(glob.glob('survey/*.json')):
     d = json.load(open(f))
     name = f.split('/')[-1].replace('.json','')
     print(f'{name:35s} {d[\"ram\"][\"total_gb\"]:>5}GB  {d[\"storage\"][\"write_latency\"]}')

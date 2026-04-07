@@ -14,7 +14,7 @@ giving you a single place to manage providers, API keys, and fallback chains.
 │                                                                 │
 │  Claude Code  ──┐                                               │
 │                 ├──▶  LiteLLM (localhost:4000)                  │
-│  OpenCode     ──┘     litellm/config.yaml                       │
+│  OpenCode     ──┘     setup/litellm/config.yaml                       │
 │                            │                                    │
 │                            ├──▶ OpenRouter (default)            │
 │                            │    └─ Claude, Gemini, GPT-4,       │
@@ -68,7 +68,7 @@ That's it — both tools are pre-configured to use `localhost:4000`.
 
 ## Configuration Files
 
-### `litellm/config.yaml` — AI model routing
+### `setup/litellm/config.yaml` — AI model routing
 
 Central config for the local LiteLLM proxy. Defines which models are available,
 which provider serves each model, and the fallback chain.
@@ -89,19 +89,19 @@ which provider serves each model, and the fallback chain.
 
 **Adding a direct provider** (lower latency, bypass OpenRouter):
 
-Uncomment the relevant section in `litellm/config.yaml` and set the env var:
+Uncomment the relevant section in `setup/litellm/config.yaml` and set the env var:
 
 ```bash
 # Direct Anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
-# Uncomment: model_name: claude-direct in litellm/config.yaml
+# Uncomment: model_name: claude-direct in setup/litellm/config.yaml
 
 # Direct Gemini
 export GOOGLE_API_KEY=AI...
-# Uncomment: model_name: gemini-direct in litellm/config.yaml
+# Uncomment: model_name: gemini-direct in setup/litellm/config.yaml
 
 # Local Ollama (no key needed)
-# Uncomment: model_name: local in litellm/config.yaml
+# Uncomment: model_name: local in setup/litellm/config.yaml
 # Requires: ollama serve (running locally)
 ```
 
@@ -225,7 +225,7 @@ curl http://localhost:4000/v1/chat/completions \
   -d '{"model": "default", "messages": [{"role": "user", "content": "hello"}]}'
 
 # LiteLLM logs (verbose mode)
-# Edit litellm/config.yaml: uncomment "set_verbose: true"
+# Edit setup/litellm/config.yaml: uncomment "set_verbose: true"
 # Then restart: make litellm
 ```
 
