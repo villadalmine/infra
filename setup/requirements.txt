@@ -15,3 +15,12 @@ litellm[proxy]>=1.50
 # MCP server toolkit — used by mcp/cluster-advisor/server.py
 fastmcp>=2.0
 pyyaml>=6.0
+
+# HolmesGPT — AI SRE CLI (holmes ask "why is pod X crashing?")
+# Connects to in-cluster HolmesGPT via: kubectl port-forward or https://holmes.cluster.home
+holmesgpt>=0.24
+
+# Hermes Agent — local AI CLI (hermes chat -q "ask something")
+# Docs: https://hermes-agent.nousresearch.com/docs/getting-started/installation
+# Config: hermes model → select provider, hermes gateway setup → Telegram/etc
+hermes-agent

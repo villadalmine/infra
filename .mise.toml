@@ -29,6 +29,9 @@ node = "22"
 # jq — JSON query tool (used to inspect survey output)
 "aqua:jqlang/jq" = "latest"
 
+# k9s — interactive Kubernetes TUI (pods, logs, exec, port-forward)
+"aqua:derailed/k9s" = "latest"
+
 [env]
 # Use a virtualenv inside the repo for Python packages
 # mise creates it automatically at .venv/
@@ -49,9 +52,12 @@ echo "==> Done. Tools installed:"
 echo "    ansible      $(ansible --version 2>/dev/null | head -1)"
 echo "    kubectl      $(kubectl version --client --short 2>/dev/null || kubectl version --client 2>/dev/null | head -1)"
 echo "    helm         $(helm version --short 2>/dev/null)"
+echo "    k9s          $(k9s version --short 2>/dev/null | head -1 || echo 'installed via mise')"
 echo "    jq           $(jq --version 2>/dev/null)"
 echo "    opencode     $(opencode --version 2>/dev/null || echo 'installed via mise npm')"
 echo "    litellm      $(litellm --version 2>/dev/null)"
+echo "    holmes       $(holmes --version 2>/dev/null || echo 'installed via pip (holmesgpt)')"
+echo "    hermes       $(hermes --version 2>/dev/null || echo 'installed via pip (hermes-agent)')"
 echo ""
 echo "Next steps:"
 echo "  1. cp inventory/hosts.ini.example inventory/hosts.ini"
