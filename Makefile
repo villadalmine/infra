@@ -119,7 +119,7 @@ idempotent: ## Test idempotency - run full bootstrap twice
 	@echo "=== Second run (idempotency test) ==="
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY)
 
-survey: ## Full hardware survey — CPU/RAM/storage/GPU/NIC/K8s-readiness + JSON output in survey-output/
+survey: ## Full hardware survey — CPU/RAM/storage/GPU/NIC/K8s-readiness + JSON output in survey/
 	$(ANSIBLE) playbooks/node-survey.yml -i $(INVENTORY)
 
 healthcheck: ## Run full node health check (identity + stats) via Ansible
