@@ -1,3 +1,8 @@
+- name: Load Hermes secrets (API keys, tokens)
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+  failed_when: false  # gracefully skip if file doesn't exist yet
+
 - name: Ensure custom Storage backend is installed before deploying Hermes Agent
   ansible.builtin.include_role:
     name: "{{ hermes_storage_role }}"
