@@ -1,0 +1,417 @@
+# Hardware catalog — boards you can buy to build or expand a K8s homelab cluster
+#
+# Design rules:
+#   - Each entry is self-contained — no cross-references that can break
+#   - price_usd is approximate — always check vendor URL for current price
+#   - k8s_tier matches hardware profiles: nano/micro/small/medium/large
+#   - unlocks_stacks references stacks.yaml keys (soft reference — unknown keys skipped)
+#   - Add new boards by appending — no code changes needed
+#   - form_factor: sbc / module / cluster-board / mini-pc / server
+#
+# K8s readiness checklist (must-haves):
+#   cgroups_v2: required for K3s (kernel param or Ubuntu 22.04+)
+#   ebpf: required for Cilium CNI (kernel ≥5.4, 64-bit only)
+#   nvme: strongly recommended for etcd (eMMC borderline, SD not recommended)
+#
+# price_updated: approximate date of last price check (YYYY-MM format)
+
+boards:
+
+  # ── Raspberry Pi family ───────────────────────────────────────────────────────
+
+  rpi5-8gb:
+    name: "Raspberry Pi 5"
+    variant: "8GB"
+    cpu: "Cortex-A76 × 4 @ 2.4GHz"
+    arch: arm64
+    ram_gb: 8
+    storage_type: "NVMe via M.2 HAT (sold separately)"
+    storage_builtin: "microSD (not recommended for K8s)"
+    has_npu: false
+    has_gpu: false  # VideoCore VII — display only, not useful for ML
+    cgroups_v2: true
+    ebpf: true  # kernel 6.6 on Ubuntu 24.04
+    k8s_tier: micro
+    form_factor: sbc
+    price_usd: 80
+    price_updated: "2025-01"
+    vendors:
+      - name: "Raspberry Pi (official)"
+        url: "https://www.raspberrypi.com/products/raspberry-pi-5/"
+      - name: "Adafruit"
+        url: "https://www.adafruit.com/product/5812"
+      - name: "Pimoroni (EU)"
+        url: "https://shop.pimoroni.com/products/raspberry-pi-5"
+    unlocks_stacks: [core, networking, ingress, dns, gitops]
+    good_for:
+      - "Control-plane node (with NVMe HAT)"
+      - "General K8s worker"
+      - "Beginner and DevOps profiles"
+    hardware_add_ons:
+      - name: "Raspberry Pi M.2 HAT+"
+        price_usd: 12
+        why: "Enables NVMe SSD — required for etcd control-plane"
+        url: "https://www.raspberrypi.com/products/m2-hat-plus/"
+    notes:
+      - "Uses 64-bit Ubuntu 24.04 (kernel 6.6) — full eBPF support"
+      - "PCIe Gen 2 × 1 via M.2 HAT — NVMe latency ~0.5ms (good for etcd)"
+      - "Requires active cooling for sustained K8s workloads"
+      - "5V/5A USB-C power supply required"
+
+  rpi5-4gb:
+    name: "Raspberry Pi 5"
+    variant: "4GB"
+    cpu: "Cortex-A76 × 4 @ 2.4GHz"
+    arch: arm64
+    ram_gb: 4
+    storage_type: "NVMe via M.2 HAT"
+    has_npu: false
+    cgroups_v2: true
+    ebpf: true
+    k8s_tier: micro
+    form_factor: sbc
+    price_usd: 60
+    price_updated: "2025-01"
+    vendors:
+      - name: "Raspberry Pi (official)"
+        url: "https://www.raspberrypi.com/products/raspberry-pi-5/"
+    unlocks_stacks: [core, networking, ingress, dns, gitops]
+    good_for:
+      - "Budget control-plane node"
+      - "General worker"
+    notes:
+      - "4GB is the minimum for services stack — tight with observability"
+      - "Prefer 8GB if budget allows"
+
+  rpi-cm4-8gb:
+    name: "Raspberry Pi Compute Module 4"
+    variant: "8GB, 32GB eMMC"
+    cpu: "Cortex-A72 × 4 @ 1.5GHz"
+    arch: arm64
+    ram_gb: 8
+    storage_type: "eMMC 32GB onboard"
+    storage_builtin: "eMMC 32GB"
+    has_npu: false
+    cgroups_v2: true
+    ebpf: true  # kernel 6.x on Ubuntu 24.04
+    k8s_tier: micro
+    form_factor: module
+    price_usd: 75
+    price_updated: "2025-01"
+    vendors:
+      - name: "Raspberry Pi (official)"
+        url: "https://www.raspberrypi.com/products/compute-module-4/"
+    requires_carrier: true
+    carrier_boards:
+      - name: "Super6C (6-node cluster)"
+        price_usd: 170
+        url: "https://wiki.dfrobot.com/Super6C"
+        notes: "Has NVMe slot per CM4 — highly recommended"
+    unlocks_stacks: [core, networking, ingress, dns, gitops]
+    good_for:
+      - "Dense cluster building (Super6C fits 6 CM4 modules)"
+      - "General K8s worker"
+    notes:
+      - "eMMC is borderline for etcd — add NVMe via carrier board slot"
+      - "Older A72 CPU (slower than RPi 5 A76) but well-supported"
+      - "What you already have in srv-super6c-*"
+
+  # ── TuringPi / Turing Machines ────────────────────────────────────────────────
+
+  turing-rk1-32gb:
+    name: "Turing RK1"
+    variant: "32GB"
+    cpu: "RK3588S: Cortex-A76 × 4 + Cortex-A55 × 4 @ 2.4/1.8GHz (big.LITTLE)"
+    arch: arm64
+    ram_gb: 32
+    storage_type: "NVMe M.2 via TuringPi 2 slot"
+    has_npu: true
+    npu_tops: 6  # RK3588S NPU: 6 TOPS
+    npu_device: "/dev/rknpu0"
+    has_gpu: true  # Mali-G610 MP4
+    cgroups_v2: true
+    ebpf: true  # kernel 6.1 vendor (partial eBPF), 6.x mainline (full)
+    k8s_tier: large
+    form_factor: module
+    price_usd: 150
+    price_updated: "2025-01"
+    vendors:
+      - name: "Turing Machines (official)"
+        url: "https://turingpi.com/product/turing-rk1/"
+    requires_carrier: true
+    carrier_boards:
+      - name: "TuringPi 2 (4-node backplane)"
+        price_usd: 189
+        url: "https://turingpi.com/product/turing-pi-2-5/"
+        notes: "Fits 4× RK1 or CM4 modules. Has NVMe slot per bay."
+    unlocks_stacks: [core, networking, ingress, dns, gitops, observability, ai, security]
+    good_for:
+      - "AI worker node — 32GB RAM ideal for LLM agents"
+      - "High-memory general worker"
+      - "Future: local NPU inference (RKNN runtime)"
+    notes:
+      - "What you already have as srv-rk1-nvme-* nodes"
+      - "NPU: 6 TOPS via /dev/rknpu0 — future local inference when RKNN runtime is ready"
+      - "Mali GPU: /dev/mali0 — not currently used for ML (driver complexity)"
+      - "Vendor kernel 6.1 has partial eBPF — Cilium works but some BPF features limited"
+      - "32GB LPDDR4X — fastest RAM option in the TuringPi ecosystem"
+
+  turing-rk1-8gb:
+    name: "Turing RK1"
+    variant: "8GB"
+    cpu: "RK3588S: Cortex-A76 × 4 + Cortex-A55 × 4"
+    arch: arm64
+    ram_gb: 8
+    storage_type: "NVMe M.2 via TuringPi 2 slot"
+    has_npu: true
+    npu_tops: 6
+    npu_device: "/dev/rknpu0"
+    cgroups_v2: true
+    ebpf: true
+    k8s_tier: medium
+    form_factor: module
+    price_usd: 110
+    price_updated: "2025-01"
+    vendors:
+      - name: "Turing Machines (official)"
+        url: "https://turingpi.com/product/turing-rk1/"
+    requires_carrier: true
+    carrier_boards:
+      - name: "TuringPi 2"
+        price_usd: 189
+        url: "https://turingpi.com/product/turing-pi-2-5/"
+    unlocks_stacks: [core, networking, ingress, dns, gitops, observability, security]
+    good_for:
+      - "Control-plane node with NPU"
+      - "Worker with NPU for future inference"
+    notes:
+      - "8GB is tight for AI stack — prefer 32GB for ai workloads"
+      - "Same NPU as 32GB variant — future inference potential"
+
+  turingpi2-board:
+    name: "TuringPi 2"
+    variant: "4-node backplane"
+    cpu: "N/A — carrier board only"
+    arch: "N/A"
+    ram_gb: 0
+    storage_type: "4× NVMe M.2 slots (one per module bay)"
+    has_npu: false
+    k8s_tier: "depends on modules"
+    form_factor: cluster-board
+    price_usd: 189
+    price_updated: "2025-01"
+    vendors:
+      - name: "Turing Machines (official)"
+        url: "https://turingpi.com/product/turing-pi-2-5/"
+    unlocks_stacks: []
+    good_for:
+      - "Dense 4-node cluster in 1U rack space"
+      - "Mix CM4 (cheap workers) + RK1 (powerful nodes)"
+      - "Shared BMC for out-of-band management"
+    compatible_modules: ["rpi-cm4-*", "turing-rk1-*", "nvidia-jetson-nano"]
+    notes:
+      - "Mini-ITX form factor — fits in standard rack with adapter"
+      - "Shared 12V PSU, GbE switch, USB hub"
+      - "BMC for remote power/reset per slot"
+      - "What you already have"
+
+  # ── Radxa / Rock family ───────────────────────────────────────────────────────
+
+  radxa-rock5b-16gb:
+    name: "Radxa Rock 5B"
+    variant: "16GB"
+    cpu: "RK3588: Cortex-A76 × 4 + Cortex-A55 × 4 @ 2.4GHz"
+    arch: arm64
+    ram_gb: 16
+    storage_type: "NVMe M.2 onboard"
+    has_npu: true
+    npu_tops: 6
+    npu_device: "/dev/rknpu0"
+    has_gpu: true
+    cgroups_v2: true
+    ebpf: true
+    k8s_tier: large
+    form_factor: sbc
+    price_usd: 130
+    price_updated: "2025-01"
+    vendors:
+      - name: "Radxa (official)"
+        url: "https://radxa.com/products/rock5/5b"
+      - name: "AliExpress (Radxa store)"
+        url: "https://www.aliexpress.com/store/1100392537"
+    unlocks_stacks: [core, networking, ingress, dns, gitops, observability, ai, security]
+    good_for:
+      - "Budget alternative to RK1 32GB — half the price"
+      - "AI worker with NPU"
+      - "Control-plane with NVMe"
+    notes:
+      - "RK3588 (not S) — same NPU/GPU, slightly different I/O"
+      - "Full-size SBC — no carrier board needed"
+      - "Ubuntu 22.04/24.04 supported by Radxa"
+      - "16GB enough for AI stack — 32GB better for multiple agents"
+
+  radxa-rock5c-8gb:
+    name: "Radxa Rock 5C"
+    variant: "8GB"
+    cpu: "RK3588S2: Cortex-A76 × 4 + Cortex-A55 × 4"
+    arch: arm64
+    ram_gb: 8
+    storage_type: "NVMe M.2 + microSD"
+    has_npu: true
+    npu_tops: 6
+    cgroups_v2: true
+    ebpf: true
+    k8s_tier: medium
+    form_factor: sbc
+    price_usd: 80
+    price_updated: "2025-01"
+    vendors:
+      - name: "Radxa (official)"
+        url: "https://radxa.com/products/rock5/5c"
+    unlocks_stacks: [core, networking, ingress, dns, gitops, observability, security]
+    good_for:
+      - "Budget NPU node"
+      - "Worker node"
+    notes:
+      - "CM4 form factor — fits in Super6C carrier board"
+      - "Good price/performance for general workers"
+
+  # ── Orange Pi family ──────────────────────────────────────────────────────────
+
+  orangepi5-plus-16gb:
+    name: "Orange Pi 5 Plus"
+    variant: "16GB"
+    cpu: "RK3588: Cortex-A76 × 4 + Cortex-A55 × 4"
+    arch: arm64
+    ram_gb: 16
+    storage_type: "NVMe M.2 onboard"
+    has_npu: true
+    npu_tops: 6
+    npu_device: "/dev/rknpu0"
+    cgroups_v2: true
+    ebpf: true
+    k8s_tier: large
+    form_factor: sbc
+    price_usd: 110
+    price_updated: "2025-01"
+    vendors:
+      - name: "Orange Pi (official)"
+        url: "http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-5-plus.html"
+      - name: "AliExpress (Orange Pi store)"
+        url: "https://www.aliexpress.com/store/1100409999"
+    unlocks_stacks: [core, networking, ingress, dns, gitops, observability, ai, security]
+    good_for:
+      - "Most affordable 16GB + NPU board"
+      - "AI worker on a budget"
+    notes:
+      - "2× NVMe slots — fast storage for etcd"
+      - "Ubuntu 22.04 official support"
+      - "Community support slightly less polished than Radxa"
+
+  # ── Mini-PC / x86 ─────────────────────────────────────────────────────────────
+
+  beelink-eq12:
+    name: "Beelink EQ12"
+    variant: "16GB RAM, 500GB NVMe"
+    cpu: "Intel N100 @ 3.4GHz × 4"
+    arch: x86_64
+    ram_gb: 16
+    storage_type: "NVMe M.2 onboard"
+    has_npu: false
+    has_gpu: false  # Intel UHD — not useful for ML
+    cgroups_v2: true
+    ebpf: true  # any Linux kernel ≥5.4 on x86
+    k8s_tier: medium
+    form_factor: mini-pc
+    price_usd: 160
+    price_updated: "2025-01"
+    vendors:
+      - name: "Beelink (official)"
+        url: "https://www.bee-link.com/products/beelink-eq12"
+      - name: "Amazon"
+        url: "https://www.amazon.com/s?k=beelink+eq12"
+    unlocks_stacks: [core, networking, ingress, dns, gitops, observability, ai, security]
+    good_for:
+      - "High single-thread performance (faster than ARM for compiles)"
+      - "x86 compatibility — some containers are amd64-only"
+      - "Silent, fanless design"
+    notes:
+      - "x86_64 — mixed-arch cluster with ARM64 nodes (K8s handles this)"
+      - "16GB RAM + NVMe: excellent etcd node"
+      - "N100 draws only 6W TDP — very efficient"
+      - "No ARM — cannot replace RK1 for NPU workloads"
+
+  minisforum-um890-pro:
+    name: "Minisforum UM890 Pro"
+    variant: "32GB RAM, 1TB NVMe"
+    cpu: "AMD Ryzen 9 8945HS @ 5.2GHz × 8 (16 threads)"
+    arch: x86_64
+    ram_gb: 32
+    storage_type: "NVMe M.2 (2× slots)"
+    has_npu: true
+    npu_tops: 16  # AMD XDNA NPU in Ryzen AI 300 series
+    npu_device: "N/A (Linux driver WIP)"
+    has_gpu: true  # AMD Radeon 780M — ROCm capable
+    cgroups_v2: true
+    ebpf: true
+    k8s_tier: large
+    form_factor: mini-pc
+    price_usd: 420
+    price_updated: "2025-01"
+    vendors:
+      - name: "Minisforum (official)"
+        url: "https://minisforum.com/products/um890-pro"
+    unlocks_stacks: [core, networking, ingress, dns, gitops, observability, ai, security]
+    good_for:
+      - "Powerful x86 node — compile-heavy workloads"
+      - "AMD ROCm GPU — potential for local AI inference (better driver than CUDA)"
+      - "High single-thread perf for latency-sensitive workloads"
+    notes:
+      - "AMD XDNA NPU Linux drivers are experimental as of 2025"
+      - "ROCm for Radeon 780M: usable for some ML workloads (PyTorch ROCm)"
+      - "32GB expandable to 64GB"
+      - "High power: ~45W TDP vs 5W for ARM SBCs"
+
+  # ── AI/GPU specific ───────────────────────────────────────────────────────────
+
+  nvidia-jetson-orin-nano-8gb:
+    name: "NVIDIA Jetson Orin Nano"
+    variant: "8GB"
+    cpu: "Cortex-A78AE × 6 @ 1.5GHz"
+    arch: arm64
+    ram_gb: 8
+    storage_type: "NVMe M.2"
+    has_npu: true
+    npu_tops: 40  # NVIDIA NVDLA + PVA
+    npu_device: "/dev/nvhost-ctrl-gpu"
+    has_gpu: true  # NVIDIA Ampere — 1024 CUDA cores
+    cgroups_v2: true
+    ebpf: true  # JetPack 6 uses kernel 5.15+
+    k8s_tier: medium
+    form_factor: module
+    price_usd: 250
+    price_updated: "2025-01"
+    vendors:
+      - name: "NVIDIA (official)"
+        url: "https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/nano/"
+      - name: "Arrow Electronics"
+        url: "https://www.arrow.com/en/products/900-13767-0040-000/nvidia"
+    requires_carrier: true
+    carrier_boards:
+      - name: "Waveshare Jetson Orin Nano Dev Kit"
+        price_usd: 60
+        url: "https://www.waveshare.com/jetson-orin-nano-dev-kit.htm"
+      - name: "TuringPi 2 (fits Jetson Orin Nano)"
+        price_usd: 189
+        url: "https://turingpi.com/product/turing-pi-2-5/"
+    unlocks_stacks: [core, networking, ingress, dns, gitops, ai, security]
+    good_for:
+      - "Local AI inference — CUDA + TensorRT + ONNX"
+      - "Computer vision workloads"
+      - "Unlock Phase 7 (local AI inference)"
+    notes:
+      - "Best-in-class NPU for K8s homelab — 40 TOPS with official K8s support"
+      - "NVIDIA provides k8s-device-plugin for GPU scheduling"
+      - "Ollama supports Jetson (CUDA arm64)"
+      - "JetPack 6 = Ubuntu 22.04 + kernel 5.15 — good K8s compatibility"
+      - "Requires specific JetPack OS — not generic Ubuntu"

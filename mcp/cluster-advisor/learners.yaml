@@ -1,0 +1,311 @@
+# Learning profiles — who is deploying the cluster and what do they want to learn?
+#
+# Each profile defines:
+#   - A learning goal and user archetype
+#   - An ordered set of stacks to deploy (references stacks.yaml keys)
+#   - What concepts each stack teaches
+#   - Milestones — what you can demo/show after each stage
+#   - What hardware unlocks the next level
+#
+# Design rules:
+#   - Stack references are SOFT — unknown stacks are skipped with a warning
+#   - All fields are optional — missing ones use sensible defaults
+#   - Add a new profile by appending to this file — no code changes needed
+#   - level: 1 (beginner) → 5 (expert)
+
+profiles:
+
+  beginner:
+    label: "K8s Beginner"
+    level: 1
+    emoji: "🌱"
+    goal: "Understand how Kubernetes works from the ground up — pods, services, networking"
+    archetype: "Student or developer exploring container orchestration for the first time"
+    stacks_ordered:
+      - name: core
+        why: "K3s gives you a real K8s cluster in minutes — learn kubectl, namespaces, pods"
+        teaches:
+          - "kubectl get/describe/logs/exec — the K8s CLI"
+          - "Pod lifecycle: pending → running → crash loop"
+          - "Namespaces as isolation units"
+          - "Nodes, taints, tolerations"
+        milestone: "Deploy a hello-world pod and access it via kubectl port-forward"
+
+      - name: networking
+        why: "Cilium replaces kube-proxy with eBPF — see how real CNI networking works"
+        teaches:
+          - "ClusterIP: internal service discovery via DNS"
+          - "How eBPF intercepts packets without iptables"
+          - "LB-IPAM: how a LoadBalancer IP gets announced on the LAN"
+          - "Network policies — allow/deny by label selector"
+        milestone: "Deploy a Service and access it from another pod by name"
+
+      - name: ingress
+        why: "cert-manager + Gateway API — TLS and HTTP routing the modern way"
+        teaches:
+          - "How TLS certificates work (CA, cert, chain)"
+          - "HTTPRoute: hostname-based routing to ClusterIP services"
+          - "Why LoadBalancer for HTTP is wrong (one IP per service = wasteful)"
+        milestone: "Deploy a web app with HTTPS at myapp.cluster.home"
+
+      - name: dns
+        why: "Pi-hole shows you how wildcard DNS works and why it matters for routing"
+        teaches:
+          - "DNS resolution flow: browser → Pi-hole → cluster gateway"
+          - "Why *.cluster.home → one IP works for all services"
+          - "Split-DNS: different resolution for internal vs external"
+        milestone: "Open any cluster service by hostname from your laptop"
+
+    min_hardware:
+      nodes: 1
+      ram_gb: 4
+      storage: "any (eMMC ok)"
+    next_profile: devops
+    notes:
+      - "Single node is fine — K3s runs on a Raspberry Pi 4 with 4GB"
+      - "Focus on understanding, not production — ignore HA for now"
+
+  devops:
+    label: "Platform Engineer"
+    level: 2
+    emoji: "⚙️"
+    goal: "Build a production-grade platform — GitOps, observability, HA, storage"
+    archetype: "DevOps engineer or SRE wanting to practice real platform engineering patterns"
+    stacks_ordered:
+      - name: core
+        why: "K3s HA mode teaches etcd consensus and leader election"
+        teaches:
+          - "etcd quorum: why you need 3 nodes (not 2)"
+          - "K3s server vs agent roles"
+          - "kubeconfig management, RBAC basics"
+        milestone: "Kill a control-plane node — cluster stays up"
+
+      - name: networking
+        why: "Cilium BGP/L2 announcement and Gateway API are industry patterns"
+        teaches:
+          - "L2 vs BGP announcement for LoadBalancer IPs"
+          - "Gateway API vs Ingress — why the new standard exists"
+          - "Network policy enforcement at scale"
+        milestone: "Deploy a service, watch Cilium announce the LB IP on the LAN"
+
+      - name: ingress
+        why: "cert-manager wildcard + Gateway is how real platforms handle TLS at scale"
+        teaches:
+          - "Wildcard certificates — one cert for all services"
+          - "cert-manager ACME + internal CA patterns"
+          - "HTTPRoute parent/child refs — multi-tenant ingress"
+        milestone: "Add a new service — it gets TLS automatically with zero config"
+
+      - name: dns
+        why: "DNS is infrastructure — Pi-hole shows split-horizon and wildcard patterns"
+        teaches:
+          - "Split-DNS for internal services"
+          - "How service discovery works at scale (CoreDNS + Pi-hole)"
+        milestone: "Resolve cluster.home domains from any device on the LAN"
+
+      - name: gitops
+        why: "ArgoCD is the industry standard for K8s GitOps"
+        teaches:
+          - "GitOps loop: Git as single source of truth"
+          - "App of apps pattern — manage multiple apps from one repo"
+          - "Sync waves, hooks, and rollback"
+          - "ApplicationSet — template-driven multi-cluster"
+        milestone: "Push a change to Git — watch ArgoCD apply it within 3 minutes"
+
+      - name: observability
+        why: "The four golden signals (latency, traffic, errors, saturation) are non-negotiable"
+        teaches:
+          - "PromQL: query language for time-series metrics"
+          - "Grafana dashboards — build your own, not just defaults"
+          - "AlertManager routing and silencing"
+          - "Loki LogQL — structured log queries"
+          - "Tempo distributed tracing — trace a request across services"
+          - "The four golden signals: latency, traffic, errors, saturation"
+        milestone: "Write a PromQL alert for 'pod restart rate > 3/hour'"
+
+    min_hardware:
+      nodes: 3
+      ram_gb: 12
+      storage: "NVMe recommended for etcd"
+      etcd_latency_ms: 10
+    next_profile: ai-builder
+    notes:
+      - "HA control-plane requires 3 nodes with <10ms disk write latency"
+      - "Observability stack needs ~8GB cluster RAM — plan node count accordingly"
+      - "SMB NAS strongly recommended for Prometheus/Loki persistence"
+
+  ai-builder:
+    label: "AI Builder"
+    level: 3
+    emoji: "🤖"
+    goal: "Run AI workloads on Kubernetes — LLM routing, agents, MCP servers, local inference"
+    archetype: "Developer or researcher building AI-native applications on K8s"
+    stacks_ordered:
+      - name: core
+        why: "K8s is the right runtime for AI workloads — resource limits, scheduling, multi-tenancy"
+        teaches:
+          - "GPU/NPU device plugin — expose hardware to pods"
+          - "Resource requests/limits for memory-bound workloads"
+          - "CronJobs for batch inference"
+        milestone: "Schedule a pod with memory limits and watch K8s enforce them"
+
+      - name: networking
+        why: "AI services need reliable service mesh and load balancing"
+        teaches:
+          - "Service mesh patterns for AI microservices"
+          - "Load balancing across multiple model replicas"
+        milestone: "Run 3 replicas of a service — watch Cilium load balance"
+
+      - name: ingress
+        why: "AI APIs need HTTPS — cert-manager handles it automatically"
+        teaches:
+          - "mTLS for service-to-service AI calls"
+          - "Rate limiting at the gateway level"
+        milestone: "Expose an AI API with HTTPS and test from curl"
+
+      - name: ai
+        why: "The full AI stack teaches real agent engineering patterns"
+        teaches:
+          - "LiteLLM: unified LLM proxy — route free→cheap→paid models"
+          - "Fallback chains: when free-tier rate limits hit (Venice/OpenRouter)"
+          - "MCP (Model Context Protocol): how AI agents call external tools"
+          - "Tool-use loops: agent calls tool → observes result → reasons → repeats"
+          - "K8s-native AI: agents that query the cluster directly (HolmesGPT pattern)"
+          - "kagent: multi-tenant agent platform, CRDs for agent definitions"
+          - "ARM64 builds with kaniko: in-cluster image building"
+        milestone: "Ask HolmesGPT 'what pods are failing' — it queries the cluster and answers"
+
+    min_hardware:
+      nodes: 1
+      ram_gb: 24
+      ai_worker_ram_gb: 16
+      storage: "NVMe recommended"
+    next_profile: full-stack
+    notes:
+      - "No GPU required — OpenRouter API provides free/cheap inference"
+      - "RK1 nodes (31GB RAM) are ideal AI workers — memory-bound, not compute-bound"
+      - "For local inference: need NPU (/dev/rknpu0) or dedicated GPU"
+      - "OpenRouter API key required: roles/install-hermes-agent/defaults/secrets.yml"
+
+  security-engineer:
+    label: "Security Engineer"
+    level: 3
+    emoji: "🔒"
+    goal: "Harden a K8s cluster — runtime security, network policies, vulnerability management"
+    archetype: "Security-focused engineer or student learning K8s threat model"
+    stacks_ordered:
+      - name: core
+        why: "Understand the K8s threat model before adding security controls"
+        teaches:
+          - "K8s RBAC: ClusterRole, Role, ServiceAccount, RoleBinding"
+          - "Pod Security Admission — restricted/baseline/privileged"
+          - "Secrets management — what K8s does and doesn't protect"
+          - "Etcd encryption at rest"
+        milestone: "Create a ServiceAccount with minimal RBAC and deploy a pod using it"
+
+      - name: networking
+        why: "Cilium is also a security tool — eBPF network policy enforcement"
+        teaches:
+          - "CiliumNetworkPolicy — L3/L4/L7 enforcement"
+          - "DNS-based network policies (allow pod X to reach only api.example.com)"
+          - "Process-level network visibility with Hubble"
+          - "Encryption between nodes (WireGuard via Cilium)"
+        milestone: "Write a policy that denies all egress except to specific services"
+
+      - name: security
+        why: "NeuVector is a full container runtime security platform"
+        teaches:
+          - "Process whitelist: only expected binaries run inside containers"
+          - "Network policy learning mode → enforce mode workflow"
+          - "Vulnerability scanning: CVEs in running images"
+          - "Compliance: CIS Benchmark checks for K8s"
+          - "Zero-trust: default deny + explicit allow"
+        milestone: "Catch a container trying to run /bin/bash — NeuVector blocks it"
+
+    min_hardware:
+      nodes: 1
+      ram_gb: 8
+      storage: "any"
+    next_profile: devops
+    notes:
+      - "NeuVector uses dedicated LoadBalancer (not HTTPRoute) — HTTPS backend on 8443"
+      - "Combine with observability for security event correlation"
+
+  full-stack:
+    label: "Full Stack Operator"
+    level: 4
+    emoji: "🚀"
+    goal: "Run everything simultaneously — understand how it all fits together at scale"
+    archetype: "Experienced engineer who wants to operate a complete homelab platform"
+    stacks_ordered:
+      - name: core
+        why: "HA K3s cluster with embedded etcd — production-grade control plane"
+        teaches:
+          - "etcd backup/restore — critical for disaster recovery"
+          - "K3s upgrade procedure — rolling upgrades without downtime"
+          - "Multi-node scheduling, affinity, anti-affinity"
+        milestone: "Perform a rolling K3s upgrade across all nodes with zero downtime"
+
+      - name: networking
+        why: "Cilium at full feature set — eBPF, Hubble, BGP, encryption"
+        teaches:
+          - "Hubble observability — trace every packet in the cluster"
+          - "BGP peering with home router (advanced)"
+          - "Cross-cluster connectivity (Cluster Mesh)"
+        milestone: "Use Hubble UI to trace a failing connection between two services"
+
+      - name: ingress
+        why: "Production TLS management"
+        teaches:
+          - "Certificate rotation — automated with cert-manager"
+          - "Multi-domain certificates"
+        milestone: "Rotate a wildcard cert manually, understand the ACME flow"
+
+      - name: dns
+        why: "DNS is critical infrastructure — understand what breaks when it's down"
+        teaches:
+          - "Pi-hole + CoreDNS interaction"
+          - "DNS failover strategies"
+        milestone: "Simulate Pi-hole failure — watch what breaks and why"
+
+      - name: gitops
+        why: "GitOps at scale — manage the whole cluster from Git"
+        teaches:
+          - "App of apps — entire cluster state in Git"
+          - "Sync waves for ordered deployment"
+          - "Drift detection and auto-remediation"
+        milestone: "Delete a namespace manually — ArgoCD recreates it from Git"
+
+      - name: observability
+        why: "Full visibility — correlate metrics, logs, traces in a single query"
+        teaches:
+          - "Cross-signal correlation: trace → logs → metrics"
+          - "SLO/SLI definition and measurement"
+          - "Capacity planning from historical metrics"
+        milestone: "Debug a performance issue using only Grafana (no kubectl)"
+
+      - name: ai
+        why: "AI-native operations — the cluster manages itself with AI assistance"
+        teaches:
+          - "AI-assisted SRE: HolmesGPT + Prometheus → automated incident triage"
+          - "MCP servers: AI agents with live cluster context"
+          - "Multi-agent patterns: orchestrator → specialized agents"
+        milestone: "Ask an AI agent to diagnose a broken deployment — it fixes it"
+
+      - name: security
+        why: "Security as code — policy enforcement across all workloads"
+        teaches:
+          - "Security-as-code: NeuVector policies in Git via ArgoCD"
+          - "Runtime threat detection with AI correlation"
+          - "Compliance-as-code: automated CIS benchmark checks"
+        milestone: "Define all security policies in Git — ArgoCD enforces them"
+
+    min_hardware:
+      nodes: 5
+      ram_gb: 40
+      storage: "NVMe for control-plane nodes"
+      etcd_latency_ms: 10
+    notes:
+      - "This profile needs a medium or large hardware profile to run everything"
+      - "Recommend NAS for persistent storage (Prometheus retention, Loki logs)"
+      - "With 10-node cluster (170GB RAM) all stacks fit with 146GB headroom"

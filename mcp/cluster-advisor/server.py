@@ -31,25 +31,42 @@ from fastmcp import FastMCP
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SURVEY_DIR = REPO_ROOT / "survey"
 SKILLS_DIR = REPO_ROOT / "skills"
-FLAVORS_FILE = Path(__file__).resolve().parent / "flavors.yaml"
-STACKS_FILE  = Path(__file__).resolve().parent / "stacks.yaml"
+FLAVORS_FILE  = Path(__file__).resolve().parent / "flavors.yaml"
+STACKS_FILE   = Path(__file__).resolve().parent / "stacks.yaml"
+LEARNERS_FILE = Path(__file__).resolve().parent / "learners.yaml"
+CATALOG_FILE  = Path(__file__).resolve().parent / "hardware-catalog.yaml"
 
 # ── MCP server ────────────────────────────────────────────────────────────────
 mcp = FastMCP(
     name="cluster-advisor",
     instructions="""
-K3s cluster planning assistant for the infra-ai/infra repo.
+K3s homelab cluster advisor — hardware planning, learning roadmaps, stack analysis.
 
-Reads hardware survey data and recommends K3s cluster configurations.
+Knowledge graph:
+  survey/*.json        → live hardware facts per node
+  stacks.yaml          → modular behavioral stacks (what to deploy)
+  learners.yaml        → learning profiles and curricula (what to learn)
+  hardware-catalog.yaml→ boards to buy with prices and K8s readiness
+  skills/**/SKILL.md   → deep technical docs per component
 
-Primary workflow:
-  1. analyze_cluster()  — get a full recommendation based on surveyed hardware
-  2. list_nodes()       — see all nodes and their key specs
-  3. node_profile(name) — deep-dive on a specific node
-  4. get_skill(name)    — read technical docs for any component
+Tools:
+  list_nodes()              — table of all surveyed nodes
+  node_profile(hostname)    — detailed hardware + K8s readiness per node
+  analyze_cluster()         — flavor recommendation + node assignments
+  cluster_stacks()          — RAM budget per behavioral stack + combinations
+  cluster_roadmap()         — phased deployment plan from survey data
+  cluster_power_score()     — 5-dimension hardware score (S/A/B/C/D)
+  learning_roadmap(profile) — personalized curriculum for a learning goal
+  hardware_catalog()        — browse boards to buy + K8s readiness
+  what_to_buy(goal)         — targeted buy recommendation for a specific goal
+  get_skill(name)           — read technical skill doc for any component
+  list_skills()             — list all available skills
 
-Survey data lives in: survey/<hostname>.json
-Run the survey with: make survey
+Typical flow:
+  1. analyze_cluster() or cluster_stacks()  → understand current hardware
+  2. learning_roadmap('devops')             → get a personalized curriculum
+  3. what_to_buy('local inference')         → know what to buy next
+  4. get_skill('ai')                        → deep-dive any component
 """,
 )
 
@@ -70,6 +87,46 @@ def _load_surveys() -> dict[str, dict]:
 def _load_flavors() -> dict:
     """Load cluster flavor definitions from flavors.yaml."""
     return yaml.safe_load(FLAVORS_FILE.read_text()).get("flavors", {})
+
+
+def _load_stacks() -> dict:
+    """Load modular stack definitions from stacks.yaml. Returns {} if missing."""
+    if not STACKS_FILE.exists():
+        return {}
+    try:
+        return yaml.safe_load(STACKS_FILE.read_text()).get("stacks", {})
+    except Exception:
+        return {}
+
+
+def _load_learners() -> dict:
+    """Load learning profiles from learners.yaml. Returns {} if missing."""
+    if not LEARNERS_FILE.exists():
+        return {}
+    try:
+        return yaml.safe_load(LEARNERS_FILE.read_text()).get("profiles", {})
+    except Exception:
+        return {}
+
+
+def _load_catalog() -> dict:
+    """Load hardware catalog from hardware-catalog.yaml. Returns {} if missing."""
+    if not CATALOG_FILE.exists():
+        return {}
+    try:
+        return yaml.safe_load(CATALOG_FILE.read_text()).get("boards", {})
+    except Exception:
+        return {}
+
+
+def _stack_ram_mb(sdef: dict) -> int:
+    """Get RAM estimate from a stack definition. Returns 0 if missing."""
+    return int(sdef.get("ram_mb", 0))
+
+
+def _board_unlocks(board: dict, stacks: dict) -> list[str]:
+    """Return list of stack names this board unlocks (soft refs — unknown keys skipped)."""
+    return [s for s in board.get("unlocks_stacks", []) if s in stacks]
 
 
 def _node_capabilities(node: dict) -> dict:
@@ -1357,6 +1414,403 @@ def cluster_stacks() -> str:
     out.append("  Tip: K3s node labels let you pin stacks to specific nodes via nodeSelector.")
     out.append("       e.g. kubectl label node srv-rk1-nvme-01 role=ai-worker")
     out.append("")
+
+    return "\n".join(out)
+
+
+@mcp.tool()
+def learning_roadmap(profile: str = "") -> str:
+    """
+    Generate a personalized learning roadmap for a given profile.
+
+    Profiles: beginner, devops, ai-builder, security-engineer, full-stack
+    Leave profile empty to list available profiles.
+
+    Each profile shows:
+    - What you'll learn at each stage
+    - Which stacks to deploy in order
+    - Milestones you can demo after each stage
+    - Minimum hardware required
+    - What to deploy next after completing this profile
+    """
+    learners = _load_learners()
+    stacks = _load_stacks()
+
+    if not learners:
+        return "learners.yaml not found.\nExpected at: " + str(LEARNERS_FILE)
+
+    # List profiles if none specified or unknown
+    if not profile or profile not in learners:
+        out = ["Available learning profiles:", ""]
+        for pname, pdef in sorted(learners.items(), key=lambda x: x[1].get("level", 99)):
+            emoji = pdef.get("emoji", "")
+            label = pdef.get("label", pname)
+            level = pdef.get("level", "?")
+            goal = pdef.get("goal", "")
+            out.append(f"  {emoji} {pname:<22} [L{level}]  {label}")
+            out.append(f"     {goal[:80]}")
+            out.append("")
+        out.append("Usage: learning_roadmap('beginner')  or  learning_roadmap('devops')")
+        if profile and profile not in learners:
+            out.insert(0, f"Profile '{profile}' not found.\n")
+        return "\n".join(out)
+
+    pdef = learners[profile]
+    emoji = pdef.get("emoji", "")
+    label = pdef.get("label", profile)
+    level = pdef.get("level", "?")
+
+    # Check hardware feasibility against profile requirements
+    nodes = _load_surveys()
+    caps_map = {h: _node_capabilities(d) for h, d in nodes.items() if "_error" not in d}
+    all_caps = list(caps_map.values())
+    total_ram_gb = sum(c["ram_gb"] for c in all_caps)
+    node_count = len(all_caps)
+
+    hw_req = pdef.get("min_hardware", {})
+    hw_gaps = []
+    if node_count < hw_req.get("nodes", 1):
+        hw_gaps.append(f"need {hw_req['nodes']} nodes (have {node_count})")
+    if total_ram_gb < hw_req.get("ram_gb", 0):
+        hw_gaps.append(f"need {hw_req['ram_gb']}GB total RAM (have {total_ram_gb:.0f}GB)")
+
+    out = [f"═══ {emoji} {label} Roadmap (Level {level}) ═══", ""]
+    out.append(f"  Goal: {pdef.get('goal', '')}")
+    out.append(f"  For:  {pdef.get('archetype', '')}")
+    out.append("")
+
+    if nodes:
+        if hw_gaps:
+            out.append(f"  ⚠ Hardware gaps: {'; '.join(hw_gaps)}")
+        else:
+            out.append(f"  ✓ Hardware ready ({node_count} nodes, {total_ram_gb:.0f}GB RAM)")
+        out.append("")
+
+    # Curriculum — each stack as a stage
+    curriculum = pdef.get("stacks_ordered", [])
+    for i, stage in enumerate(curriculum, 1):
+        sname = stage.get("name", "") if isinstance(stage, dict) else str(stage)
+        sdef_global = stacks.get(sname, {})
+
+        why = stage.get("why", sdef_global.get("behavior", "")) if isinstance(stage, dict) else ""
+        teaches = stage.get("teaches", []) if isinstance(stage, dict) else []
+        milestone = stage.get("milestone", "") if isinstance(stage, dict) else ""
+        make_cmd = sdef_global.get("make", f"make {sname}")
+
+        status = "✓" if sdef_global else "?"
+        out.append(f"  Stage {i}: {sname.upper()}")
+        out.append(f"  {'─' * 50}")
+        if why:
+            out.append(f"  Why: {why}")
+        out.append(f"  Run: {make_cmd}")
+
+        if teaches:
+            out.append("  You'll learn:")
+            for t in teaches:
+                out.append(f"    • {t}")
+
+        if milestone:
+            out.append(f"  Milestone: ✅ {milestone}")
+
+        # Cross-ref with stacks.yaml for what_you_get
+        if sdef_global.get("what_you_get"):
+            out.append("  Deploys:")
+            for item in sdef_global["what_you_get"][:3]:
+                out.append(f"    + {item}")
+
+        out.append("")
+
+    # Hardware requirements summary
+    out.append("  ─── Minimum Hardware for this Profile ───")
+    for k, v in hw_req.items():
+        out.append(f"    {k}: {v}")
+    out.append("")
+
+    # Notes
+    for note in pdef.get("notes", []):
+        out.append(f"  💡 {note}")
+    if pdef.get("notes"):
+        out.append("")
+
+    # Next profile
+    next_p = pdef.get("next_profile", "")
+    if next_p and next_p in learners:
+        nd = learners[next_p]
+        out.append(f"  After completing this: → {nd.get('emoji','')} {nd.get('label', next_p)} profile")
+        out.append(f"    learning_roadmap('{next_p}')")
+
+    return "\n".join(out)
+
+
+@mcp.tool()
+def hardware_catalog() -> str:
+    """
+    Browse the catalog of boards you can buy to build or expand your K8s homelab.
+
+    Shows boards organized by tier (nano → large) with:
+    - Price, vendor URLs, K8s readiness (cgroups_v2, eBPF, NVMe)
+    - Which stacks each board can run
+    - Notes on gotchas and K8s compatibility
+    """
+    catalog = _load_catalog()
+    stacks = _load_stacks()
+
+    if not catalog:
+        return "hardware-catalog.yaml not found.\nExpected at: " + str(CATALOG_FILE)
+
+    # Group by k8s_tier
+    tier_order = ["nano", "micro", "medium", "large", "depends on modules"]
+    by_tier: dict[str, list] = {}
+    for bname, bdef in catalog.items():
+        tier = bdef.get("k8s_tier", "unknown")
+        by_tier.setdefault(tier, []).append((bname, bdef))
+
+    out = ["═══ Hardware Catalog ═══", ""]
+    out.append("  Boards listed by K8s capability tier (nano → large)")
+    out.append("  Prices are approximate — check vendor URL for current price")
+    out.append("")
+
+    for tier in tier_order + [t for t in by_tier if t not in tier_order]:
+        boards = by_tier.get(tier, [])
+        if not boards:
+            continue
+
+        out.append(f"━━━ Tier: {tier.upper()} ━━━")
+        out.append("")
+
+        for bname, bdef in sorted(boards, key=lambda x: x[1].get("price_usd", 999)):
+            name = bdef.get("name", bname)
+            variant = bdef.get("variant", "")
+            price = bdef.get("price_usd", "?")
+            arch = bdef.get("arch", "?")
+            ram = bdef.get("ram_gb", "?")
+            npu = "NPU" if bdef.get("has_npu") else ""
+            gpu = "GPU" if bdef.get("has_gpu") and not bdef.get("has_npu") else ""
+            special = " | ".join(filter(None, [npu, gpu]))
+            cg2 = "✓" if bdef.get("cgroups_v2") else "✗"
+            ebpf_ok = "✓" if bdef.get("ebpf") else "✗"
+            nvme_ok = "NVMe" if "nvme" in bdef.get("storage_type", "").lower() else "eMMC/SD"
+            carrier = " [needs carrier]" if bdef.get("requires_carrier") else ""
+
+            unlocks = _board_unlocks(bdef, stacks)
+            unlocks_str = ", ".join(unlocks[:4]) + ("..." if len(unlocks) > 4 else "")
+
+            out.append(f"  {name} {variant}{carrier}")
+            out.append(f"    ${price:<6} | {arch:<7} | {ram}GB RAM | {nvme_ok} | cgroups_v2:{cg2} eBPF:{ebpf_ok}" +
+                       (f" | {special}" if special else ""))
+            if unlocks_str:
+                out.append(f"    Unlocks: {unlocks_str}")
+
+            # Vendors
+            vendors = bdef.get("vendors", [])
+            if vendors:
+                v = vendors[0]
+                out.append(f"    Buy: {v['name']} — {v['url']}")
+            if len(vendors) > 1:
+                out.append(f"    Also: " + " | ".join(v["name"] for v in vendors[1:3]))
+
+            # First note
+            notes = bdef.get("notes", [])
+            if notes:
+                out.append(f"    Note: {notes[0]}")
+
+            # Carrier boards
+            carriers = bdef.get("carrier_boards", [])
+            if carriers:
+                c = carriers[0]
+                out.append(f"    Carrier: {c['name']} ~${c['price_usd']} — {c['url']}")
+
+            out.append("")
+
+    out.append("━━━ Tip ━━━")
+    out.append("")
+    out.append("  Use what_to_buy(goal) for targeted recommendations.")
+    out.append("  Examples:")
+    out.append("    what_to_buy('ha control-plane')   → 3 fast-disk nodes")
+    out.append("    what_to_buy('local ai inference') → NPU board")
+    out.append("    what_to_buy('more workers')       → budget SBCs")
+
+    return "\n".join(out)
+
+
+@mcp.tool()
+def what_to_buy(goal: str) -> str:
+    """
+    Get targeted hardware recommendations for a specific goal.
+
+    Examples:
+      what_to_buy('ha control-plane')    — need 3 etcd nodes with fast NVMe
+      what_to_buy('local ai inference')  — need NPU or GPU board
+      what_to_buy('more workers')        — budget worker nodes
+      what_to_buy('ai stack')            — high-RAM nodes for LLM agents
+      what_to_buy('full cluster')        — complete cluster from scratch
+    """
+    catalog = _load_catalog()
+    stacks = _load_stacks()
+    learners = _load_learners()
+
+    if not catalog:
+        return "hardware-catalog.yaml not found.\nExpected at: " + str(CATALOG_FILE)
+
+    # Load current cluster state if available
+    nodes = _load_surveys()
+    caps_map = {h: _node_capabilities(d) for h, d in nodes.items() if "_error" not in d}
+    all_caps = list(caps_map.values())
+    total_ram_gb = sum(c["ram_gb"] for c in all_caps)
+    node_count = len(all_caps)
+    etcd_count = sum(1 for c in all_caps if c["etcd_capable"])
+
+    goal_lower = goal.lower()
+    all_boards = list(catalog.items())
+
+    def _boards_with(filter_fn) -> list:
+        return [(k, v) for k, v in all_boards if filter_fn(v)]
+
+    def _fmt_board(bname: str, bdef: dict, reason: str = "") -> list[str]:
+        name = bdef.get("name", bname)
+        variant = bdef.get("variant", "")
+        price = bdef.get("price_usd", "?")
+        ram = bdef.get("ram_gb", "?")
+        npu = " + NPU" if bdef.get("has_npu") else ""
+        carrier_note = ""
+        carriers = bdef.get("carrier_boards", [])
+        if bdef.get("requires_carrier") and carriers:
+            c = carriers[0]
+            carrier_note = f" (+ {c['name']} ~${c['price_usd']})"
+        vendors = bdef.get("vendors", [])
+        buy_url = vendors[0]["url"] if vendors else "—"
+        lines = [
+            f"  → {name} {variant}",
+            f"     ${price}{carrier_note} | {ram}GB RAM{npu}",
+        ]
+        if reason:
+            lines.append(f"     Why: {reason}")
+        lines.append(f"     Buy: {buy_url}")
+        for note in bdef.get("notes", [])[:2]:
+            lines.append(f"     Note: {note}")
+        return lines
+
+    out = [f"═══ What to Buy: {goal} ═══", ""]
+
+    # Current state context
+    if nodes:
+        out.append(f"  Current cluster: {node_count} nodes | {total_ram_gb:.0f}GB RAM | {etcd_count} etcd-capable")
+        out.append("")
+
+    # ── Goal matching ──────────────────────────────────────────────────────────
+    matched = False
+
+    if any(k in goal_lower for k in ["ha", "etcd", "control", "3 node"]):
+        matched = True
+        need_more = max(0, 3 - etcd_count)
+        out.append("  Goal: HA control-plane (3 etcd nodes with NVMe + <10ms write latency)")
+        out.append("")
+        if etcd_count >= 3:
+            out.append("  ✓ You already have 3+ etcd-capable nodes — HA is achievable now!")
+            out.append("    Run: make services  (with 3 server nodes in inventory)")
+        else:
+            out.append(f"  Need {need_more} more etcd-capable node(s):")
+            out.append("")
+            candidates = _boards_with(lambda b: (
+                b.get("ebpf") and b.get("cgroups_v2") and
+                b.get("ram_gb", 0) >= 4 and
+                "nvme" in b.get("storage_type", "").lower() and
+                not b.get("requires_carrier")
+            ))
+            candidates.sort(key=lambda x: x[1].get("price_usd", 999))
+            for bname, bdef in candidates[:3]:
+                out += _fmt_board(bname, bdef, "NVMe + cgroups v2 + eBPF — etcd-capable")
+                out.append("")
+        out.append("")
+
+    if any(k in goal_lower for k in ["npu", "inference", "local ai", "ollama", "rknn", "gpu"]):
+        matched = True
+        out.append("  Goal: Local AI inference (NPU or GPU for on-device LLM)")
+        out.append("")
+        npu_boards = _boards_with(lambda b: b.get("has_npu") or b.get("has_gpu"))
+        npu_boards.sort(key=lambda x: x[1].get("price_usd", 999))
+        for bname, bdef in npu_boards[:4]:
+            tops = bdef.get("npu_tops", "")
+            reason = f"{tops} TOPS NPU — local LLM inference" if tops else "GPU — ROCm/CUDA inference"
+            out += _fmt_board(bname, bdef, reason)
+            out.append("")
+        out.append("")
+
+    if any(k in goal_lower for k in ["ai stack", "ai worker", "hermes", "llm", "kagent", "ram"]):
+        matched = True
+        out.append("  Goal: AI stack workers (high-RAM nodes for LLM agent workloads)")
+        out.append("  AI stack is memory-bound — more GB = bigger models + more agents")
+        out.append("")
+        ai_boards = _boards_with(lambda b: b.get("ram_gb", 0) >= 16)
+        ai_boards.sort(key=lambda x: (-x[1].get("ram_gb", 0), x[1].get("price_usd", 999)))
+        for bname, bdef in ai_boards[:4]:
+            reason = f"{bdef.get('ram_gb')}GB RAM — fits full AI stack (needs 24GB cluster)"
+            out += _fmt_board(bname, bdef, reason)
+            out.append("")
+        out.append("")
+
+    if any(k in goal_lower for k in ["worker", "budget", "cheap", "scale", "more node"]):
+        matched = True
+        out.append("  Goal: Budget worker nodes (scale the cluster cheaply)")
+        out.append("")
+        budget = _boards_with(lambda b: (
+            b.get("price_usd", 999) < 100 and
+            b.get("ram_gb", 0) >= 4 and
+            b.get("cgroups_v2") and
+            b.get("ebpf")
+        ))
+        budget.sort(key=lambda x: x[1].get("price_usd", 999))
+        for bname, bdef in budget[:4]:
+            out += _fmt_board(bname, bdef, "Budget K8s worker — cgroups v2 + eBPF")
+            out.append("")
+        out.append("")
+
+    if any(k in goal_lower for k in ["full", "scratch", "start", "build", "cluster from"]):
+        matched = True
+        out.append("  Goal: Build a complete cluster from scratch")
+        out.append("")
+        out.append("  Recommended starter kit (3-node HA cluster, ~$600):")
+        out.append("")
+        # TuringPi 2 + 2× CM4 + 1× RK1 or 3× RPi5
+        rpi5 = catalog.get("rpi5-8gb")
+        tp2 = catalog.get("turingpi2-board")
+        rk1 = catalog.get("turing-rk1-32gb")
+        if rpi5:
+            out += _fmt_board("rpi5-8gb", rpi5, "3× as HA control-plane (fast NVMe via M.2 HAT)")
+            out.append("")
+        if tp2:
+            out += _fmt_board("turingpi2-board", tp2, "Backplane — fits 4 modules in 1U")
+            out.append("")
+        if rk1:
+            out += _fmt_board("turing-rk1-32gb", rk1, "1× as AI worker (31GB RAM + NPU)")
+            out.append("")
+        out.append("  Budget breakdown:")
+        total = 0
+        for bname, qty, role in [
+            ("rpi5-8gb", 3, "control-plane"),
+            ("turingpi2-board", 1, "backplane"),
+            ("turing-rk1-32gb", 1, "AI worker"),
+        ]:
+            b = catalog.get(bname, {})
+            p = b.get("price_usd", 0) * qty
+            total += p
+            out.append(f"    {qty}× {b.get('name', bname)}: ~${p}")
+        out.append(f"    ─────────────────")
+        out.append(f"    Total: ~${total}")
+        out.append("")
+
+    if not matched:
+        # Generic: show all affordable boards
+        out.append(f"  No specific match for '{goal}' — showing all boards by price:")
+        out.append("")
+        sorted_boards = sorted(all_boards, key=lambda x: x[1].get("price_usd", 999))
+        for bname, bdef in sorted_boards[:6]:
+            out += _fmt_board(bname, bdef)
+            out.append("")
+
+    out.append("━━━ Other goals you can ask about ━━━")
+    out.append("  what_to_buy('ha control-plane')  |  what_to_buy('local ai inference')")
+    out.append("  what_to_buy('more workers')       |  what_to_buy('full cluster from scratch')")
 
     return "\n".join(out)
 
