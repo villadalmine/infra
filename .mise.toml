@@ -56,14 +56,44 @@ echo "    k9s          $(k9s version --short 2>/dev/null | head -1 || echo 'inst
 echo "    jq           $(jq --version 2>/dev/null)"
 echo "    opencode     $(opencode --version 2>/dev/null || echo 'installed via mise npm')"
 echo "    litellm      $(litellm --version 2>/dev/null)"
-echo "    holmes       $(holmes --version 2>/dev/null || echo 'installed via pip (holmesgpt)')"
-echo "    hermes       $(hermes --version 2>/dev/null || echo 'installed via pip (hermes-agent)')"
+echo ""
+echo "Optional AI CLIs (not in make deps — install separately):"
+echo "    make holmesgpt-install   → holmes ask 'why is pod X crashing?'"
+echo "                               https://docs.holmesgpt.com/getting-started"
+echo "    make hermes-install      → hermes chat -q 'your question'"
+echo "                               https://hermes-agent.nousresearch.com/docs/getting-started/installation"
 echo ""
 echo "Next steps:"
 echo "  1. cp inventory/hosts.ini.example inventory/hosts.ini"
 echo "  2. Edit inventory/hosts.ini with your node IPs"
 echo "  3. make setup-nodes"
 echo "  4. make survey"
+"""
+
+[tasks.install-holmesgpt]
+description = "Install HolmesGPT CLI locally — holmes ask 'why is pod X crashing?' (optional)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Installing HolmesGPT CLI (may take a few minutes — heavy deps)..."
+echo "Docs: https://docs.holmesgpt.com/getting-started"
+pip install holmesgpt
+echo ""
+echo "Done. Run: holmes ask 'why is pod X crashing?'"
+echo "     Needs: kubectl access to the cluster"
+"""
+
+[tasks.install-hermes]
+description = "Install Hermes Agent CLI locally — hermes chat -q '...' (optional)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Installing Hermes Agent CLI..."
+echo "Docs: https://hermes-agent.nousresearch.com/docs/getting-started/installation"
+curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+echo ""
+echo "Done. Run: hermes model   (select LLM provider)"
+echo "      Run: hermes chat -q 'your question'"
 """
 
 [tasks.litellm]

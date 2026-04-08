@@ -52,7 +52,7 @@ Uses **mise** to install pinned versions of all tools.
 
 ```
 mise install    → python 3.13, node 22, kubectl 1.35, helm 3.17, nova, jq, opencode, k9s
-mise run setup  → pip install (ansible, litellm, fastmcp, holmesgpt, hermes-agent), ansible-galaxy collections
+mise run setup  → pip install (ansible, litellm, fastmcp, pyyaml + ansible collections)
 ```
 
 **First time on a new machine:**
@@ -87,8 +87,15 @@ make uninstall-local   # prompts for confirmation, then removes all of the above
 - `litellm[proxy]` — local AI model router
 - `fastmcp` — MCP server toolkit (cluster-advisor)
 - `pyyaml` — YAML parsing
-- `holmesgpt` — AI SRE CLI (`holmes ask "why is pod X crashing?"`)
-- `hermes-agent` — local AI CLI (`hermes chat -q "ask something"`)
+
+**Optional AI CLIs (NOT in `make deps` — install separately):**
+
+| Tool | Install | Docs |
+|------|---------|------|
+| HolmesGPT (`holmes`) | `make holmesgpt-install` | https://docs.holmesgpt.com/getting-started |
+| Hermes Agent (`hermes`) | `make hermes-install` | https://hermes-agent.nousresearch.com/docs/getting-started/installation |
+
+These are excluded from `make deps` because they have heavy dependency trees. Install only if needed.
 
 **Ansible collections installed (`setup/requirements.yml`):**
 - `ansible.posix` — authorized_key module

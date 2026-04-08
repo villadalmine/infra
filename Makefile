@@ -11,7 +11,7 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps preview uninstall-local setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
+.PHONY: help deps preview uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -34,6 +34,12 @@ preview: ## Show what 'make deps' will install — no changes made (run this fir
 
 uninstall-local: ## Remove all workstation tools installed by 'make deps'
 	@bash scripts/uninstall-local
+
+hermes-install: ## Install Hermes Agent CLI locally — hermes chat -q "ask something" (optional)
+	@mise run install-hermes
+
+holmesgpt-install: ## Install HolmesGPT CLI locally — holmes ask "why is X crashing?" (optional)
+	@mise run install-holmesgpt
 
 deps: ## Install workstation tools — mise + Python packages + Ansible collections (run once)
 	@echo "Run 'make preview' first to see exactly what will be installed."
