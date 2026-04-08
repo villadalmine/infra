@@ -93,6 +93,25 @@ has `core` + `networking` will skip those roles automatically.
 **Never `LoadBalancer` for HTTP. Never `Ingress`. Always `HTTPRoute`.**
 Pi-hole wildcard covers DNS. cert-manager wildcard covers TLS. Zero extra config per service.
 
+## Security — NEVER expose credentials in git
+
+**Before every commit, scan for secrets:**
+```bash
+git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-zA-Z0-9_\-]{20,}"
+```
+
+**Rules (non-negotiable):**
+- Secrets live ONLY in `roles/*/defaults/secrets.yml` (gitignored) — never in task files, static YAMLs, or docs
+- Static manifests with real credentials (`scripts/*.yaml`) are gitignored — keep only placeholder versions in git
+- If a secret is committed accidentally: rotate it immediately, then rewrite history with `git filter-repo --replace-text` + force push
+- Never hardcode API keys, bot tokens, or passwords in any file that gets committed
+- If unsure whether a file with secrets is gitignored: run `git check-ignore -v <file>` before staging
+
+**Gitignored secret locations:**
+- `roles/*/defaults/secrets.yml` — per-role secrets (API keys, passwords)
+- `roles/*/defaults/secrets.yaml` — same, alternate extension
+- `scripts/hermes-static.yaml` — K8s manifest with real credentials (use placeholder template in git)
+
 ## Workflow for new Helm roles
 
 1. `helm install` manually on cluster → verify working
