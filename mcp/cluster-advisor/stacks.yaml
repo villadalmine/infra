@@ -1,0 +1,244 @@
+# Cluster stacks — modular behavioral profiles
+#
+# Philosophy:
+#   - Each stack does ONE thing well, based on a specific behavior/purpose
+#   - Stacks are modular and combinable — pick what you need
+#   - core + networking are ALWAYS required (base for everything)
+#   - K3s is the only supported runtime; Cilium is the only CNI
+#   - Compute budget is calculated from actual role resource limits
+#
+# Stack kinds:
+#   foundation  — always-on base (non-negotiable)
+#   additive    — small building blocks (dns, ingress, gitops)
+#   behavioral  — purpose-specific workloads (observability, ai, security)
+#
+# ram_mb: estimated real memory usage (not just requests — includes overhead)
+# min_nodes: minimum nodes for this stack (1 = single-node ok)
+# min_ram_gb_server: minimum RAM on the server/CP node
+
+stacks:
+
+  # ── Foundation (always required) ─────────────────────────────────────────────
+
+  core:
+    kind: foundation
+    always_required: true
+    behavior: "K3s cluster bootstrap — API server, scheduler, kubelet, containerd"
+    roles:
+      - install-k3s
+      - get-kubeconfig
+    make: "make core"
+    ram_mb: 768           # K3s server: ~512MB; agent: ~256MB
+    min_nodes: 1
+    min_ram_gb_server: 2
+    requires: []
+    notes:
+      - "K3s runs on any Linux with cgroups v2 — ARM64, x86, RISC-V"
+      - "Self-contained: includes containerd, flannel-stub, CoreDNS, local-path"
+      - "Base for every other stack — always deploy first"
+
+  networking:
+    kind: foundation
+    always_required: true
+    behavior: "Layer 3/4 networking — Cilium CNI, eBPF, LB-IPAM, L2 announcement, Gateway API CRDs"
+    roles:
+      - install-gateway-api-crds
+      - install-cilium
+      - install-cilium-pools
+    make: "make networking"
+    ram_mb: 512           # cilium-agent DaemonSet: ~200MB/node; operator: ~100MB
+    min_nodes: 1
+    min_ram_gb_server: 2
+    requires: [core]
+    notes:
+      - "Always Cilium — no alternative CNI supported in this repo"
+      - "Provides: ClusterIP routing, LB-IPAM (L2), NodePort, eBPF kube-proxy replacement"
+      - "Gateway API CRDs enable HTTPRoute pattern for all HTTP services"
+
+  # ── Additive building blocks ──────────────────────────────────────────────────
+
+  ingress:
+    kind: additive
+    behavior: "TLS termination + HTTP routing — cert-manager (internal CA, wildcard TLS) + shared Gateway resource"
+    roles:
+      - install-cert-manager
+      - install-gateway
+    make: "make ingress"
+    ram_mb: 256           # cert-manager: ~192MB; gateway controller: integrated into Cilium
+    min_nodes: 1
+    min_ram_gb_server: 2
+    requires: [networking]
+    notes:
+      - "Enables HTTPS for all services via wildcard cert (*.cluster.home)"
+      - "Single shared Gateway in namespace 'gateway' — all services use HTTPRoute"
+      - "Pattern: ClusterIP + HTTPRoute → never LoadBalancer for HTTP"
+
+  dns:
+    kind: additive
+    behavior: "Wildcard DNS — Pi-hole resolves *.cluster.home → gateway IP for all cluster services"
+    roles:
+      - install-pihole
+    make: "make dns"
+    ram_mb: 256           # Pi-hole FTL + web UI: ~200MB
+    min_nodes: 1
+    min_ram_gb_server: 2
+    requires: [ingress]
+    notes:
+      - "CRITICAL: uses local-path storage — SQLite is incompatible with SMB/CIFS"
+      - "Wildcard DNS entry: *.cluster.home → 192.168.178.200 (gateway IP)"
+      - "Pi-hole 6.x: FTL takes 110s on first boot (normal)"
+
+  gitops:
+    kind: additive
+    behavior: "GitOps continuous deployment — ArgoCD syncs K8s manifests from Git"
+    roles:
+      - install-argocd
+    make: "make gitops"
+    ram_mb: 512           # ArgoCD server + repo-server + dex: ~500MB
+    min_nodes: 1
+    min_ram_gb_server: 4
+    requires: [ingress]
+    notes:
+      - "Exposed at argocd.cluster.home via HTTPRoute"
+      - "Admin password auto-generated on first install"
+
+  # ── Behavioral stacks ─────────────────────────────────────────────────────────
+
+  observability:
+    kind: behavioral
+    behavior: "Full observability — metrics (Prometheus/Grafana), logs (Loki), traces (Tempo), collection (Alloy)"
+    roles:
+      - install-kube-prometheus-stack
+      - install-tempo
+      - install-loki
+      - install-alloy
+    make: "make observability"
+    ram_mb: 8192          # kube-prometheus-stack: ~5GB; Loki: ~1.5GB; Tempo: ~1GB; Alloy: ~256MB
+    min_nodes: 2
+    min_cluster_ram_gb: 12
+    min_ram_gb_server: 4
+    requires: [networking]
+    what_you_get:
+      - "Prometheus scrapes all pods + K8s components every 15s"
+      - "Grafana dashboards — K8s overview, node stats, pod CPU/RAM"
+      - "AlertManager — fire-and-forget or PagerDuty/Slack alerts"
+      - "Loki aggregates all pod logs — query with LogQL"
+      - "Tempo collects distributed traces — link logs ↔ traces ↔ metrics"
+      - "Alloy (OpenTelemetry collector) — scrapes and forwards all telemetry"
+    notes:
+      - "SMB NAS recommended for Prometheus/Loki persistence (use make storage first)"
+      - "Grafana takes ~2min to start (60s readiness probe — normal)"
+
+  ai:
+    kind: behavioral
+    behavior: "AI assistant platform — LLM routing, agents, SRE assistant, multi-tenant agent framework"
+    roles:
+      - install-registry
+      - install-hermes-agent-image
+      - install-litellm-proxy
+      - install-hermes-agent
+      - install-holmes
+      - install-holmes-ui
+      - install-kagent
+    make: "make ai && make ai-holmes && make kagent"
+    ram_mb: 10240         # litellm: ~3GB; hermes: ~512MB; holmes: ~1GB; kagent: ~1GB; registry: ~256MB; build: transient
+    min_nodes: 1
+    min_cluster_ram_gb: 24
+    min_ram_gb_server: 4
+    requires: [networking]
+    what_you_get:
+      - "LiteLLM proxy — routes to OpenRouter (free/cheap models, fallback chain)"
+      - "Hermes Agent — Telegram + web AI assistant"
+      - "HolmesGPT — SRE assistant that queries the live cluster and reasons with LLM"
+      - "Holmes UI — web chat interface for HolmesGPT"
+      - "kagent — multi-tenant AI agent platform with MCP servers"
+      - "Docker registry — stores ARM64 custom images built in-cluster"
+    notes:
+      - "No GPU needed — routes all inference via OpenRouter API"
+      - "Cost: $0–$5/month (free tier available on OpenRouter)"
+      - "Hermes build takes ~60min (kaniko ARM64 build on first deploy)"
+      - "Requires OPENROUTER_API_KEY in roles/install-hermes-agent/defaults/secrets.yml"
+      - "RK1 nodes (31GB) ideal for AI workloads — memory-bound, not compute-bound"
+
+  security:
+    kind: behavioral
+    behavior: "Container runtime security — policy enforcement, vulnerability scanning, zero-trust network policies"
+    roles:
+      - install-neuvector
+    make: "make security"
+    ram_mb: 3072          # NeuVector controller + enforcer + scanner: ~2.5GB
+    min_nodes: 1
+    min_cluster_ram_gb: 8
+    min_ram_gb_server: 4
+    requires: [networking]
+    what_you_get:
+      - "NeuVector — real-time container process and network monitoring"
+      - "Vulnerability scanning for all running images"
+      - "Network policy enforcement at layer 4/7"
+      - "Zero-trust security posture for pods"
+    notes:
+      - "Uses dedicated LoadBalancer (not HTTPRoute) — NeuVector serves its own HTTPS on 8443"
+      - "Fixed IP: 192.168.178.204 (Cilium LB-IPAM, separate from gateway .200)"
+      - "Cilium Gateway API does NOT support TLS passthrough — hence dedicated LB"
+
+  # ── Meta-stacks (predefined combinations) ────────────────────────────────────
+  # These are not deployed directly — they describe well-known combinations.
+  # Use their make commands as a sequence.
+
+  _foundation_meta:
+    kind: meta
+    label: "Foundation"
+    description: "Always-on base for any cluster — K3s + Cilium + TLS + DNS + GitOps"
+    stacks: [core, networking, ingress, dns, gitops]
+    make_sequence:
+      - "make core && make networking"
+      - "make ingress"
+      - "make dns"
+      - "make gitops"
+    ram_mb_total: 2304    # sum of above
+
+  _ai_stack_meta:
+    kind: meta
+    label: "AI Stack"
+    description: "Foundation + AI assistant platform"
+    stacks: [core, networking, ingress, dns, gitops, ai]
+    make_sequence:
+      - "make core && make networking"
+      - "make ingress && make dns && make gitops"
+      - "make ai && make ai-holmes && make kagent"
+    ram_mb_total: 12544
+
+  _observability_stack_meta:
+    kind: meta
+    label: "Observability Stack"
+    description: "Foundation + full metrics/logs/traces"
+    stacks: [core, networking, ingress, dns, gitops, observability]
+    make_sequence:
+      - "make core && make networking"
+      - "make ingress && make dns && make gitops"
+      - "make observability"
+    ram_mb_total: 10496
+
+  _security_stack_meta:
+    kind: meta
+    label: "Security Stack"
+    description: "Foundation + container runtime security"
+    stacks: [core, networking, ingress, dns, gitops, security]
+    make_sequence:
+      - "make core && make networking"
+      - "make ingress && make dns && make gitops"
+      - "make security"
+    ram_mb_total: 5376
+
+  _full_stack_meta:
+    kind: meta
+    label: "Full Stack"
+    description: "Everything: Foundation + AI + Observability + Security"
+    stacks: [core, networking, ingress, dns, gitops, observability, ai, security]
+    make_sequence:
+      - "make core && make networking"
+      - "make ingress && make dns && make gitops"
+      - "make observability"
+      - "make ai && make ai-holmes && make kagent"
+      - "make security"
+    ram_mb_total: 22528   # ~22GB — needs 24GB+ cluster
