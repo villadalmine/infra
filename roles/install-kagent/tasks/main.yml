@@ -183,6 +183,47 @@
     - kagent-grafana-mcp
     - kagent-querydoc
 
+# ── PostgreSQL: fix pg_hba.conf to allow pod-to-pod connections ──────────
+# postgres:18 default pg_hba.conf only allows Unix socket and localhost.
+# The kagent controller pod (IP range 10.0.0.0/8 or 10.42.0.0/16) connects
+# via TCP, which is rejected with "no pg_hba.conf entry". Fix: append a
+# trust rule for all IPs after postgres is ready. Idempotent: grep prevents
+# duplicate appends.
+- name: Wait for kagent-postgresql to be ready
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/kagent-postgresql -n {{ kagent_namespace }} --timeout=120s
+  changed_when: false
+
+- name: Fix kagent-postgresql pg_hba.conf (allow TCP from all pod CIDRs)
+  ansible.builtin.command:
+    cmd: >
+      kubectl exec -n {{ kagent_namespace }} deployment/kagent-postgresql --
+      sh -c "
+        grep -q '0.0.0.0/0' /var/lib/postgresql/data/pgdata/pg_hba.conf ||
+        echo 'host    all    all    0.0.0.0/0    trust' >>
+          /var/lib/postgresql/data/pgdata/pg_hba.conf &&
+        pg_ctl reload -D /var/lib/postgresql/data/pgdata
+      "
+  changed_when: false
+
+- name: Create kagent database if not exists
+  ansible.builtin.command:
+    cmd: >
+      kubectl exec -n {{ kagent_namespace }} deployment/kagent-postgresql --
+      psql -U kagent -d postgres -tc
+      "SELECT 1 FROM pg_database WHERE datname='kagent'"
+  register: kagent_db_check
+  changed_when: false
+  failed_when: false
+
+- name: Create kagent database
+  ansible.builtin.command:
+    cmd: >
+      kubectl exec -n {{ kagent_namespace }} deployment/kagent-postgresql --
+      psql -U kagent -d postgres -c "CREATE DATABASE kagent OWNER kagent;"
+  when: kagent_db_check.stdout | default('') | trim != '1'
+  changed_when: true
+
 # ── Agent ServiceAccount with read + kubectl exec permissions ─────────────
 # Agents can: get/list/watch everything + exec into pods + read logs
 # Agents CANNOT: create/update/delete K8s resources
