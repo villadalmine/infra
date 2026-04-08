@@ -85,5 +85,7 @@
       tags: [ai, ai-hermes-deploy, ai-hermes-agent]
     - role: install-holmes
       tags: [ai, ai-holmes]
+    - role: install-holmes-ui
+      tags: [ai, ai-holmes, ai-holmes-ui]
     - role: install-kagent
       tags: [kagent, ai-platform]

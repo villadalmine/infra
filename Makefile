@@ -11,7 +11,7 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
+.PHONY: help deps setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -88,8 +88,11 @@ ai-kubernetes-mcp-build: ## Build Kubernetes MCP server ARM64 image with kaniko
 ai-hermes-deploy: ## Deploy Hermes Agent (requires ai-hermes-build to complete first)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-deploy
 
-ai-holmes: ## Deploy HolmesGPT (OpenAI-compatible backend via LiteLLM)
+ai-holmes: ## Deploy HolmesGPT + Holmes UI (OpenAI-compatible backend via LiteLLM)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-holmes
+
+holmes-ui: ## Deploy Holmes UI only (chat interface at holmes-ui.cluster.home)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-holmes-ui
 
 kagent: ## Deploy kagent + kmcp AI agent platform (multi-tenant, LiteLLM backend)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags kagent
