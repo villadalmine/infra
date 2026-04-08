@@ -263,8 +263,8 @@ Los skills del cluster:
 | `platform-engineering` | Helm, Terraform, CI/CD best practices |
 | `cifs-nas` | CSI SMB driver, SMB1 mount options, PV/PVC static + dynamic tests |
 
-**Source de los skills:** `~/dotfiles/ansible/roles/opencode/files/skills/`
-Deployados via Ansible al editar, nunca a mano.
+**Source de los skills:** `skills/` en la raíz de este repo (`infra-ai/infra/skills/`).
+Parte del repo — se editan directamente aquí, se cargan automáticamente por Claude Code y OpenCode.
 
 ### Storage workflow
 
@@ -410,32 +410,34 @@ holmes chat
 | Hubble (Cilium) | via kubectl | no toolset nativo, pero puede correr `hubble observe` |
 | Grafana Loki | ✅ built-in | si se despliega Loki |
 
-### Modos de deploy
+### Deploy actual (in-cluster, Helm)
 
-**CLI (más simple para homelab):**
+HolmesGPT ya está deployado en el cluster via `robusta/holmes` Helm chart v0.24.0.
+
+- **API:** `https://holmes.cluster.home` → `POST /api/chat {"ask": "pregunta"}`
+- **Chat UI:** `https://holmes-ui.cluster.home` — interfaz visual, respuestas en markdown
+- **Backend LLM:** LiteLLM proxy (`sk-hermes-internal`) → OpenRouter (`OPENROUTER_API_KEY`)
+- **Latencia:** 60–90s (agentic loop con múltiples tool calls)
+
 ```bash
-pip install holmesgpt
-export OPENAI_API_KEY=sk-...   # o cualquier otro provider
-holmes ask "why is my pod failing?"
+# Via curl
+curl -s https://holmes.cluster.home/api/chat \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"ask": "why is pod X in namespace Y crashlooping?"}'
+
+# Via UI
+open https://holmes-ui.cluster.home
 ```
 
-**In-cluster (Operator mode — 24/7):**
-```yaml
-# Helm chart — puede ir como ArgoCD Application
-helm install holmesgpt holmesgpt/holmesgpt \
-  --set llm.provider=openai \
-  --set llm.apiKey=sk-...
-```
-
-El Operator mode corre health checks scheduled y manda alertas a Slack con
-el análisis ya hecho — sin que tengas que notar el problema primero.
+**Nota importante:** Holmes v0.24.0 usa `gpt-5.4` como model name por defecto.
+LiteLLM tiene ese alias → `openrouter/qwen/qwen3-coder:free` con fallback free2→cheap.
 
 ### LLM providers soportados
 
 OpenAI, Anthropic, Azure OpenAI, AWS Bedrock, Google Gemini, Ollama (local),
 y cualquier endpoint compatible con OpenAI API.
 
-Para homelab: Ollama con un modelo local evita costos y mantiene los datos privados.
+Este cluster usa: LiteLLM proxy (OpenAI-compatible) → OpenRouter → modelos free/cheap.
 
 ```yaml
 # config.yaml con Ollama local

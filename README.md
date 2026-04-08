@@ -104,16 +104,14 @@ Hermes instances overlapping during rollout.
 The gateway is kept alive by the webhook platform so the pod stays `1/1` under
 Ansible as well as manual cluster updates.
 
-HolmesGPT runs in the same `ai` namespace and points at LiteLLM through the
-OpenAI-compatible API. Hermes talks directly to OpenRouter with
-`HERMES_INFERENCE_PROVIDER=openrouter` and a free model like
-`qwen/qwen3-coder:free`. HolmesGPT exposes `https://holmes.cluster.home`
-through the shared Gateway.
-Future work: add Holmes MCP servers once the base HTTP install is stable.
+Both Hermes and HolmesGPT route through the in-cluster LiteLLM proxy at
+`http://litellm-proxy.ai.svc.cluster.local:4000` using `sk-hermes-internal`.
+LiteLLM routes to OpenRouter (free→free2→cheap fallback) using the user's
+`OPENROUTER_API_KEY` from `roles/install-hermes-agent/defaults/secrets.yml`.
+No credentials are exposed in deployments.
 
-Example questions:
-- `Using Prometheus, show the top 5 pods by CPU in namespace monitoring over the last 15m.`
-- `Using Prometheus, check whether Grafana latency or error rate spiked in the last 30m.`
+Holmes uses `gpt-5.4` as its default model name — this alias must exist in
+LiteLLM config or Holmes fails. Chat UI: `https://holmes-ui.cluster.home`.
 
 ---
 
@@ -191,13 +189,12 @@ all tags up to the layer you need.
 | `ai-registry` | registry only | `networking`, `storage` |
 | `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
 | `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
+| `ai-holmes` | holmes + holmes-ui | `ai-hermes-deploy` |
+| `kagent` | kagent + kmcp (AI agent platform) | `networking` + LiteLLM |
 
-Pi-hole and NeuVector use `smb-nas`. Those roles require the storage backend
-role to be installed first.
-
-Prometheus, Loki, Tempo, NeuVector, the registry, Hermes, and kaniko use `smb-nas`.
-Hermes also uses a dedicated workspace PVC on `smb-nas` to avoid node ephemeral-storage pressure.
-Those roles require the storage backend role to be installed first.
+Pi-hole uses `local-path` (SQLite incompatible with SMB/CIFS).
+NeuVector, Prometheus, Loki, Tempo, the registry, Hermes, and kaniko use `smb-nas`.
+Those roles require the storage backend role to be installed first (`make storage` or `--tags storage`).
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -225,9 +222,9 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
 3. Write Ansible role in `roles/<name>/`
 4. Add role to `playbooks/bootstrap.yml`
 5. `ansible-playbook playbooks/bootstrap.yml` → must pass `failed=0`
-6. Create skill: `~/dotfiles/ansible/roles/opencode/files/skills/<name>/SKILL.md`
+6. Create skill: `skills/<name>/SKILL.md` (in this repo)
 7. **Update this README** — add the service to the table above
-8. Commit + push both repos
+8. Commit + push
 
 See `CLAUDE.md` for the full bootstrap role order and architectural constraints.
 See `AGENTS.md` for project rules, golden rules, and troubleshooting.

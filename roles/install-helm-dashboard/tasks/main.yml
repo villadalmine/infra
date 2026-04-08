@@ -8,23 +8,6 @@
     repo_url: https://helm-charts.komodor.io
   changed_when: false
 
-- name: Check if helm-dashboard release exists
-  ansible.builtin.command:
-    cmd: helm list -n {{ helm_dashboard_namespace }} -o json --filter helm-dashboard
-  register: hd_helm_list
-  changed_when: false
-  failed_when: false
-
-- name: Set helm-dashboard release status fact
-  ansible.builtin.set_fact:
-    hd_deployed: "{{ (hd_helm_list.stdout | from_json | selectattr('status', 'equalto', 'deployed') | list | length) > 0 }}"
-  when: hd_helm_list.stdout | default('') | length > 0
-
-- name: Set helm-dashboard release status fact (default not deployed)
-  ansible.builtin.set_fact:
-    hd_deployed: false
-  when: hd_helm_list.stdout | default('') | length == 0
-
 - name: Install or upgrade helm-dashboard
   kubernetes.core.helm:
     name: helm-dashboard
@@ -39,9 +22,9 @@
       extraArgs:
         - "--no-browser"
         - "--bind=0.0.0.0"
+        - "--no-analytics"
       service:
         type: ClusterIP
-  when: not hd_deployed
 
 - name: Wait for helm-dashboard rollout
   ansible.builtin.command:
