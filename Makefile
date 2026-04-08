@@ -27,6 +27,7 @@ help: ## Show this help message (start here if you're new)
 	@echo ""
 	@echo "  All targets:"
 	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 preview: ## Show what 'make deps' will install — no changes made (run this first)
 	@bash scripts/deps-preview
@@ -55,13 +56,6 @@ litellm: ## Start local LiteLLM proxy (AI router — needed for OpenCode AI feat
 	@echo "  export ANTHROPIC_API_KEY=sk-ant-...  (optional)"
 	@echo ""
 	@litellm --config setup/litellm/config.yaml --port 4000
-
-help: ## Show this help message
-	@echo "Infra Makefile - Simplified Ansible workflow"
-	@echo ""
-	@echo "Usage: make <target>"
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 quick: ## Quick cluster — K3s + Cilium only. DIY from here. No ingress/DNS/storage CSI.
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking
