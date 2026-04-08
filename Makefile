@@ -11,21 +11,32 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
+.PHONY: help deps preview uninstall-local setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
 	@echo "  First time? Run in order:"
+	@echo "    0. make preview       see exactly what make deps will install (read-only)"
 	@echo "    1. make deps          install workstation tools (mise + pip + ansible-galaxy)"
 	@echo "    2. make setup-nodes   copy SSH key + configure sudo on nodes (needs password once)"
 	@echo "    3. make survey        collect hardware info from all nodes"
 	@echo "    4. make litellm       start local AI assistant (optional)"
 	@echo "    5. make core          bootstrap K3s cluster"
 	@echo ""
+	@echo "  Undo workstation install: make uninstall-local"
+	@echo ""
 	@echo "  All targets:"
 	@echo ""
 
+preview: ## Show what 'make deps' will install — no changes made (run this first)
+	@bash scripts/deps-preview
+
+uninstall-local: ## Remove all workstation tools installed by 'make deps'
+	@bash scripts/uninstall-local
+
 deps: ## Install workstation tools — mise + Python packages + Ansible collections (run once)
+	@echo "Run 'make preview' first to see exactly what will be installed."
+	@echo ""
 	@echo "Checking mise..."
 	@command -v mise >/dev/null 2>&1 || (echo "Installing mise..." && curl https://mise.run | sh && echo 'eval "$$(~/.local/bin/mise activate bash)"' >> ~/.bashrc)
 	@mise install

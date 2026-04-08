@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# deps-preview — show exactly what 'make deps' will install on your machine.
+# Read-only: makes NO changes. Run 'make deps' to actually install.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MISE_TOML="$REPO_ROOT/.mise.toml"
+REQUIREMENTS_TXT="$REPO_ROOT/setup/requirements.txt"
+REQUIREMENTS_YML="$REPO_ROOT/setup/requirements.yml"
+
+# Colors
+BOLD='\033[1m'
+CYAN='\033[36m'
+GREEN='\033[32m'
+YELLOW='\033[33m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+echo ""
+echo -e "${BOLD}make deps — what will be installed on YOUR machine${RESET}"
+echo -e "${DIM}─────────────────────────────────────────────────────────────────${RESET}"
+echo ""
+
+# ── 1. mise binary ─────────────────────────────────────────────────────────────
+echo -e "${BOLD}1. mise (version manager)${RESET}"
+if command -v mise >/dev/null 2>&1; then
+  MISE_PATH="$(command -v mise)"
+  MISE_VER="$(mise --version 2>/dev/null | head -1)"
+  echo -e "   ${GREEN}✓ already installed${RESET}: $MISE_PATH ($MISE_VER)"
+else
+  echo -e "   ${YELLOW}→ will install${RESET}: ~/.local/bin/mise (latest)"
+  echo -e "   ${DIM}   source: curl https://mise.run | sh${RESET}"
+  echo -e "   ${DIM}   disk: ~5 MB${RESET}"
+  echo -e "   ${YELLOW}→ shell change${RESET}: adds 1 line to ~/.bashrc"
+  echo -e "   ${DIM}   eval \"\$(~/.local/bin/mise activate bash)\"${RESET}"
+fi
+echo ""
+
+# ── 2. mise-managed tools (from .mise.toml) ─────────────────────────────────
+echo -e "${BOLD}2. Tools managed by mise${RESET}"
+echo -e "   ${DIM}Install path: ~/.local/share/mise/installs/<tool>/<version>${RESET}"
+echo ""
+printf "   %-22s %-12s %s\n" "TOOL" "VERSION" "STATUS"
+printf "   %-22s %-12s %s\n" "────────────────────" "──────────" "──────────"
+
+# Parse .mise.toml [tools] section
+while IFS= read -r line; do
+  # Skip comments, empty lines, section headers, [env], [tasks]
+  [[ "$line" =~ ^[[:space:]]*# ]] && continue
+  [[ -z "${line// }" ]] && continue
+  [[ "$line" =~ ^\[env\] ]] && break
+  [[ "$line" =~ ^\[tasks ]] && break
+  [[ "$line" =~ ^\[tools\] ]] && continue
+
+  # Match: key = "version"
+  if [[ "$line" =~ ^[[:space:]]*\"?([^\"=]+)\"?[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+    raw_key="${BASH_REMATCH[1]}"
+    version="${BASH_REMATCH[2]}"
+
+    # Friendly display name
+    case "$raw_key" in
+      python)                  tool_name="python" ;;
+      node)                    tool_name="node" ;;
+      *kubernetes/kubectl*)    tool_name="kubectl (aqua)" ;;
+      *helm/helm*)             tool_name="helm (aqua)" ;;
+      *FairwindsOps/nova*)     tool_name="nova (aqua)" ;;
+      *opencode*)              tool_name="opencode (npm, via node)" ;;
+      *jqlang/jq*)             tool_name="jq (aqua)" ;;
+      *derailed/k9s*)          tool_name="k9s (aqua)" ;;
+      *)                       tool_name="$raw_key" ;;
+    esac
+
+    # Check if already installed via mise
+    if command -v mise >/dev/null 2>&1; then
+      if mise which "$tool_name" >/dev/null 2>&1; then
+        status="${GREEN}✓ installed${RESET}"
+      else
+        status="${YELLOW}→ will install${RESET}"
+      fi
+    else
+      status="${YELLOW}→ will install${RESET}"
+    fi
+
+    printf "   %-22s %-12s " "$tool_name" "$version"
+    echo -e "$status"
+  fi
+done < "$MISE_TOML"
+
+echo ""
+
+# ── 3. Python packages (.venv/) ─────────────────────────────────────────────
+echo -e "${BOLD}3. Python packages${RESET}"
+echo -e "   ${DIM}Install path: $REPO_ROOT/.venv/ (repo-local, not system-wide)${RESET}"
+echo ""
+
+if [[ -f "$REQUIREMENTS_TXT" ]]; then
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    pkg="${line%%>=*}"
+    pkg="${pkg%%<=*}"
+    pkg="${pkg%%==*}"
+    pkg="${pkg%%[*}"
+    echo -e "   ${CYAN}•${RESET} $line"
+  done < "$REQUIREMENTS_TXT"
+else
+  echo -e "   ${DIM}(setup/requirements.txt not found)${RESET}"
+fi
+echo ""
+
+# ── 4. Ansible collections ──────────────────────────────────────────────────
+echo -e "${BOLD}4. Ansible collections${RESET}"
+echo -e "   ${DIM}Install path: ~/.ansible/collections/ansible_collections/${RESET}"
+echo ""
+
+if [[ -f "$REQUIREMENTS_YML" ]]; then
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    [[ "$line" =~ ^collections: ]] && continue
+    if [[ "$line" =~ name:[[:space:]]*([^ ]+) ]]; then
+      echo -e "   ${CYAN}•${RESET} ${BASH_REMATCH[1]}"
+    fi
+  done < "$REQUIREMENTS_YML"
+else
+  echo -e "   ${DIM}(setup/requirements.yml not found)${RESET}"
+fi
+echo ""
+
+# ── Summary ─────────────────────────────────────────────────────────────────
+echo -e "${DIM}─────────────────────────────────────────────────────────────────${RESET}"
+echo -e "${BOLD}Summary${RESET}"
+echo -e "  • All changes are ${GREEN}user-local${RESET} — no root, no system packages"
+echo -e "  • mise tools    → ~/.local/share/mise/ (shared across projects)"
+echo -e "  • Python venv   → .venv/ inside THIS repo (repo-local, gitignored)"
+echo -e "  • Ansible       → ~/.ansible/collections/ (user home)"
+echo -e "  • Shell change  → 1 line in ~/.bashrc (only if mise not installed)"
+echo ""
+echo -e "  Undo everything with: ${CYAN}make uninstall-local${RESET}"
+echo -e "  Install now with:     ${CYAN}make deps${RESET}"
+echo ""

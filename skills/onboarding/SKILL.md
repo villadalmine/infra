@@ -13,8 +13,12 @@ metadata:
 ## Full Workflow (in order)
 
 ```bash
+# 0. See what make deps will install (read-only)
+make preview
+
 # 1. Install workstation tools
 make deps
+# Undo at any time: make uninstall-local
 
 # 2. Fill in your nodes
 cp inventory/hosts.ini.example inventory/hosts.ini
@@ -39,11 +43,16 @@ make full      # everything
 
 ## Step 1 — Workstation Tools (`make deps`)
 
+**Before running, see exactly what will change:**
+```bash
+make preview   # read-only — shows install table, no changes made
+```
+
 Uses **mise** to install pinned versions of all tools.
 
 ```
-mise install    → python 3.13, node 22, kubectl 1.33, helm 3.17, nova
-mise run setup  → pip install (ansible, litellm), ansible-galaxy collections
+mise install    → python 3.13, node 22, kubectl 1.35, helm 3.17, nova, jq, opencode, k9s
+mise run setup  → pip install (ansible, litellm, fastmcp, holmesgpt, hermes-agent), ansible-galaxy collections
 ```
 
 **First time on a new machine:**
@@ -57,10 +66,29 @@ eval "$(~/.local/bin/mise activate bash)"
 mise installs tools to `~/.local/share/mise/` — no sudo, no system changes.
 Tools are isolated per-project via `.mise.toml` in the repo root.
 
+**What gets installed and where:**
+
+| What | Location | Notes |
+|------|---------|-------|
+| mise binary | `~/.local/bin/mise` | user-local, no root |
+| python, node, kubectl, helm, nova, jq, opencode | `~/.local/share/mise/installs/` | managed by mise |
+| Python packages | `.venv/` (repo-local) | gitignored, repo-isolated |
+| Ansible collections | `~/.ansible/collections/` | user-local |
+| Shell activation | `~/.bashrc` (1 line) | only added if mise not present |
+
+**Undo everything:**
+```bash
+make uninstall-local   # prompts for confirmation, then removes all of the above
+```
+
 **Python packages installed (`setup/requirements.txt`):**
 - `ansible` — cluster automation
 - `kubernetes` — required by `kubernetes.core` Ansible collection
 - `litellm[proxy]` — local AI model router
+- `fastmcp` — MCP server toolkit (cluster-advisor)
+- `pyyaml` — YAML parsing
+- `holmesgpt` — AI SRE CLI (`holmes ask "why is pod X crashing?"`)
+- `hermes-agent` — local AI CLI (`hermes chat -q "ask something"`)
 
 **Ansible collections installed (`setup/requirements.yml`):**
 - `ansible.posix` — authorized_key module

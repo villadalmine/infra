@@ -10,8 +10,12 @@ This repo is the single source of truth — never apply changes manually.
 ## Quick Start
 
 ```bash
+# 0. See what 'make deps' will install (no changes made)
+make preview
+
 # 1. Install workstation tools (mise + ansible + python packages)
 make deps
+# Undo at any time: make uninstall-local
 
 # 2. Configure SSH access on nodes (run once, needs password)
 make setup-nodes

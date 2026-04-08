@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# uninstall-local — remove everything 'make deps' installed on your workstation.
+# Only removes what this repo installs — does not touch system packages.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Colors
+BOLD='\033[1m'
+RED='\033[31m'
+GREEN='\033[32m'
+YELLOW='\033[33m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+removed=0
+
+echo ""
+echo -e "${BOLD}make uninstall-local — removing workstation tools${RESET}"
+echo -e "${DIM}─────────────────────────────────────────────────────────────────${RESET}"
+echo ""
+echo -e "This will remove:"
+echo -e "  • mise binary (~/.local/bin/mise)"
+echo -e "  • All mise-managed tools (~/.local/share/mise/installs/)"
+echo -e "  • Python virtualenv ($REPO_ROOT/.venv/)"
+echo -e "  • Ansible collections (~/.ansible/collections/ansible_collections/)"
+echo -e "  • mise activation line from ~/.bashrc"
+echo ""
+echo -e "${YELLOW}Your cluster, inventory, and playbooks are NOT touched.${RESET}"
+echo ""
+read -r -p "Continue? [y/N] " confirm
+if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+  echo "Cancelled."
+  exit 0
+fi
+echo ""
+
+# ── 1. Python venv (repo-local) ─────────────────────────────────────────────
+if [[ -d "$REPO_ROOT/.venv" ]]; then
+  echo -e "  Removing ${DIM}$REPO_ROOT/.venv${RESET}..."
+  rm -rf "$REPO_ROOT/.venv"
+  echo -e "  ${GREEN}✓${RESET} .venv removed"
+  removed=$((removed + 1))
+else
+  echo -e "  ${DIM}  .venv not found — skipping${RESET}"
+fi
+
+# ── 2. Ansible collections ──────────────────────────────────────────────────
+ANSIBLE_COLLECTIONS_DIR="$HOME/.ansible/collections/ansible_collections"
+for collection in ansible kubernetes; do
+  coll_path="$ANSIBLE_COLLECTIONS_DIR/$collection"
+  if [[ -d "$coll_path" ]]; then
+    echo -e "  Removing ${DIM}$coll_path${RESET}..."
+    rm -rf "$coll_path"
+    echo -e "  ${GREEN}✓${RESET} ansible_collections/$collection removed"
+    removed=$((removed + 1))
+  else
+    echo -e "  ${DIM}  ansible_collections/$collection not found — skipping${RESET}"
+  fi
+done
+
+# ── 3. mise-managed tools ────────────────────────────────────────────────────
+if command -v mise >/dev/null 2>&1; then
+  MISE_INSTALLS="$HOME/.local/share/mise/installs"
+  if [[ -d "$MISE_INSTALLS" ]]; then
+    echo -e "  Uninstalling mise-managed tools..."
+    mise uninstall --all 2>/dev/null || true
+    # Belt-and-suspenders: remove installs dir if mise uninstall didn't clean up
+    if [[ -d "$MISE_INSTALLS" ]]; then
+      rm -rf "$MISE_INSTALLS"
+    fi
+    echo -e "  ${GREEN}✓${RESET} mise tools removed (~/.local/share/mise/installs/)"
+    removed=$((removed + 1))
+  fi
+fi
+
+# ── 4. mise binary ───────────────────────────────────────────────────────────
+if [[ -f "$HOME/.local/bin/mise" ]]; then
+  echo -e "  Removing ${DIM}~/.local/bin/mise${RESET}..."
+  rm -f "$HOME/.local/bin/mise"
+  echo -e "  ${GREEN}✓${RESET} mise binary removed"
+  removed=$((removed + 1))
+else
+  echo -e "  ${DIM}  mise binary not found — skipping${RESET}"
+fi
+
+# ── 5. Shell activation line from ~/.bashrc ──────────────────────────────────
+BASHRC="$HOME/.bashrc"
+if [[ -f "$BASHRC" ]] && grep -q 'mise activate bash' "$BASHRC"; then
+  echo -e "  Removing mise activation line from ~/.bashrc..."
+  # Remove the line safely (no sed -i on portable bash — use a temp file)
+  grep -v 'mise activate bash' "$BASHRC" > "$BASHRC.tmp" && mv "$BASHRC.tmp" "$BASHRC"
+  echo -e "  ${GREEN}✓${RESET} ~/.bashrc cleaned"
+  removed=$((removed + 1))
+else
+  echo -e "  ${DIM}  mise activation line not in ~/.bashrc — skipping${RESET}"
+fi
+
+# ── Summary ──────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${DIM}─────────────────────────────────────────────────────────────────${RESET}"
+if [[ $removed -gt 0 ]]; then
+  echo -e "${GREEN}Done.${RESET} $removed item(s) removed."
+  echo ""
+  echo -e "  To reinstall: ${DIM}make deps${RESET}"
+  echo -e "  To preview:   ${DIM}make preview${RESET}"
+else
+  echo -e "${DIM}Nothing to remove — workstation tools were not installed.${RESET}"
+fi
+echo ""
