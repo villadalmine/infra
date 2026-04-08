@@ -21,7 +21,8 @@ metadata:
 |-----------|-------|---------|-----------|-------|
 | Docker registry | `registry:2` | 2 | registry | ARM64-compatible image storage (5Gi PVC) |
 | LiteLLM proxy | `ghcr.io/berriai/litellm` | main-latest | ai | In-cluster OpenRouter router with fallbacks |
-| Hermes Agent | `NousResearch/hermes-agent` | 0.7.0 | ai | Self-improving AI assistant |
+| Hermes Agent | `registry.registry:5000/ai/hermes-agent` | 0.7.0 | ai | Gateway mode + Telegram polling + MCP sidecar |
+| kubernetes-mcp-server | `registry.registry:5000/ai/kubernetes-mcp-server` | v0.0.60 | ai (sidecar) | K8s read-only MCP server sidecar in Hermes pod |
 | Kaniko | `gcr.io/kaniko-project/executor` | latest | kaniko | In-cluster ARM64 image builder |
 
 ---
@@ -117,14 +118,18 @@ Use `cheap` or `strong` directly when you want to skip free tiers.
 make ai-registry
 ```
 
-### Step 2: Build ARM64 image (60 min)
+### Step 2: Build ARM64 images (60 min + 1 min)
 
 ```bash
-make ai-hermes-build
+make ai-hermes-build        # hermes-agent (~60 min on CM4)
+make ai-kubernetes-mcp-build  # kubernetes-mcp-server sidecar (~1 min)
 # Monitor with:
 kubectl get jobs -n kaniko
 kubectl logs -n kaniko job/build-hermes-arm64 -f | grep -v "npm WARN"
+kubectl logs -n kaniko job/build-kubernetes-mcp-server-arm64 -f
 ```
+
+Both images are required before Hermes deploy — `hermes-agent-mcp` pod has 2 containers.
 
 ### Step 3: Deploy LiteLLM proxy + Hermes (2 min)
 
@@ -135,7 +140,7 @@ make ai-hermes-deploy
 ### All at once
 
 ```bash
-make ai  # registry + build + deploy (~70 min total)
+make ai  # registry + hermes-build + kubernetes-mcp-build + hermes-deploy (~70 min total)
 ```
 
 ---
@@ -218,13 +223,20 @@ ssh srv-rk1-01 "cat /etc/rancher/k3s/registries.yaml"
 
 Reapply: `make ai-registry`
 
-### Hermes pod ImagePullBackOff
+### Hermes pod ImagePullBackOff (2 containers — both must exist)
 
 ```bash
-kubectl describe pod -n ai -l app=hermes-agent | grep -A5 Events
+kubectl describe pod -n ai -l app=hermes-agent-mcp | grep -A5 Events
 ```
 
-- Build not done → run `make ai-hermes-build` and wait
+The pod `hermes-agent-mcp` has 2 containers:
+- `hermes-agent` → `registry.registry:5000/ai/hermes-agent:0.7.0` (build: `make ai-hermes-build`)
+- `kubernetes-mcp-server` → `registry.registry:5000/ai/kubernetes-mcp-server:v0.0.60` (build: `make ai-kubernetes-mcp-build`)
+
+Both builds must complete before the pod can start. If the sidecar image is missing, pod shows
+`1/2` or `ImagePullBackOff` on the second container. Fix: run the missing build, then
+`kubectl rollout restart deployment/hermes-agent-mcp -n ai`.
+
 - `registries.yaml` not configured → run `make ai-registry`
 
 ### LiteLLM proxy CrashLoopBackOff
@@ -299,8 +311,18 @@ See `skills/storage/SKILL.md` for the full pattern documentation.
 - Makefile: `make ai`, `make ai-registry`, `make ai-hermes-build`, `make ai-hermes-deploy`
 - Secrets: `roles/install-hermes-agent/defaults/secrets.yml` (gitignored, shared with litellm-proxy)
 
+### Hermes secrets — `include_vars` required
+
+`roles/install-hermes-agent/defaults/secrets.yml` is NOT auto-loaded by Ansible
+(only `defaults/main.yml` is auto-loaded). The role explicitly calls `include_vars`
+at the start to load secrets. If `secrets.yml` is missing, the role continues with
+empty vars (`failed_when: false`) — resulting in empty OPENROUTER_API_KEY.
+
+Credentials location: `roles/install-hermes-agent/defaults/secrets.yml` (gitignored).
+
 ### Operational notes
 
-- Keep the Hermes MCP test manifest separate from the stable no-sidecar manifest.
-- The sidecar image must exist in `registry.registry:5000` before Hermes pod rollout.
+- Deployment name is `hermes-agent-mcp` (not `hermes-agent`) — sidecar pattern since 2026-04.
+- The sidecar `kubernetes-mcp-server` exposes port 8080 → Hermes connects via `http://127.0.0.1:8080/mcp`.
+- `hermes-secrets` Secret and `hermes-gateway-config` ConfigMap are created by the Ansible template on every deploy.
 - Use `/mcp` for the Kubernetes MCP HTTP endpoint in Hermes configs.
