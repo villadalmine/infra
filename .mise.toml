@@ -21,7 +21,7 @@ node = "22"
 "aqua:helm/helm" = "3.17.3"
 
 # nova — check for outdated Helm releases
-"aqua:FairwindsOps/nova" = "3.10.3"
+"aqua:FairwindsOps/nova" = "latest"
 
 # OpenCode — AI coding assistant (uses local LiteLLM proxy)
 "npm:opencode-ai" = "latest"
