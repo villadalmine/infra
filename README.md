@@ -63,7 +63,8 @@ NeuVector is installed in two steps:
 | Service | Access | What it does |
 |---|---|---|
 | Hermes Agent | `https://hermes.cluster.home` | Self-improving AI assistant (ARM64, NousResearch) |
-| HolmesGPT | `https://holmes.cluster.home` | SRE assistant with Kubernetes + logs + metrics toolsets |
+| HolmesGPT | `https://holmes.cluster.home` | SRE assistant API — Kubernetes + logs + metrics toolsets |
+| Holmes UI | `https://holmes-ui.cluster.home` | Chat UI for HolmesGPT — ask questions, get markdown answers |
 | kagent | `https://kagent.cluster.home` | AI agent platform — multi-tenant K8s agent orchestration + MCP servers (kmcp bundled) |
 | LiteLLM proxy | `http://litellm-proxy.ai:4000` (cluster-internal) | OpenRouter model router — free→free2→cheap fallback |
 | Docker Registry | `registry.registry:5000` (cluster-internal) | ARM64 image storage for kaniko builds (5Gi PVC) |
@@ -72,7 +73,8 @@ NeuVector is installed in two steps:
 make ai-registry       # deploy registry (fast)
 make ai-hermes-build   # kaniko ARM64 build (~60 min)
 make ai-hermes-deploy  # deploy litellm-proxy + hermes-agent
-make ai-holmes         # deploy HolmesGPT HTTP API
+make ai-holmes         # deploy HolmesGPT + Holmes UI (chat interface)
+make holmes-ui         # deploy Holmes UI only
 make kagent            # deploy kagent + kmcp (AI agent platform)
 make ai               # all in sequence
 ```
