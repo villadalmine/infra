@@ -41,18 +41,31 @@ make full      # everything
 
 ---
 
-## Step 1 — Workstation Tools (`make deps`)
+## Step 1 — Workstation Tools
 
-**Before running, see exactly what will change:**
+Deps are split into categories — install only what you need:
+
+| Target | What it installs | Use for |
+|--------|-----------------|---------|
+| `make deps` | python, kubectl, helm, jq, ansible, kubernetes module, ansible collections | **mandatory** — needed for everything |
+| `make deps-ai` | deps + node, opencode, litellm, fastmcp, pyyaml | AI stack work, MCP server, LiteLLM proxy |
+| `make deps-ops` | deps + k9s, nova, ansible-lint | cluster operations, Helm upgrade checks |
+| `make deps-full` | everything above | fresh workstation setup |
+
+**Preview before installing (read-only):**
 ```bash
-make preview   # read-only — shows install table, no changes made
+make preview        # show core
+make preview-ai     # show core + AI additions
+make preview-ops    # show core + ops additions
+make preview-full   # show everything
 ```
 
 Uses **mise** to install pinned versions of all tools.
 
 ```
-mise install    → python 3.13, node 22, kubectl 1.35, helm 3.17, nova, jq, opencode, k9s
-mise run setup  → pip install (ansible, litellm, fastmcp, pyyaml + ansible collections)
+make deps    → mise install python kubectl helm jq + pip (ansible, kubernetes) + ansible-galaxy
+make deps-ai → mise install node opencode + pip (litellm, fastmcp, pyyaml)
+make deps-ops → mise install k9s nova + pip (ansible-lint)
 ```
 
 **First time on a new machine:**

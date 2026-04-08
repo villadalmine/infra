@@ -1,0 +1,9 @@
+# core — mandatory for any cluster operation (make deps installs this)
+# Tools: python, kubectl, helm, jq  (via mise)
+# Collections: ansible.posix, kubernetes.core  (via ansible-galaxy)
+
+# Ansible — cluster automation
+ansible>=9.0,<11
+
+# Kubernetes Python client — required by ansible kubernetes.core collection
+kubernetes>=29.0

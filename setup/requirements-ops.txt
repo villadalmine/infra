@@ -1,0 +1,6 @@
+# ops — cluster operations tools (make deps-ops installs this)
+# Tools: k9s, nova  (via mise)
+# Enables: playbook linting, Helm upgrade checks
+
+# Ansible linting — validates playbooks before applying
+ansible-lint>=6.0
