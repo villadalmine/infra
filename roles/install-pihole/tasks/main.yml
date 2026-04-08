@@ -68,6 +68,10 @@
     values:
       replicaCount: 1
 
+      # Use latest Pi-hole image (chart appVersion may lag behind upstream releases)
+      image:
+        tag: "2026.04.0"
+
       adminPassword: "{{ pihole_admin_password }}"
 
       persistentVolumeClaim:
@@ -113,6 +117,28 @@
       DNS1: "8.8.8.8"
       DNS2: "8.8.4.4"
 
+      # Init container: remove 0-byte or corrupt gravity.db before FTL starts.
+      # After a power cut or failed update, gravity.db can be 0 bytes — FTL opens
+      # it, locks it, and then pihole -g can never rebuild it (locked loop).
+      # Deleting it allows FTL to create a fresh schema on startup.
+      extraInitContainers:
+        - name: fix-gravity-db
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              for f in /etc/pihole/gravity.db /etc/pihole/gravity.db-shm /etc/pihole/gravity.db-wal /etc/pihole/pihole-FTL.db; do
+                if [ -f "$f" ] && [ ! -s "$f" ]; then
+                  echo "Removing 0-byte $f"
+                  rm -f "$f"
+                fi
+              done
+              echo "Init done"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pihole
+
       # Pi-hole 6.x FTL needs >110s on first boot (loading gravity blocklists).
       # initialDelaySeconds=30 (not 120): on subsequent boots FTL starts in ~15s from PVC,
       # so we'd waste 90s waiting for nothing. failureThreshold=18 × periodSeconds=10 = 180s
@@ -126,7 +152,7 @@
           initialDelaySeconds: 30
           failureThreshold: 18
           periodSeconds: 10
-  when: not pihole_deployed
+  # always run — handles both fresh install and upgrade (image tag, initContainer, etc.)
 
 - name: Wait for Pi-hole deployment rollout
   ansible.builtin.command:
