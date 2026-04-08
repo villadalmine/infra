@@ -323,7 +323,10 @@
         hostnames:
           - "{{ holmes_ui_hostname }}"
         rules:
-          - backendRefs:
+          - timeouts:
+              request: "5m"
+              backendRequest: "5m"
+            backendRefs:
               - name: holmes-ui
                 port: "{{ holmes_ui_port }}"
 
