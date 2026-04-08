@@ -192,3 +192,29 @@ Using `smb-nas` (uid=1000) causes `FATAL: data directory has wrong ownership`.
 then kagent creates its own `smb-nas-pg` StorageClass on top of it.
 
 See `skills/storage/SKILL.md` for the storage dependency pattern.
+
+## PostgreSQL gotchas
+
+### pg_hba.conf — TCP connections rejected (fixed in Ansible role)
+
+`postgres:18` default `pg_hba.conf` only allows Unix socket + localhost TCP.
+The kagent controller pod connects via TCP and may have an IP outside the standard
+K3s pod CIDR (e.g. `10.0.0.x` from Cilium internals). This causes:
+```
+FATAL: no pg_hba.conf entry for host "10.0.0.194", user "kagent", database "kagent", no encryption
+```
+
+The Ansible role now automatically appends `host all all 0.0.0.0/0 trust` to `pg_hba.conf`
+after postgres is ready (idempotent — checked via grep before appending) and reloads config.
+
+### kagent database not created
+
+`POSTGRES_DB=kagent` env var creates the database only on fresh (empty) PVC.
+If the PVC has existing data from a previous install (even a failed one), initialization is
+skipped and the database may not exist. The Ansible role now creates it if missing.
+
+Manual fix (if needed):
+```bash
+kubectl exec -n kagent deployment/kagent-postgresql -- \
+  psql -U kagent -d postgres -c "CREATE DATABASE kagent OWNER kagent;"
+```

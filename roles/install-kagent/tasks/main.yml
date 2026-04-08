@@ -353,6 +353,66 @@
 
 # ── HTTPRoute: expose UI at kagent.cluster.home ───────────────────────────
 
+# ── Fix kagent-ui nginx upstream: proxy /api/ to controller service ────────
+# The kagent-ui image ships with nginx.conf proxying /api/ → 127.0.0.1:8083
+# (assumes controller is a sidecar). In our deployment the controller is a
+# separate pod at kagent-controller.kagent.svc.cluster.local:8083. Without
+# this fix, all /api/ calls from the browser return 502.
+- name: Wait for kagent UI rollout before nginx patch
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/{{ kagent_release_name }}-ui -n {{ kagent_namespace }} --timeout=60s
+  changed_when: false
+
+- name: Read kagent-ui nginx.conf from running pod
+  ansible.builtin.command:
+    cmd: kubectl exec -n {{ kagent_namespace }} deployment/{{ kagent_release_name }}-ui -- cat /etc/nginx/nginx.conf
+  register: kagent_ui_nginx_conf_raw
+  changed_when: false
+
+- name: Patch nginx.conf — route /api/ to controller service (not localhost)
+  ansible.builtin.set_fact:
+    kagent_ui_nginx_conf_patched: >-
+      {{ kagent_ui_nginx_conf_raw.stdout
+         | replace('server 127.0.0.1:8083', 'server kagent-controller.' ~ kagent_namespace ~ '.svc.cluster.local:8083')
+         | replace('server 127.0.0.1:8081', 'server kagent-controller.' ~ kagent_namespace ~ '.svc.cluster.local:8083') }}
+
+- name: Create kagent-ui-nginx ConfigMap with patched nginx.conf
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: kagent-ui-nginx
+        namespace: "{{ kagent_namespace }}"
+      data:
+        nginx.conf: "{{ kagent_ui_nginx_conf_patched }}"
+    state: present
+
+- name: Mount patched nginx.conf in kagent-ui deployment
+  kubernetes.core.k8s:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ kagent_release_name }}-ui"
+    namespace: "{{ kagent_namespace }}"
+    definition:
+      spec:
+        template:
+          spec:
+            volumes:
+              - name: nginx-config
+                configMap:
+                  name: kagent-ui-nginx
+            containers:
+              - name: ui
+                volumeMounts:
+                  - name: nginx-config
+                    mountPath: /etc/nginx/nginx.conf
+                    subPath: nginx.conf
+    merge_type: strategic-merge
+    state: present
+
+# ── HTTPRoute: expose UI at kagent.cluster.home ───────────────────────────
+
 - name: Create HTTPRoute for kagent UI
   kubernetes.core.k8s:
     definition:

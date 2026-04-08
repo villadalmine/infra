@@ -73,6 +73,18 @@
                 model: openrouter/openai/gpt-4o-mini
                 api_key: os.environ/OPENROUTER_API_KEY
 
+            # ── OpenAI model aliases (for tools that default to OpenAI model names) ─
+            # Holmes defaults to 'gpt-5.4' if no model is specified in the API call.
+            # Route all gpt-* aliases to the free→cheap fallback chain.
+            - model_name: gpt-5.4
+              litellm_params:
+                model: openrouter/qwen/qwen3-coder:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: gpt-4o
+              litellm_params:
+                model: openrouter/qwen/qwen3-coder:free
+                api_key: os.environ/OPENROUTER_API_KEY
+
             # ── Default alias → claude-sonnet with fallback ──────────────────
             - model_name: default
               litellm_params:
@@ -85,6 +97,8 @@
               - {"free": ["free2", "cheap"]}
               - {"free2": ["cheap"]}
               - {"claude-sonnet": ["cheap"]}
+              - {"gpt-5.4": ["free2", "cheap"]}
+              - {"gpt-4o": ["free2", "cheap"]}
             request_timeout: 120
             num_retries: 1
             set_verbose: false

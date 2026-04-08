@@ -24,11 +24,11 @@ Helm release: `pihole` in namespace `pihole`
 Chart: `mojo2600/pihole`
 Chart version pinned in: `roles/install-pihole/defaults/main.yml`
 
-Chart version: 2.30.0
-Pi-hole app version: 2025.04.0
+Chart version: 2.35.0
+Pi-hole app version: 2026.04.0
 Cilium LB-IPAM IP: `192.168.178.203` (port 53 UDP+TCP)
 Web UI: `https://pihole.cluster.home/admin` (via HTTPRoute on shared Gateway)
-Storage: `PersistentVolumeClaim` via `local-path` StorageClass, 2Gi
+Storage: `PersistentVolumeClaim` via `local-path` StorageClass, 500Mi
 
 ---
 
@@ -67,11 +67,11 @@ Pi-hole and cert-manager are **completely independent**. They do not communicate
 
 ```yaml
 # roles/install-pihole/defaults/main.yml
-pihole_chart_version: "2.30.0"
+pihole_chart_version: "2.35.0"
 pihole_namespace: pihole
 pihole_dns_ip: "192.168.178.203"   # Cilium LB-IPAM IP for DNS
-pihole_storage_size: "2Gi"
-pihole_storage_class: "local-path"
+pihole_storage_size: "500Mi"
+pihole_storage_class: "local-path"  # MUST be local-path — SQLite incompatible with SMB
 ```
 
 ```yaml
@@ -103,29 +103,40 @@ serviceWeb:
 
 persistentVolumeClaim:
   enabled: true
-  storageClass: local-path
-  size: 2Gi
+  storageClass: local-path   # MUST be local-path — SQLite incompatible with SMB/CIFS
+  size: 500Mi
 
 dnsmasq:
   # Wildcard: *.cluster.home and cluster.home itself → shared Gateway IP
   customDnsEntries:
     - address=/cluster.home/192.168.178.200
 
-# Pi-hole 6.x: set listening mode to ALL so FTL binds port 53 on all interfaces
-# listeningMode=LOCAL (default) maps to dnsmasq local-service; setting it via
-# customSettings causes a duplicate keyword CRIT crash.
+# Pi-hole 6.x (chart v2.35.0+): extraEnvVars is a MAP not a list.
+# v2.34.x and older used: [{name: ..., value: ...}] format.
 extraEnvVars:
-  - name: FTLCONF_dns_listeningMode
-    value: "ALL"
+  FTLCONF_dns_listeningMode: "ALL"
 
-# Pi-hole 6.x FTL needs >110s on first boot (loading gravity blocklists)
+# Pi-hole 6.x FTL: 30s initial delay (not 120) — subsequent boots from PVC take ~15s.
+# failureThreshold: 18 × periodSeconds: 10 = 180s tolerance → 210s total window.
 probes:
   liveness:
-    initialDelaySeconds: 120
-    failureThreshold: 15
+    initialDelaySeconds: 30
+    failureThreshold: 18
+    periodSeconds: 10
   readiness:
-    initialDelaySeconds: 120
-    failureThreshold: 15
+    initialDelaySeconds: 30
+    failureThreshold: 18
+    periodSeconds: 10
+
+# initContainer to remove 0-byte gravity.db before FTL starts (power-cut protection).
+# Volume name in chart is 'config' (not 'pihole') — volumeMount must use name: config.
+extraInitContainers:
+  - name: fix-gravity-db
+    image: busybox
+    command: [sh, -c, "for f in /etc/pihole/gravity.db ...; do [ -f $f ] && [ ! -s $f ] && rm -f $f; done"]
+    volumeMounts:
+      - name: config          # chart volume is named 'config' — not 'pihole'
+        mountPath: /etc/pihole
 ```
 
 The `address=/cluster.home/192.168.178.200` dnsmasq syntax matches ALL subdomains
@@ -152,20 +163,17 @@ on all interfaces and accept queries from external networks (e.g. workstation at
 
 Pi-hole 6.x FTL loads the gravity blocklist database on first boot. On ARM64 with a large
 blocklist, this can take >110 seconds before port 80 is ready.
+On subsequent boots with a PVC (data already exists), FTL starts in ~15s.
 
-Chart default probes: `initialDelaySeconds: 60` + `failureThreshold: 10` × `periodSeconds: 5`
-= 110 seconds max → pod gets killed before ready.
-
-**Fix** (applied in role):
+**Fix** (applied in role): use short initial delay with high failure threshold:
 ```yaml
 probes:
   liveness:
-    initialDelaySeconds: 120
-    failureThreshold: 15
-  readiness:
-    initialDelaySeconds: 120
-    failureThreshold: 15
+    initialDelaySeconds: 30   # not 120 — only 15s needed on normal reboots
+    failureThreshold: 18      # 18×10s = 180s tolerance → 210s total window
+    periodSeconds: 10
 ```
+Do NOT use `initialDelaySeconds: 120` — it wastes 90s on every pod restart.
 
 ---
 
@@ -340,6 +348,22 @@ Troubleshoot in this order:
 3. `dig @192.168.178.203 argocd.cluster.home`
 4. `kubectl -n kube-system get lease | grep cilium-l2announce`
 5. `kubectl get svc pihole-dns-tcp pihole-dns-udp -n pihole -o wide`
+
+### SQLite corruption / DNS stops working (CRITICAL)
+
+**Root cause**: Pi-hole's PVC was set to `smb-nas` → SQLite file locking is incompatible
+with SMB/CIFS network filesystems. Symptoms: `SQLITE_MISUSE`, `queries_to_database() failed!`,
+`file unlinked while open`, DNS not responding.
+
+**Fix**: `pihole_storage_class` MUST be `local-path`. Never use smb-nas for Pi-hole.
+
+To recover: delete release + PVC, reinstall:
+```bash
+helm uninstall pihole -n pihole
+kubectl delete pvc --all -n pihole
+kubectl delete namespace pihole
+make dns-metrics
+```
 
 ### PVC not binding (Pending)
 ```bash
