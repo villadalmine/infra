@@ -298,9 +298,9 @@ def node_profile(hostname: str) -> str:
         note = f" — write latency {lat:.1f}ms may be slow for etcd" if lat and lat >= 5 else ""
         roles.append(f"  ✓ control-plane{note}")
     if caps["ai_worker_capable"]:
-        roles.append("  ✓ ai-worker (GPU/NPU detected, ≥16GB RAM)")
-    elif caps["has_gpu_npu"]:
-        roles.append(f"  ~ ai-worker (GPU/NPU present but only {caps['ram_gb']:.0f}GB RAM — needs ≥16GB)")
+        roles.append("  ✓ ai-worker (≥16GB RAM — suitable for LLM/agent workloads)")
+    elif caps["has_npu"]:
+        roles.append(f"  ~ ai-worker (NPU present but only {caps['ram_gb']:.0f}GB RAM — needs ≥16GB)")
     if caps["worker_capable"]:
         roles.append("  ✓ general worker")
     if not caps["cgroups_v2"]:
@@ -510,7 +510,7 @@ def analyze_cluster() -> str:
         # AI workers first
         for h in list(remaining):
             if caps_map[h]["ai_worker_capable"] and h not in assignment:
-                assignment[h] = "K3s agent (ai-worker — GPU/NPU)"
+                assignment[h] = "K3s agent (ai-worker — high-RAM)"
                 remaining.remove(h)
 
         # General workers
@@ -537,7 +537,7 @@ def analyze_cluster() -> str:
         f"Total RAM      : {total_ram:.0f}GB",
         f"Control-plane  : {len(cp_nodes)} capable nodes",
         f"Etcd (fast)    : {len(etcd_nodes)} nodes (write latency <10ms + cgroups v2 + eBPF)",
-        f"AI workers     : {len(ai_nodes)} nodes (GPU/NPU + ≥16GB RAM)",
+        f"AI workers     : {len(ai_nodes)} nodes (≥16GB RAM, suitable for LLM workloads)",
         f"Direct IP      : {len(direct_ip_nodes)} nodes (no NAT)",
         "",
     ]
@@ -737,7 +737,7 @@ def cluster_power_score() -> str:
         f"  Total RAM    : {total_ram:.0f} GB  (max node: {max_node_ram:.0f} GB)",
         f"  NVMe         : {nvme_count}/{node_count} nodes",
         f"  Avg latency  : {avg_latency:.1f} ms/op  (best: {best_latency:.2f} ms/op)",
-        f"  NAS (SMB)    : {'yes' if has_nas else 'no — run make storage to configure'}",
+        f"  NAS (SMB)    : {'detected' if has_nas else 'not auto-detected (run make storage if you have a NAS)'}",
         f"  Etcd-capable : {etcd_count}/{node_count} nodes",
         f"  NPU nodes    : {npu_count} (Rockchip RK3588S — /dev/rknpu0)",
         f"  AI RAM       : {ai_ram:.0f} GB across {ai_capable} nodes",
@@ -751,7 +751,7 @@ def cluster_power_score() -> str:
     role_checks = [
         (overall >= 40,  "K3s cluster (core + networking)"),
         (compute_score >= 40, "Standard services (ingress + DNS + GitOps)"),
-        (storage_score >= 50 or has_nas, "Persistent storage (SMB/NAS PVCs)"),
+        (storage_score >= 40, "Persistent storage (SMB/NAS PVCs — run make storage)"),
         (memory_score >= 50, "Observability (Prometheus + Grafana + Loki + Tempo)"),
         (memory_score >= 40, "Security (NeuVector runtime protection)"),
         (memory_score >= 60, "AI stack (LiteLLM + Hermes + HolmesGPT + kagent)"),
@@ -771,7 +771,7 @@ def cluster_power_score() -> str:
         for h, lat in slow_nodes:
             bottlenecks.append(f"  ⚠ {h}: write latency {lat:.0f}ms — too slow for etcd")
     if not has_nas:
-        bottlenecks.append("  ⚠ NAS not detected — run 'make storage' to enable PVC-backed workloads")
+        bottlenecks.append("  ⚠ NAS not auto-detected via survey (port 445 scan) — if you have a NAS, run 'make storage'")
     if npu_count == 0:
         bottlenecks.append("  ⚠ No NPU detected — local AI inference not available")
     all_warnings = [(h, w) for h, c in caps_map.items() for w in c["warnings"]]
@@ -927,9 +927,9 @@ def cluster_roadmap() -> str:
             "num": 1,
             "name": "K8s Foundations",
             "check": check_tier1,
-            "make": "make core",
-            "deploys": ["K3s + kubeconfig", "Cilium CNI + LB-IPAM"],
-            "learns": ["kubectl basics, pod scheduling, namespaces", "ClusterIP services, CNI networking"],
+            "make": "make core && make networking",
+            "deploys": ["K3s + kubeconfig", "Cilium CNI + LB-IPAM + Gateway API CRDs"],
+            "learns": ["kubectl basics, pod scheduling, namespaces", "ClusterIP services, CNI networking, LB-IPAM"],
         },
         {
             "num": 2,
@@ -968,9 +968,10 @@ def cluster_roadmap() -> str:
             "num": 6,
             "name": "HA Control-Plane",
             "check": check_tier6,
-            "make": "make services  # with 3 server nodes in inventory",
+            "make": "make services",
             "deploys": ["K3s embedded etcd across 3 server nodes", "All Tier 2–5 components across HA cluster"],
             "learns": ["etcd consensus, split-brain prevention", "Rolling upgrades without downtime", "Leader election, node failure scenarios"],
+            "note": "Requires 3 server nodes configured in inventory/hosts.ini — assign the 3 fastest-disk nodes.",
         },
         {
             "num": 7,
