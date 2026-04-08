@@ -3,11 +3,18 @@
 # Each flavor defines what hardware it needs and which make targets to run.
 # The cluster-advisor MCP reads this to determine what's achievable.
 #
+# Flavors come in two kinds:
+#   base      — mutually exclusive (pick one): minimal, standard, full-ha, edge
+#   additive  — stack on top of a base:         storage, observability, security, ai, ai-local
+#
 # Add new flavors here as new roles are added to the repo.
 
 flavors:
 
+  # ── Base flavors ──────────────────────────────────────────────────────────
+
   minimal:
+    kind: base
     description: "Single node, K3s + networking only. Useful for testing."
     requires:
       min_server_nodes: 1
@@ -17,7 +24,8 @@ flavors:
     tags: [core, networking]
 
   standard:
-    description: "Production-ready cluster with ingress, DNS (Pi-hole), GitOps (ArgoCD)."
+    kind: base
+    description: "Production-ready: K3s + ingress (Gateway/cert-manager) + DNS (Pi-hole) + GitOps (ArgoCD)."
     requires:
       min_server_nodes: 1
       min_server_ram_gb: 4
@@ -26,27 +34,8 @@ flavors:
     make_command: "make services"
     tags: [core, networking, ingress, services]
 
-  observability:
-    description: "Adds Prometheus + Grafana + Tempo + Loki + Alloy to any cluster."
-    note: "Additive — combine with standard or full-ha"
-    requires:
-      min_cluster_ram_gb: 12
-      min_server_ram_gb: 4
-    make_command: "make observability"
-    tags: [observability]
-
-  ai:
-    description: "AI stack: registry + LiteLLM proxy + Hermes Agent + kagent platform."
-    note: "Additive — combine with standard or full-ha"
-    requires:
-      has_gpu_npu: true
-      min_ai_node_ram_gb: 16
-    make_command: "make ai && make kagent"
-    tags: [ai, kagent]
-    recommended_nodes:
-      ai_worker: "node with GPU/NPU (RK1 with rknpu0 or mali0)"
-
   full-ha:
+    kind: base
     description: "HA control-plane (3 etcd nodes) + workers + full stack."
     requires:
       min_server_nodes: 3
@@ -54,13 +43,15 @@ flavors:
       max_server_write_latency_ms: 10
       cgroups_v2: true
       ebpf: true
-    make_command: "make full"
+    make_command: "make services"
     tags: [all]
     notes:
       - "etcd strongly prefers NVMe or fast eMMC (<5ms write latency)"
       - "3 server nodes must have stable IPs (no DHCP rotation)"
+      - "run make full to deploy all roles after base bootstrap"
 
   edge:
+    kind: base
     description: "Single node with direct public IP — no NAT. Good for exposed services."
     requires:
       min_nodes: 1
@@ -71,3 +62,65 @@ flavors:
     tags: [core, networking, ingress]
     notes:
       - "Node must have is_nat=false in survey (public IP = private IP)"
+
+  # ── Additive flavors ──────────────────────────────────────────────────────
+
+  storage:
+    kind: additive
+    description: "SMB/CIFS CSI driver for NAS-backed PVCs (NAS at 192.168.178.102)."
+    note: "Additive — required before observability, ai, security"
+    requires:
+      min_server_nodes: 1
+      has_smb_nas: true
+    make_command: "make storage"
+    tags: [storage]
+
+  observability:
+    kind: additive
+    description: "Prometheus + Grafana + Tempo (tracing) + Loki (logs) + Alloy (collector)."
+    note: "Additive — combine with standard or full-ha"
+    requires:
+      min_cluster_ram_gb: 12
+      min_server_ram_gb: 4
+    make_command: "make observability"
+    tags: [observability]
+
+  security:
+    kind: additive
+    description: "NeuVector container runtime security — vulnerability scanning, network policies, compliance."
+    note: "Additive — combine with standard or full-ha"
+    requires:
+      min_server_ram_gb: 4
+      min_cluster_ram_gb: 8
+    make_command: "make security"
+    tags: [security]
+
+  ai:
+    kind: additive
+    description: "Full AI stack: registry + LiteLLM proxy (OpenRouter) + Hermes Agent + HolmesGPT + kagent platform."
+    note: "Additive — combine with standard or full-ha. No GPU needed — uses OpenRouter API."
+    requires:
+      min_cluster_ram_gb: 24
+      min_server_ram_gb: 4
+    make_command: "make ai && make ai-holmes && make kagent"
+    tags: [ai, kagent]
+    notes:
+      - "Requires OPENROUTER_API_KEY in roles/install-hermes-agent/defaults/secrets.yml"
+      - "ARM64 build takes ~60min for hermes-agent (kaniko on control-plane node)"
+      - "No GPU required — LiteLLM routes to OpenRouter free/cheap models"
+      - "RK1 nodes recommended for agent workloads (31GB RAM, NPU for future local inference)"
+
+  ai-local:
+    kind: additive
+    description: "Local AI inference via NPU/GPU (Ollama or similar). Requires physical NPU/GPU."
+    note: "Additive — requires ai flavor first. Needs Rockchip NPU (RK1) or dedicated GPU."
+    requires:
+      has_npu: true
+      min_ai_node_ram_gb: 16
+    make_command: "# Future: make ai-local"
+    tags: []
+    notes:
+      - "Rockchip RK3588S NPU (/dev/rknpu0) detected on RK1 nodes"
+      - "Mali GPU (/dev/mali0) also available"
+      - "Requires RKNN runtime or similar NPU framework"
+      - "Not yet implemented — placeholder for future local inference stack"
