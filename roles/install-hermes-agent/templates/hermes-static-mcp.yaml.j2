@@ -1,4 +1,39 @@
 apiVersion: v1
+kind: Secret
+metadata:
+  name: hermes-secrets
+  namespace: {{ hermes_namespace }}
+type: Opaque
+stringData:
+  .env: |
+    OPENROUTER_API_KEY={{ hermes_openrouter_api_key | default('') }}
+    TELEGRAM_BOT_TOKEN={{ hermes_telegram_token | default('') }}
+    TELEGRAM_ALLOWED_USERS={{ hermes_telegram_allowed_users }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hermes-gateway-config
+  namespace: {{ hermes_namespace }}
+data:
+  gateway.json: |
+    {
+      "platforms": {
+        "telegram": {
+          "enabled": {{ hermes_telegram_enabled | lower }},
+          "extra": {
+            "allowed_users": "{{ hermes_telegram_allowed_users }}",
+            "require_mention": true,
+            "mention_patterns": [
+              "^\\s*ask\\b",
+              "^\\s*hermes\\b"
+            ]
+          }
+        }
+      }
+    }
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: hermes-config-mcp-test
