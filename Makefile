@@ -52,7 +52,10 @@ help: ## Show this help message
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-core: ## Install K3s + kubeconfig only
+quick: ## Quick cluster — K3s + Cilium only. DIY from here. No ingress/DNS/storage CSI.
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking
+
+core: ## Install K3s + kubeconfig only (WARNING: cluster unusable without make networking)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core
 
 networking: ## Install core + networking (Cilium, LB-IPAM, Gateway API)

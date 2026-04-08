@@ -3,14 +3,19 @@
 # Philosophy:
 #   - Each stack does ONE thing well, based on a specific behavior/purpose
 #   - Stacks are modular and combinable — pick what you need
-#   - core + networking are ALWAYS required (base for everything)
 #   - K3s is the only supported runtime; Cilium is the only CNI
 #   - Compute budget is calculated from actual role resource limits
 #
 # Stack kinds:
-#   foundation  — always-on base (non-negotiable)
-#   additive    — small building blocks (dns, ingress, gitops)
+#   quick       — minimal working cluster, DIY from here (no Cilium customization beyond defaults)
+#   foundation  — opinionated always-on base (non-negotiable for full stack)
+#   additive    — small building blocks (dns, ingress, gitops, storage tiers)
 #   behavioral  — purpose-specific workloads (observability, ai, security)
+#
+# Storage tiers (additive, ordered):
+#   storage-local  — K3s built-in local-path (always available, no setup, hostPath)
+#   storage-nas    — SMB/CIFS CSI driver (NAS-backed PVCs, required before observability/ai)
+#   storage-dist   — Distributed block storage (Longhorn/OpenEBS — not yet implemented)
 #
 # ram_mb: estimated real memory usage (not just requests — includes overhead)
 # min_nodes: minimum nodes for this stack (1 = single-node ok)
@@ -18,7 +23,42 @@
 
 stacks:
 
-  # ── Foundation (always required) ─────────────────────────────────────────────
+  # ── Quick cluster (DIY mode — minimal, no opinions beyond K3s + Cilium) ───────
+
+  quick:
+    kind: quick
+    behavior: "Minimum viable K3s cluster — Cilium CNI running, kubectl works, nothing else. DIY from here."
+    roles:
+      - install-k3s
+      - get-kubeconfig
+      - install-gateway-api-crds
+      - install-cilium
+      - install-cilium-pools
+    make: "make core && make networking"
+    ram_mb: 1280          # K3s: ~768MB + Cilium: ~512MB
+    min_nodes: 1
+    min_ram_gb_server: 2
+    requires: []
+    storage_available:
+      - name: local-path
+        class: local-path
+        note: "K3s built-in — always available. hostPath-backed PVCs. No setup."
+    what_you_get:
+      - "Working K8s cluster with kubectl"
+      - "Cilium CNI — pod networking, ClusterIP, NodePort"
+      - "LB-IPAM — LoadBalancer services get real IPs on your LAN"
+      - "K3s local-path StorageClass — PVCs work out of the box"
+      - "CoreDNS — in-cluster DNS"
+      - "Nothing else — no ingress, no DNS, no TLS, no storage CSI"
+    notes:
+      - "IMPORTANT: make core alone leaves cluster broken (--flannel-backend=none, no CNI)"
+      - "Minimum viable = make core && make networking — both required"
+      - "Traefik and metrics-server are DISABLED in this repo — add manually if needed"
+      - "local-path StorageClass is available — PVCs backed by node hostPath"
+      - "Upgrade path: add stacks one at a time (make ingress, make dns, etc.)"
+      - "No automation, no GitOps, no monitoring — fully DIY from this point"
+
+  # ── Foundation (always required for full opinionated stack) ──────────────────
 
   core:
     kind: foundation
@@ -102,6 +142,125 @@ stacks:
       - "Exposed at argocd.cluster.home via HTTPRoute"
       - "Admin password auto-generated on first install"
 
+  # ── Storage tiers (additive, ordered: local → nas → distributed) ─────────────
+  #
+  # Storage in K3s has 3 tiers. Each tier is a superset of the previous.
+  # Rules:
+  #   - storage-local is ALWAYS available (K3s built-in, zero config)
+  #   - storage-nas MUST be deployed before observability, ai, security, registry
+  #   - Some roles have FORCED storage classes — cannot be overridden:
+  #       Pi-hole → FORCED local-path  (SQLite incompatible with SMB/CIFS locks)
+  #   - All other roles default to smb-nas but can fall back to local-path
+  #       if no NAS available (set <role>_storage_class: local-path)
+
+  storage-local:
+    kind: additive
+    behavior: "K3s built-in local-path — always available without any setup. hostPath-backed PVCs per node."
+    roles: []           # built-in — no role to install
+    make: "# No make target — local-path is always available after make core"
+    ram_mb: 0
+    min_nodes: 1
+    min_ram_gb_server: 1
+    requires: [core]
+    storage_class: local-path
+    provisioner: rancher.io/local-path
+    limitations:
+      - "Not HA — PVC is tied to the node that created it (pod must reschedule to same node)"
+      - "No shared access — one pod per PVC (ReadWriteOnce only)"
+      - "No snapshots, no resize"
+      - "Data lost if node is wiped"
+    best_for:
+      - "Pi-hole (FORCED — SQLite incompatible with SMB CIFS file locking)"
+      - "Development workloads where persistence doesn't matter"
+      - "Single-node clusters without NAS"
+      - "Any role when NAS is unavailable"
+    roles_using_local_path:
+      - name: install-pihole
+        forced: true
+        reason: "SQLite FTL database uses file locking — SMB/CIFS locks cause corruption"
+    notes:
+      - "Default StorageClass in K3s — used if no storageClassName specified"
+      - "Path: /var/lib/rancher/k3s/storage/ on the scheduled node"
+      - "To override a role to local-path: set <role>_storage_class: local-path in defaults"
+
+  storage-nas:
+    kind: additive
+    behavior: "SMB/CIFS CSI driver — NAS-backed PVCs. Shared storage accessible from all nodes. Required before observability, ai, security."
+    roles:
+      - install-cifs-nas
+    make: "make storage"
+    ram_mb: 128           # csi-smb DaemonSet: ~64MB/node
+    min_nodes: 1
+    min_ram_gb_server: 2
+    requires: [networking]
+    storage_class: smb-nas
+    provisioner: smb.csi.k8s.io
+    nas_ip: "192.168.178.102"
+    nas_share: "//192.168.178.102/service"
+    secondary_class: smb-nas-pg   # separate share for PostgreSQL (different CIFS options)
+    limitations:
+      - "Requires NAS reachable on network (port 445)"
+      - "CIFS file locking — incompatible with SQLite (Pi-hole), some databases"
+      - "Network latency — not suitable for etcd or high-IOPS workloads"
+      - "NAS must be up for pods with smb-nas PVCs to start"
+    best_for:
+      - "Prometheus TSDB (high write throughput, sequential)"
+      - "Loki chunks and index (append-only)"
+      - "Docker registry storage (large blobs)"
+      - "Hermes agent state (JSON files)"
+      - "General persistence where HA matters more than IOPS"
+    roles_using_smb_nas:
+      - install-kube-prometheus-stack
+      - install-loki
+      - install-tempo
+      - install-registry
+      - install-hermes-agent
+      - install-hermes-agent-image
+      - install-neuvector
+      - install-kagent          # smb-nas-pg share for PostgreSQL
+    roles_using_local_path:
+      - name: install-pihole
+        forced: true
+        reason: "SQLite file locking incompatible with CIFS"
+    fallback_to_local_path:
+      - "If NAS unavailable: set <role>_storage_class: local-path in each role's defaults"
+      - "Example: kps_storage_class: local-path  (loses Prometheus data on pod restart)"
+    notes:
+      - "MUST run before: observability, ai, security, registry"
+      - "NAS LG N2R1 at 192.168.178.102 — Wake-on-LAN supported"
+      - "Two storage classes: smb-nas (general) + smb-nas-pg (PostgreSQL-tuned CIFS options)"
+      - "Dynamic provisioning: subdirectory per PVC under the configured share"
+
+  storage-distributed:
+    kind: additive
+    behavior: "Distributed block storage — HA PVCs replicated across nodes. No NAS dependency."
+    roles: []           # not yet implemented
+    make: "# Not yet implemented — placeholder for Longhorn or OpenEBS"
+    status: planned
+    ram_mb: 2048        # Longhorn: ~256MB/node manager + ~512MB UI
+    min_nodes: 3        # Longhorn requires 3+ nodes for replica quorum
+    min_ram_gb_server: 4
+    requires: [networking]
+    storage_class: longhorn   # or openebs-hostpath
+    options:
+      - name: Longhorn
+        url: "https://longhorn.io"
+        notes: "Best UX — web UI, snapshots, backups, S3 support. Make target: future make storage-distributed"
+      - name: OpenEBS LocalPV-Hostpath
+        url: "https://openebs.io"
+        notes: "Simpler than Longhorn, similar to local-path but with better scheduling"
+    limitations:
+      - "Not yet implemented in this repo — roadmap item"
+      - "Longhorn: heavy on RAM (~256MB/node), needs 3+ nodes for HA replicas"
+      - "OpenEBS hostpath: no HA (like local-path) but better than local-path for scheduling"
+    best_for:
+      - "Clusters without NAS — self-contained distributed storage"
+      - "HA workloads that can't tolerate NAS downtime"
+      - "Learning distributed storage patterns"
+    notes:
+      - "Until implemented: use smb-nas for HA storage or local-path for ephemeral"
+      - "To contribute: add roles/install-longhorn/ and make storage-distributed target"
+
   # ── Behavioral stacks ─────────────────────────────────────────────────────────
 
   observability:
@@ -184,29 +343,49 @@ stacks:
   # ── Meta-stacks (predefined combinations) ────────────────────────────────────
   # These are not deployed directly — they describe well-known combinations.
   # Use their make commands as a sequence.
+  # Storage notes:
+  #   - make storage (storage-nas) MUST come before observability/ai/security
+  #   - Pi-hole always uses local-path (forced — not configurable)
+  #   - Without NAS: pass --extra-vars '<role>_storage_class: local-path' per role
+
+  _quick_meta:
+    kind: meta
+    label: "Quick Cluster"
+    description: "Minimum viable K3s cluster — working kubectl + Cilium CNI. Nothing else. DIY."
+    stacks: [quick]
+    make_sequence:
+      - "make core && make networking"
+    ram_mb_total: 1280
+    notes:
+      - "Fastest path to a working cluster (~5 min)"
+      - "local-path StorageClass available immediately"
+      - "No ingress, no TLS, no DNS, no storage CSI — fully DIY from here"
 
   _foundation_meta:
     kind: meta
     label: "Foundation"
-    description: "Always-on base for any cluster — K3s + Cilium + TLS + DNS + GitOps"
+    description: "Opinionated base — K3s + Cilium + TLS + DNS + GitOps. Start here for full stack."
     stacks: [core, networking, ingress, dns, gitops]
     make_sequence:
       - "make core && make networking"
       - "make ingress"
       - "make dns"
       - "make gitops"
-    ram_mb_total: 2304    # sum of above
+    ram_mb_total: 2304
 
   _ai_stack_meta:
     kind: meta
     label: "AI Stack"
-    description: "Foundation + AI assistant platform"
-    stacks: [core, networking, ingress, dns, gitops, ai]
+    description: "Foundation + NAS storage + AI assistant platform"
+    stacks: [core, networking, ingress, dns, gitops, storage-nas, ai]
     make_sequence:
       - "make core && make networking"
       - "make ingress && make dns && make gitops"
+      - "make storage"
       - "make ai && make ai-holmes && make kagent"
-    ram_mb_total: 12544
+    ram_mb_total: 12672
+    notes:
+      - "make storage MUST run before make ai (registry needs smb-nas PVC)"
 
   _observability_stack_meta:
     kind: meta
@@ -219,26 +398,384 @@ stacks:
       - "make observability"
     ram_mb_total: 10496
 
-  _security_stack_meta:
+  _observability_stack_meta:
     kind: meta
-    label: "Security Stack"
-    description: "Foundation + container runtime security"
-    stacks: [core, networking, ingress, dns, gitops, security]
+    label: "Observability Stack"
+    description: "Foundation + NAS storage + full metrics/logs/traces"
+    stacks: [core, networking, ingress, dns, gitops, storage-nas, observability]
     make_sequence:
       - "make core && make networking"
       - "make ingress && make dns && make gitops"
+      - "make storage"
+      - "make observability"
+    ram_mb_total: 10624
+    notes:
+      - "make storage MUST run before make observability (Prometheus/Loki need smb-nas PVC)"
+      - "Without NAS: set kps_storage_class: local-path and loki_storage_class: local-path"
+
+  _security_stack_meta:
+    kind: meta
+    label: "Security Stack"
+    description: "Foundation + NAS storage + container runtime security"
+    stacks: [core, networking, ingress, dns, gitops, storage-nas, security]
+    make_sequence:
+      - "make core && make networking"
+      - "make ingress && make dns && make gitops"
+      - "make storage"
       - "make security"
-    ram_mb_total: 5376
+    ram_mb_total: 5504
+    notes:
+      - "make storage MUST run before make security (NeuVector needs smb-nas PVC)"
 
   _full_stack_meta:
     kind: meta
     label: "Full Stack"
-    description: "Everything: Foundation + AI + Observability + Security"
-    stacks: [core, networking, ingress, dns, gitops, observability, ai, security]
+    description: "Everything: Foundation + NAS storage + AI + Observability + Security"
+    stacks: [core, networking, ingress, dns, gitops, storage-nas, observability, ai, security]
     make_sequence:
       - "make core && make networking"
       - "make ingress && make dns && make gitops"
+      - "make storage"
       - "make observability"
       - "make ai && make ai-holmes && make kagent"
       - "make security"
-    ram_mb_total: 22528   # ~22GB — needs 24GB+ cluster
+    ram_mb_total: 22656   # ~22GB — needs 24GB+ cluster
+    notes:
+      - "make storage is step 3 — MUST precede observability, ai, security"
+      - "Pi-hole always uses local-path regardless (forced, SQLite)"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PLANNED STACKS — not yet implemented, placeholders for future work
+#
+# status: planned  →  no make target yet, no Ansible roles yet
+# To implement: write the roles, add to bootstrap.yml, remove status: planned
+# ═══════════════════════════════════════════════════════════════════════════════
+
+  # ── GitOps alternatives ───────────────────────────────────────────────────────
+
+  gitops-alternatives:
+    kind: behavioral
+    status: planned
+    label: "GitOps Alternatives"
+    behavior: "GitOps tooling beyond ArgoCD — Flux, Helm-native, Kustomize standalone"
+    what_you_get:
+      - "Flux v2 — GitOps operator with Helm controller + Kustomize controller"
+      - "Kustomize standalone — overlay-based config management without a controller"
+      - "Helm-native GitOps — Helmfile + Helm Secrets + Helm Diff"
+      - "Comparison: ArgoCD (UI-first, app model) vs Flux (API-first, Git-native)"
+    teaches:
+      - "Pull-based vs push-based GitOps — security model differences"
+      - "Flux image automation — auto-update when new image tag pushed"
+      - "Kustomize overlays — base + patches pattern for multi-env"
+      - "Helmfile — declarative multi-chart releases, equivalent to ArgoCD App of Apps"
+      - "SOPS + age/gpg — secret encryption in Git"
+    make: "# Not yet implemented — use make gitops for ArgoCD (current default)"
+    ram_mb: 384
+    min_nodes: 1
+    requires: [core, networking]
+    notes:
+      - "ArgoCD remains the default — this stack is for comparison/learning"
+      - "Flux + ArgoCD can coexist on the same cluster (different namespaces)"
+      - "Kustomize is already bundled in kubectl — no extra install"
+
+  # ── Data Engineering ──────────────────────────────────────────────────────────
+
+  data-engineering:
+    kind: behavioral
+    status: planned
+    label: "Data Engineering"
+    behavior: "Batch and stream data processing on K8s — pipelines, queues, workflows"
+    what_you_get:
+      - "Apache Spark on K8s — SparkOperator (Google) for batch ETL jobs"
+      - "Apache Kafka — Strimzi operator, distributed event streaming"
+      - "Apache Flink — StatefulSet-based stream processing"
+      - "Apache Airflow — KubernetesExecutor, DAG-based workflow orchestration"
+      - "Apache Superset — BI dashboards on top of cluster-local data"
+    teaches:
+      - "Spark executor scheduling — K8s as Spark cluster manager"
+      - "Kafka partition replication — distributed log storage on K8s PVCs"
+      - "Flink checkpointing to S3/MinIO — stateful streaming on K8s"
+      - "Airflow KubernetesExecutor — each DAG task runs as an independent K8s pod"
+      - "Batch vs streaming — when to use Spark vs Flink vs Kafka Streams"
+    make: "# Not yet implemented"
+    ram_mb: 8192          # Kafka+ZK: ~2GB, Spark operator: ~512MB, Airflow: ~2GB
+    min_nodes: 3
+    min_ram_gb_server: 16
+    requires: [core, networking, storage-nas]
+    notes:
+      - "NAS storage required — Kafka and Airflow need fast persistent PVCs"
+      - "Spark and Flink are CPU/memory intensive — RK1 nodes recommended"
+      - "Strimzi Kafka operator is production-grade and ARM64 compatible"
+      - "MinIO (S3-compatible) can replace external object storage"
+
+  # ── Database Operators ────────────────────────────────────────────────────────
+
+  databases:
+    kind: behavioral
+    status: planned
+    label: "Database Operators"
+    behavior: "Database-as-a-service on K8s — PostgreSQL, MySQL, Redis, MongoDB via operators"
+    what_you_get:
+      - "CloudNativePG — PostgreSQL operator (CNCF, production-grade, ARM64)"
+      - "KubeDB — multi-database operator (Postgres, MySQL, Redis, MongoDB, Elasticsearch)"
+      - "Vitess — MySQL horizontal sharding for large-scale workloads (PlanetScale origin)"
+      - "Redis Operator (OT-HELM) — HA Redis clusters"
+      - "Zalando Postgres Operator — battle-tested Postgres with Patroni HA"
+    teaches:
+      - "Operator pattern — CRDs that manage stateful workloads declaratively"
+      - "CloudNativePG HA — primary/replica with automatic failover"
+      - "Vitess VSchema — how sharding rules are defined and enforced"
+      - "Backup to S3/MinIO — automated PITR (point-in-time recovery)"
+      - "Connection pooling — PgBouncer built into CloudNativePG"
+    make: "# Not yet implemented"
+    ram_mb: 2048          # CloudNativePG: ~512MB per instance; KubeDB operator: ~256MB
+    min_nodes: 1
+    requires: [core, networking, storage-nas]
+    notes:
+      - "CloudNativePG is the recommended starting point — CNCF sandbox, ARM64, simple"
+      - "KubeDB is commercial (free tier limited) but covers many DB engines"
+      - "Vitess requires significant operational complexity — only for scale"
+      - "All operators support ARM64 natively"
+
+  # ── ML Platform ──────────────────────────────────────────────────────────────
+
+  ml-platform:
+    kind: behavioral
+    status: planned
+    label: "ML Platform"
+    behavior: "Machine learning lifecycle on K8s — training, tracking, serving, feature store"
+    what_you_get:
+      - "Kubeflow — full MLOps platform (pipelines, notebooks, serving, training operators)"
+      - "MLflow — experiment tracking, model registry, model serving"
+      - "Feast — feature store for ML (online + offline feature serving)"
+      - "Seldon Core / KServe — model serving (REST/gRPC, canary, A/B testing)"
+      - "Ray — distributed Python + Ray Tune + Ray Serve (LLM serving)"
+    teaches:
+      - "Kubeflow Pipelines — DAG-based ML workflows with artifact tracking"
+      - "Training operators — PyTorchJob, TFJob, MXNetJob on K8s"
+      - "KServe InferenceService — standard K8s CRD for model deployment"
+      - "Ray cluster autoscaling — dynamic worker pools for distributed training"
+      - "Feature stores — decoupling feature computation from model training"
+    make: "# Not yet implemented"
+    ram_mb: 12288         # Kubeflow lightweight: ~6GB; MLflow: ~512MB; KServe: ~1GB
+    min_nodes: 2
+    min_ram_gb_server: 16
+    requires: [core, networking, storage-nas]
+    notes:
+      - "Kubeflow full install is heavy (12GB+) — start with MLflow only"
+      - "KServe is the Kubeflow model serving component, usable standalone"
+      - "RK1 nodes (31GB RAM) are suitable for small model training + inference"
+      - "For LLM serving: use existing AI stack (Hermes + LiteLLM), not Kubeflow"
+      - "NPU (/dev/rknpu0) support in Kubeflow is experimental as of 2025"
+
+  # ── Advanced Networking / Service Mesh ───────────────────────────────────────
+
+  networking-advanced:
+    kind: behavioral
+    status: planned
+    label: "Advanced Networking / Service Mesh"
+    behavior: "Deep networking — service mesh, mTLS everywhere, traffic management, canary deployments"
+    what_you_get:
+      - "Cilium Service Mesh — eBPF-native, no sidecar proxies (Envoy optional per-service)"
+      - "Istio — full service mesh with Envoy sidecars, mTLS, traffic policies"
+      - "Linkerd — lightweight Rust-based service mesh, simpler than Istio"
+      - "Hubble — Cilium's network observability UI (L3/L4/L7 flow visibility)"
+      - "Flagger — progressive delivery: canary, A/B, blue/green via Cilium/Istio/Linkerd"
+      - "Cilium BGP — BGP peering with home router for external reachability"
+    teaches:
+      - "Service mesh data plane — why Envoy sidecars vs eBPF kernel intercept"
+      - "mTLS everywhere — automatic certificate rotation between services"
+      - "Traffic shaping — weighted routing, retries, circuit breaking"
+      - "Canary deployment — Flagger automates traffic shifting + Prometheus rollback"
+      - "eBPF vs sidecar tradeoff — CPU/memory overhead, observability depth"
+      - "BGP peering — advertising ClusterIPs directly to your home router"
+      - "Hubble flow query — trace exact packet path between two pods"
+    make: "# Partial — Cilium already installed (make networking); Hubble via Cilium values"
+    ram_mb: 2048          # Istio: ~2GB; Linkerd: ~512MB; Cilium mesh: ~256MB extra
+    min_nodes: 2
+    requires: [core, networking]
+    notes:
+      - "Cilium Service Mesh is already partially available — enable via cilium_values"
+      - "Istio and Cilium can coexist but require careful integration"
+      - "Flagger works with Cilium Gateway API natively (no Istio needed)"
+      - "Hubble UI is the killer feature — shows live L7 flow map of the cluster"
+      - "BGP requires a router that supports BGP (not all home routers do)"
+
+  # ── Observability Advanced (OpenTelemetry / Flagger / SLOs) ──────────────────
+
+  observability-advanced:
+    kind: behavioral
+    status: planned
+    label: "Observability Advanced"
+    behavior: "Beyond metrics — OpenTelemetry collector, SLO management, progressive delivery, chaos"
+    what_you_get:
+      - "OpenTelemetry Operator — auto-instrumentation for Go/Python/Java/Node apps"
+      - "Flagger — canary deployments with automated metric-based rollback"
+      - "Pyrra / Sloth — SLO/SLI/Error budget definitions as CRDs"
+      - "Chaos Mesh / LitmusChaos — chaos engineering on K8s (kill pods, inject latency)"
+      - "OpenCost — real cost visibility per namespace/pod (even homelab)"
+    teaches:
+      - "OpenTelemetry signal flow: app → OTel SDK → Collector → Tempo/Prometheus/Loki"
+      - "Auto-instrumentation — zero-code tracing injection via admission webhook"
+      - "SLO math — error rate, latency budget, burn rate alerts"
+      - "Canary analysis — Flagger checks Prometheus metrics before routing 100% traffic"
+      - "Chaos engineering — deliberate failure injection to test resilience"
+    make: "# Partial — Tempo (traces) + Alloy (OTel collector) already installed"
+    ram_mb: 1024
+    min_nodes: 1
+    requires: [core, networking, observability]
+    notes:
+      - "Alloy (already installed) is an OTel-compatible collector — builds on it"
+      - "Tempo (already installed) receives traces — OTel operator adds auto-instrumentation"
+      - "Flagger integrates with Cilium Gateway API (HTTPRoute traffic splitting)"
+      - "Pyrra/Sloth generate PrometheusRules from SLO YAML — Prometheus already running"
+
+  # ── WebAssembly (WASM) ────────────────────────────────────────────────────────
+
+  wasm:
+    kind: behavioral
+    status: planned
+    label: "WebAssembly on K8s"
+    behavior: "Run WASM workloads as K8s pods — fast startup, tiny footprint, multi-language"
+    what_you_get:
+      - "WasmEdge runtime — WASM/WASI container runtime, OCI-compatible"
+      - "SpinKube — Fermyon Spin apps as K8s pods via SpinOperator"
+      - "runwasi — containerd shim for WASM (K3s/containerd compatible)"
+      - "WASM workloads alongside regular containers on the same node"
+    teaches:
+      - "WASM vs container — startup time (<1ms vs ~100ms), size, security model"
+      - "WASI — WASM system interface for file/network access"
+      - "OCI WASM images — same registry, same kubectl, different runtime"
+      - "RuntimeClass — how K8s selects which runtime handles a pod"
+      - "Spin framework — build HTTP microservices in Rust/Go/Python that compile to WASM"
+    make: "# Not yet implemented — needs runwasi shim installed on nodes"
+    ram_mb: 256           # Very lightweight — WASM workloads start in <1ms, tiny overhead
+    min_nodes: 1
+    requires: [core, networking]
+    notes:
+      - "ARM64 compatible — WasmEdge and runwasi both support aarch64"
+      - "K3s uses containerd — runwasi plugs in as a containerd shim"
+      - "WASM and container pods can coexist on the same node"
+      - "Ideal for short-lived API handlers — complements AI inference pods"
+
+  # ── Virtualization (KubeVirt) ─────────────────────────────────────────────────
+
+  virtualization:
+    kind: behavioral
+    status: planned
+    label: "Virtualization (KubeVirt)"
+    behavior: "Run VMs as K8s pods — KubeVirt on ARM64, live migration, VM lifecycle via kubectl"
+    what_you_get:
+      - "KubeVirt — VMs as K8s CRDs (VirtualMachine, VirtualMachineInstance)"
+      - "CDI (Containerized Data Importer) — import VM disk images into PVCs"
+      - "virtctl — kubectl plugin for VM console, start/stop, live migration"
+      - "Multus CNI — multiple network interfaces per VM pod"
+    teaches:
+      - "VM lifecycle on K8s — create, start, pause, migrate, delete via kubectl"
+      - "VirtIO drivers — why ARM VMs need specific drivers for network/disk"
+      - "Live migration — move running VM between nodes with zero downtime"
+      - "Nested virtualization — KVM support on ARM (Cortex-A76+ supports EL2)"
+      - "VM vs container — when to use each on the same cluster"
+    make: "# Not yet implemented — requires KVM kernel module on nodes"
+    ram_mb: 2048          # KubeVirt operator: ~512MB + overhead per VM
+    min_nodes: 1
+    min_ram_gb_server: 8
+    requires: [core, networking, storage-nas]
+    notes:
+      - "ARM64 KubeVirt is supported as of v1.1+ (2024) — tested on RK3588 and Cortex-A72"
+      - "RK3588S (RK1) Cortex-A76 supports KVM/EL2 — check: ls /dev/kvm"
+      - "CM4 (Cortex-A72) also supports KVM — both node types compatible"
+      - "Live migration requires shared storage (smb-nas or distributed)"
+      - "CDI needs NAS or S3-compatible storage to import disk images"
+      - "x86 feature parity: most KubeVirt features work on ARM64 since v1.2"
+
+  # ── Cost Modeling + FinOps ────────────────────────────────────────────────────
+
+  cost-modeling:
+    kind: behavioral
+    status: planned
+    label: "Cost Modeling / FinOps"
+    behavior: "Estimate cluster running costs — power draw per node, per-workload cost allocation"
+    what_you_get:
+      - "OpenCost — per-namespace/pod cost visibility with homelab pricing model"
+      - "Kepler — eBPF-based power consumption measurement per pod (RAPL/cgroups)"
+      - "Custom cost model — define $/kWh, power draw per board → cost per workload"
+      - "Grafana dashboard — power draw timeline, cost-by-namespace, ROI vs cloud"
+    teaches:
+      - "OpenCost pricing model — how to define custom node pricing for on-prem"
+      - "RAPL (Running Average Power Limit) — Intel power measurement (x86 only)"
+      - "Kepler eBPF — power estimation on ARM without RAPL (model-based)"
+      - "Amortized hardware cost — CapEx spread over expected lifetime"
+      - "Cloud comparison — real cost of running this workload on EC2/GKE vs homelab"
+    make: "# Not yet implemented"
+    ram_mb: 512
+    min_nodes: 1
+    requires: [core, networking, observability]
+    notes:
+      - "ARM64 nodes don't have RAPL — Kepler uses eBPF + CPU model estimates"
+      - "RK1 (RK3588S) TDP: ~10W under load; CM4: ~5W — very low vs cloud"
+      - "Typical homelab ROI: 2-3 years vs equivalent cloud spend"
+      - "OpenCost integrates with Prometheus (already installed)"
+
+  # ── Sustainability / Green Cluster ───────────────────────────────────────────
+
+  sustainability:
+    kind: behavioral
+    status: planned
+    label: "Sustainability / Green Cluster"
+    behavior: "Measure and reduce cluster carbon footprint — power efficiency, workload scheduling"
+    what_you_get:
+      - "Kepler — eBPF power per pod, feeds into Prometheus/Grafana"
+      - "Carbon Aware Scheduler — shift workloads to low-carbon time windows"
+      - "Green Software Foundation tooling — carbon intensity API integration"
+      - "Idle node power-down — CronJob to cordon + suspend nodes during off-hours"
+      - "Power vs performance dashboard — per-board efficiency (perf/watt)"
+    teaches:
+      - "Embodied carbon vs operational carbon — hardware manufacture vs electricity"
+      - "ARM vs x86 efficiency — why ARM clusters have better perf-per-watt"
+      - "Temporal shifting — run batch jobs when electricity grid is greenest"
+      - "Kepler metrics — PROCESS_ENERGY_Pkg, PROCESS_ENERGY_DRAM per pod"
+      - "TDP vs actual draw — RK1: 10W TDP vs 4-6W average under typical K8s workload"
+    make: "# Not yet implemented"
+    ram_mb: 256
+    min_nodes: 1
+    requires: [core, networking, observability]
+    notes:
+      - "RK1 cluster (4 nodes) uses ~40W total — equivalent to one desktop CPU"
+      - "Full 10-node cluster: ~100W total vs equivalent cloud at ~500W+ cooling overhead"
+      - "Kepler is in CNCF sandbox — active development, ARM64 support improving"
+      - "Carbon-aware scheduling needs external carbon intensity API (Electricity Maps)"
+      - "Pairs with cost-modeling stack for full FinOps + sustainability picture"
+
+  # ── GPU / NPU Sharing ─────────────────────────────────────────────────────────
+
+  gpu-sharing:
+    kind: behavioral
+    status: planned
+    label: "GPU / NPU Sharing"
+    behavior: "Share GPU/NPU resources across multiple pods — time-slicing, MIG, device plugins"
+    what_you_get:
+      - "Rockchip NPU device plugin — expose /dev/rknpu0 to pods (RK1 nodes)"
+      - "GPU time-slicing — NVIDIA MPS or KubeAI scheduler for sharing one device"
+      - "RKNN runtime in pods — run Rockchip-optimized models inside containers"
+      - "virtio-gpu — expose GPU to KubeVirt VMs (pairs with virtualization stack)"
+      - "HAMi (Heterogeneous AI Computing) — fine-grained GPU sharing on K8s"
+    teaches:
+      - "Device plugin framework — how K8s exposes hardware via Extended Resources"
+      - "NPU vs GPU — Rockchip RK3588S NPU is 6 TOPS, fixed-function (RKNN only)"
+      - "Time-slicing vs MIG — NVIDIA MIG hardware partitioning vs software time-share"
+      - "RKNN model conversion — how to convert ONNX/TFLite to RKNN format"
+      - "HAMi vGPU — fractional GPU memory allocation without hardware MIG"
+      - "Resource quota + LimitRange for GPU resources per namespace"
+    make: "# Not yet implemented — needs device plugin DaemonSet per node"
+    ram_mb: 256           # Device plugin overhead only — GPU/NPU itself is separate resource
+    min_nodes: 1
+    requires: [core, networking]
+    notes:
+      - "RK1 nodes have Rockchip NPU (6 TOPS @ INT8) — useful for small model inference"
+      - "RKNN models only run on Rockchip NPU — PyTorch/ONNX requires conversion"
+      - "CM4 has VideoCore VI — not useful for ML inference, only display"
+      - "NVIDIA MIG requires Ampere+ GPU — not available on current nodes"
+      - "HAMi supports Rockchip, Cambricon, Hygon, NVIDIA — multi-vendor"
+      - "For LLM inference: RAM is the bottleneck, not compute — AI stack sufficient"
