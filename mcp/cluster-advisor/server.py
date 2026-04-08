@@ -1263,9 +1263,12 @@ def cluster_stacks() -> str:
                     gaps.append("eBPF required for Cilium (kernel ≥5.4)")
         return (len(gaps) == 0, gaps)
 
-    # ── Behavioral stacks (the interesting ones) ───────────────────────────────
+    # ── Stack categories ───────────────────────────────────────────────────────
+    quick_stack   = all_stacks.get("quick", {})
     behavioral_stacks = {k: v for k, v in all_stacks.items()
                          if v.get("kind") == "behavioral" and not k.startswith("_")}
+    storage_stacks = {k: v for k, v in all_stacks.items()
+                      if k.startswith("storage-") and not k.startswith("_")}
     foundation_ram_mb = sum(
         all_stacks[k].get("ram_mb", 0)
         for k in ["core", "networking", "ingress", "dns", "gitops"]
@@ -1280,17 +1283,66 @@ def cluster_stacks() -> str:
 
     out += [
         f"  Hardware: {node_count} nodes | {total_ram_gb:.0f}GB total RAM | {max_node_ram_gb:.0f}GB max/node",
-        f"  K3s (base): always-on | Cilium (networking): always-on",
+        f"  K3s: always-on base | Cilium: always-on CNI (no alternatives)",
         "",
     ]
 
+    # ── Quick mode ─────────────────────────────────────────────────────────────
+    out.append("━━━ Quick Cluster (DIY mode) ━━━")
+    out.append("")
+    if quick_stack:
+        qram = quick_stack.get("ram_mb", 0) / 1024
+        out.append(f"  make quick  (~{qram:.1f}GB)")
+        out.append(f"  {quick_stack.get('behavior', '')}")
+        out.append("  What you get after make quick:")
+        for item in quick_stack.get("what_you_get", []):
+            out.append(f"    + {item}")
+        out.append("  Storage available immediately: local-path (K3s built-in, hostPath-backed)")
+        out.append("  From here: DIY — add stacks one at a time or manage manually")
+    out.append("")
+
+    # ── Storage tiers ──────────────────────────────────────────────────────────
+    out.append("━━━ Storage Tiers ━━━")
+    out.append("")
+    out.append("  Storage in K3s has 3 tiers — each is a superset of the previous.")
+    out.append("")
+    storage_order = ["storage-local", "storage-nas", "storage-distributed"]
+    for sname in storage_order:
+        sdef = all_stacks.get(sname, {})
+        if not sdef:
+            continue
+        status = sdef.get("status", "available")
+        icon = "✓" if status != "planned" else "○"
+        ram_mb = sdef.get("ram_mb", 0)
+        ram_str = f"~{ram_mb}MB" if ram_mb > 0 else "0MB (built-in)"
+        out.append(f"  {icon} {sname.upper():<24} {ram_str}")
+        out.append(f"     {sdef.get('behavior', '')}")
+        make_cmd = sdef.get("make", "")
+        if make_cmd and not make_cmd.startswith("#"):
+            out.append(f"     Run: {make_cmd}")
+        elif make_cmd:
+            out.append(f"     {make_cmd}")
+        # Key rules
+        for note in sdef.get("notes", [])[:2]:
+            out.append(f"     → {note}")
+        if status == "planned":
+            out.append(f"     ○ Not yet implemented — future roadmap item")
+        out.append("")
+
+    # Storage dependency warning
+    out.append("  ⚠ Dependency: make storage MUST run before observability, ai, security")
+    out.append("    (Prometheus, Loki, registry, NeuVector all need smb-nas PVC)")
+    out.append("  ⚠ Pi-hole is FORCED to local-path — SQLite incompatible with SMB file locks")
+    out.append("  ℹ Without NAS: set <role>_storage_class: local-path per role (data not HA)")
+    out.append("")
+
     # ── Foundation always-on budget ────────────────────────────────────────────
-    out.append("━━━ Always-On Base (required for everything) ━━━")
+    out.append("━━━ Foundation (opinionated base) ━━━")
     out.append("")
     foundation_gb = foundation_ram_mb / 1024
     out.append(f"  core + networking + ingress + dns + gitops")
     out.append(f"  RAM: ~{foundation_gb:.1f}GB  |  Make: make core && make networking && make ingress && make dns && make gitops")
-    out.append(f"  Budget remaining after foundation: {total_ram_gb - foundation_gb:.0f}GB / {total_ram_mb - foundation_ram_mb:.0f}MB")
+    out.append(f"  Budget remaining after foundation: {total_ram_gb - foundation_gb:.0f}GB")
     out.append("")
 
     # ── Individual behavioral stacks ───────────────────────────────────────────
