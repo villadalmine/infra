@@ -31,10 +31,11 @@ from fastmcp import FastMCP
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SURVEY_DIR = REPO_ROOT / "survey"
 SKILLS_DIR = REPO_ROOT / "skills"
-FLAVORS_FILE  = Path(__file__).resolve().parent / "flavors.yaml"
-STACKS_FILE   = Path(__file__).resolve().parent / "stacks.yaml"
-LEARNERS_FILE = Path(__file__).resolve().parent / "learners.yaml"
-CATALOG_FILE  = Path(__file__).resolve().parent / "hardware-catalog.yaml"
+FLAVORS_FILE   = Path(__file__).resolve().parent / "flavors.yaml"
+STACKS_FILE    = Path(__file__).resolve().parent / "stacks.yaml"
+LEARNERS_FILE  = Path(__file__).resolve().parent / "learners.yaml"
+CATALOG_FILE   = Path(__file__).resolve().parent / "hardware-catalog.yaml"
+PROJECTS_FILE  = Path(__file__).resolve().parent / "projects.yaml"
 
 # ── MCP server ────────────────────────────────────────────────────────────────
 mcp = FastMCP(
@@ -59,6 +60,7 @@ Tools:
   learning_roadmap(profile) — personalized curriculum for a learning goal
   hardware_catalog()        — browse boards to buy + K8s readiness
   what_to_buy(goal)         — targeted buy recommendation for a specific goal
+  stack_projects(stack)     — CNCF status, license, GitHub, stars for projects in a stack
   get_skill(name)           — read technical skill doc for any component
   list_skills()             — list all available skills
 
@@ -115,6 +117,16 @@ def _load_catalog() -> dict:
         return {}
     try:
         return yaml.safe_load(CATALOG_FILE.read_text()).get("boards", {})
+    except Exception:
+        return {}
+
+
+def _load_projects() -> dict:
+    """Load project CNCF/OSS metadata from projects.yaml. Returns {} if missing."""
+    if not PROJECTS_FILE.exists():
+        return {}
+    try:
+        return yaml.safe_load(PROJECTS_FILE.read_text()).get("projects", {})
     except Exception:
         return {}
 
@@ -1863,6 +1875,181 @@ def what_to_buy(goal: str) -> str:
     out.append("━━━ Other goals you can ask about ━━━")
     out.append("  what_to_buy('ha control-plane')  |  what_to_buy('local ai inference')")
     out.append("  what_to_buy('more workers')       |  what_to_buy('full cluster from scratch')")
+
+    return "\n".join(out)
+
+
+@mcp.tool()
+def stack_projects(stack: Optional[str] = None) -> str:
+    """
+    Show CNCF membership, license, GitHub stars, and suitability for projects in a stack.
+    Cross-references projects.yaml with the actual cluster survey data.
+
+    Args:
+        stack: stack name (e.g. 'networking', 'ai', 'observability', 'databases').
+               Omit to list all stacks and their project counts.
+
+    Returns:
+        Per-project: CNCF status, license (OSS/commercial), GitHub URL, stars, ARM64 support,
+        suitability levels (homelab/smb/enterprise/testing), and relevance to THIS cluster.
+    """
+    projects = _load_projects()
+    stacks = _load_stacks()
+    surveys = _load_surveys()
+
+    if not projects:
+        return "projects.yaml not found — run: touch mcp/cluster-advisor/projects.yaml"
+
+    # ── No stack arg → show overview ──────────────────────────────────────────
+    if not stack:
+        out = ["━━━ Project catalog overview (projects.yaml) ━━━",
+               f"  {len(projects)} projects indexed\n"]
+
+        cncf_counts = {}
+        for p in projects.values():
+            s = p.get("cncf_status", "none")
+            cncf_counts[s] = cncf_counts.get(s, 0) + 1
+
+        status_order = ["graduated", "incubating", "sandbox", "lfai", "none"]
+        status_label = {
+            "graduated":  "✅ CNCF Graduated",
+            "incubating": "🔵 CNCF Incubating",
+            "sandbox":    "🟡 CNCF Sandbox",
+            "lfai":       "🔷 LF AI & Data",
+            "none":       "⬜ Independent / Non-CNCF",
+        }
+        for s in status_order:
+            if s in cncf_counts:
+                out.append(f"  {status_label.get(s, s)}: {cncf_counts[s]} projects")
+
+        out.append("")
+        out.append("━━━ CNCF status legend ━━━")
+        out.append("  ✅ Graduated  — production-proven, vendor-neutral governance, safe for enterprise")
+        out.append("  🔵 Incubating — growing adoption, stable API, suitable for production with care")
+        out.append("  🟡 Sandbox    — early adoption, homelab + testing, API may change")
+        out.append("  ⬜ Independent — project governs itself; check license and company backing")
+        out.append("")
+        out.append("━━━ Available stacks ━━━")
+
+        for sname, sdef in stacks.items():
+            if sname.startswith("_"):
+                continue
+            status_tag = f"  [planned]  " if sdef.get("status") == "planned" else "  [live]     "
+            proj_refs = [k for k, v in projects.items() if sname in v.get("stacks", [])]
+            out.append(f"{status_tag}{sname:<28} {len(proj_refs)} projects indexed")
+
+        out.append("")
+        out.append("  stack_projects('networking')   |  stack_projects('ai')")
+        out.append("  stack_projects('databases')    |  stack_projects('observability')")
+        return "\n".join(out)
+
+    # ── Stack-specific view ───────────────────────────────────────────────────
+    matched = {k: v for k, v in projects.items() if stack in v.get("stacks", [])}
+
+    # Also match by partial stack name
+    if not matched:
+        matched = {k: v for k, v in projects.items()
+                   if any(stack in s for s in v.get("stacks", []))}
+
+    # Fallback: search by project name or id containing the query
+    if not matched:
+        matched = {k: v for k, v in projects.items()
+                   if stack.lower() in k.lower() or stack.lower() in v.get("name", "").lower()}
+
+    if not matched:
+        available = sorted({s for v in projects.values() for s in v.get("stacks", [])})
+        return (f"No projects found for '{stack}'.\n"
+                f"Available stacks with indexed projects: {', '.join(available)}\n"
+                f"Or call stack_projects() with no args for overview.")
+
+    sdef = stacks.get(stack, {})
+    stack_status = "⚠ PLANNED (no Ansible roles yet)" if sdef.get("status") == "planned" else "✅ LIVE"
+    out = [f"━━━ {stack} — {sdef.get('label', stack)} [{stack_status}] ━━━",
+           f"  {sdef.get('behavior', '')}",
+           f"  RAM budget: {sdef.get('ram_mb', '?')} MB   |   make: {sdef.get('make', 'n/a')}",
+           ""]
+
+    # Cluster context
+    total_ram = sum(
+        float(n.get("ram", {}).get("total_gb", 0) or 0) for n in surveys.values()
+    )
+    if total_ram > 0:
+        stack_ram_gb = sdef.get("ram_mb", 0) / 1024
+        fits = "✓ fits" if stack_ram_gb <= total_ram else "✗ insufficient RAM"
+        out.append(f"  Cluster RAM: {total_ram:.0f} GB total  →  stack needs {stack_ram_gb:.1f} GB  [{fits}]")
+        out.append("")
+
+    status_icon = {
+        "graduated":  "✅ CNCF Graduated",
+        "incubating": "🔵 CNCF Incubating",
+        "sandbox":    "🟡 CNCF Sandbox",
+        "lfai":       "🔷 LF AI & Data",
+        "none":       "⬜ Independent",
+    }
+    oss_icon = {True: "🟢 OSS", False: "🔴 commercial"}
+
+    for pid, p in sorted(matched.items(), key=lambda x: (
+        ["graduated", "incubating", "sandbox", "lfai", "none"].index(x[1].get("cncf_status", "none"))
+    )):
+        name = p.get("name", pid)
+        cncf  = status_icon.get(p.get("cncf_status", "none"), p.get("cncf_status", "?"))
+        oss   = oss_icon.get(p.get("oss", True), "?")
+        lic   = p.get("license", "?")
+        arm   = "ARM64 ✓" if p.get("arm64") is True else ("ARM64 partial" if p.get("arm64") == "partial" else "ARM64 ✗")
+        stars = p.get("stars_approx", "?")
+        stars_str = f"⭐ {stars:,}" if isinstance(stars, int) else f"⭐ {stars}"
+        gh    = p.get("github", "")
+        web   = p.get("website", "")
+        suits = p.get("suitable_for", [])
+        suitability = " | ".join(suits) if suits else "?"
+        notes = p.get("suitability_notes", "")
+
+        # Maintenance health
+        last_rel  = p.get("last_release", "")
+        cadence   = p.get("release_cadence", "")
+        maintained = p.get("maintained", None)
+        health_note = p.get("health_notes", "")
+
+        # Health icon — based on last_release recency and maintained flag
+        if maintained is False:
+            health_icon = "🔴 UNMAINTAINED"
+        elif last_rel:
+            yr, mo = int(last_rel[:4]), int(last_rel[5:7]) if len(last_rel) >= 7 else 1
+            months_ago = (2025 - yr) * 12 + (8 - mo)  # relative to Aug 2025
+            if months_ago <= 3:
+                health_icon = "🟢 active"
+            elif months_ago <= 9:
+                health_icon = "🟡 recent"
+            else:
+                health_icon = "🔴 stale"
+        else:
+            health_icon = "⚪ unknown"
+
+        out.append(f"  ┌─ {name}")
+        out.append(f"  │  {cncf}  {oss} ({lic})  {arm}  {stars_str}")
+        out.append(f"  │  Suitable for: {suitability}")
+        if notes:
+            out.append(f"  │  Note: {notes}")
+        if last_rel or cadence:
+            cadence_str = f" / {cadence} releases" if cadence else ""
+            out.append(f"  │  Maintenance: {health_icon}  last={last_rel}{cadence_str}")
+        if health_note:
+            out.append(f"  │  Health: {health_note}")
+        if web:
+            out.append(f"  │  Web:  {web}")
+        if gh:
+            out.append(f"  │  Code: {gh}")
+        out.append("  │")
+
+    out.append("")
+    out.append("━━━ CNCF status → recommended use ━━━")
+    out.append("  ✅ Graduated  → production, enterprise — stable, well-governed, safe long-term")
+    out.append("  🔵 Incubating → production with care — review release cadence before adopting")
+    out.append("  🟡 Sandbox    → homelab/testing — evaluate, but expect breaking changes")
+    out.append("  ⬜ Independent → check: license, company health, community size")
+    out.append("")
+    out.append("  stack_projects()           → overview of all indexed stacks")
+    out.append("  stack_projects('security') → what's inside the security stack")
 
     return "\n".join(out)
 

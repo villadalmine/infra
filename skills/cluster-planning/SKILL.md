@@ -228,6 +228,11 @@ Recommendations by gap:
 | `analyze_cluster()` | Achievable flavors + node assignments + make commands |
 | `cluster_power_score()` | 5-dimension score: Compute / Memory / Storage / Network / AI |
 | `cluster_roadmap()` | Phased deployment plan: what to run now vs later + what to buy |
+| `cluster_stacks()` | RAM budget per behavioral stack + storage tiers + recipes |
+| `learning_roadmap(profile)` | Curriculum for beginner/devops/ai-builder/security/full-stack |
+| `hardware_catalog()` | Browse boards to buy with prices, K8s readiness, vendors |
+| `what_to_buy(goal)` | Targeted recommendations: ha/npu/budget/inference/full-cluster |
+| `stack_projects(stack)` | CNCF status + license + stars + maintenance health per stack |
 | `get_skill(name)` | Read skill docs (cilium, ai, kagent, monitoring, etc.) |
 | `list_skills()` | List all available skills |
 
@@ -242,7 +247,49 @@ make survey
 # "Analyze my cluster and tell me what I can deploy"
 # "What hardware do I need to run the full AI stack?"
 # "Give me a step-by-step deployment roadmap"
+# "What's the CNCF status of the observability stack projects?"
+# "I want to learn DevOps — what should I deploy and in what order?"
+# "What boards should I buy to add local AI inference?"
 ```
+
+---
+
+## Knowledge Graph
+
+The cluster-advisor connects 5 data sources:
+
+```
+survey/*.json           → live hardware facts (make survey → populates)
+stacks.yaml             → 29 modular stacks (17 live, 12 planned)
+learners.yaml           → 5 learning profiles with curricula
+hardware-catalog.yaml   → 12 boards with prices/vendors
+projects.yaml           → 44 projects: CNCF status, license, maintenance health
+```
+
+**Extending the knowledge graph** (YAML-only, no code changes):
+- New stack: add to `stacks.yaml` with `status: planned` until roles are written
+- New board: add to `hardware-catalog.yaml`
+- New project: add to `projects.yaml` with all maintenance fields
+- New learning profile: add to `learners.yaml`
+
+---
+
+## Planned Stacks (not yet implemented — add roles to activate)
+
+| Stack | Adds |
+|-------|------|
+| `gitops-alternatives` | Flux, Helmfile, Kustomize, SOPS secrets |
+| `data-engineering` | Kafka/Strimzi, Spark, Airflow KubernetesExecutor |
+| `databases` | CloudNativePG, KubeDB, Vitess |
+| `ml-platform` | Kubeflow, MLflow, KServe, Ray |
+| `networking-advanced` | Cilium mesh, Istio, Linkerd, Flagger canary, BGP |
+| `observability-advanced` | OTel Operator, Flagger, Pyrra SLOs, Chaos Mesh |
+| `wasm` | WasmEdge, SpinKube, runwasi shim |
+| `virtualization` | KubeVirt ARM64, CDI, live migration |
+| `cost-modeling` | OpenCost, Kepler power, homelab vs cloud ROI |
+| `sustainability` | Carbon-aware scheduler, power efficiency dashboard |
+| `gpu-sharing` | HAMi, Rockchip NPU device plugin, RKNN |
+| `storage-distributed` | Longhorn or OpenEBS Mayastor |
 
 ---
 
@@ -254,6 +301,9 @@ make survey
 | "Can I run HA?" | `analyze_cluster()` |
 | "How powerful is my cluster?" | `cluster_power_score()` |
 | "What should I deploy first?" | `cluster_roadmap()` |
-| "What do I need to buy?" | `cluster_roadmap()` (see "To unlock next tier") |
+| "What do I need to buy?" | `what_to_buy('ha')` or `what_to_buy('local inference')` |
 | "Which nodes for control-plane?" | `analyze_cluster()` (see Node Assignments) |
+| "I want to learn K8s from scratch" | `learning_roadmap('beginner')` |
+| "What's in the AI stack?" | `stack_projects('ai')` |
+| "Is this project production-ready?" | `stack_projects('security')` |
 | "How does cilium work?" | `get_skill('cilium')` |
