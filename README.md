@@ -1,230 +1,218 @@
-# infra-ai — Homelab K3s Cluster
+# infra-ai — Homelab K3s Cluster + AI-Native Ops Platform
 
-Multi-node K3s on Raspberry Pi CM4 (ARM64, Ubuntu 24.04), managed entirely via Ansible.
+10-node ARM64 K3s cluster on Super6C (CM4) + TuringPi 2 (RK1), managed entirely via Ansible.
 This repo is the single source of truth — never apply changes manually.
+
+**Key idea:** the cluster is also a learning platform. A knowledge graph (`stacks.yaml`, `projects.yaml`, `learners.yaml`, `hardware-catalog.yaml`) connects hardware survey data to deployment recommendations, learning curricula, and CNCF project metadata — all queryable via an MCP server.
+
+---
 
 ## Quick Start
 
 ```bash
-# Full bootstrap (idempotent — safe to re-run)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
+# 1. Install workstation tools (mise + ansible + python packages)
+make deps
 
-# Minimal cluster (kubectl only)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
+# 2. Configure SSH access on nodes (run once, needs password)
+make setup-nodes
 
-# Cluster with networking (internal services, ClusterIPs)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
+# 3. Survey hardware — collect facts from all nodes
+make survey
 
-# Full stack (HTTPS + DNS + GitOps)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
+# 4. Start AI assistant (optional — needs OPENROUTER_API_KEY)
+make litellm
 
-# Add observability to existing cluster
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
+# 5. Minimal cluster (K3s + Cilium — minimum viable, DIY from here)
+make quick                      # = make core && make networking
 
-# Add security (NeuVector) after bootstrap + password change
-ansible-playbook playbooks/security.yml -i inventory/hosts.ini
+# 6. Full cluster bootstrap
+make core && make networking    # K3s + Cilium (required pair — core alone is broken)
+make ingress                    # cert-manager + Gateway API
+make dns                        # Pi-hole wildcard DNS
+make gitops                     # ArgoCD
+make storage                    # SMB/CIFS CSI (MUST come before observability/ai/security)
+make observability              # Prometheus + Grafana + Tempo + Loki + Alloy
+make ai && make ai-holmes && make kagent   # Full AI stack
+make security                   # NeuVector runtime security
 
-# Add SMB storage (CSI driver + static/dynamic NAS tests)
-make storage
-
-# Workstation DNS (run on host, not toolbox)
-bash scripts/setup-dns-split.sh
+# Or everything at once
+make full
 ```
 
-After DNS is set up, all `*.cluster.home` URLs resolve from the workstation.
+See `cluster-report.html` for a visual report of cluster status, stacks, and project catalog.
 
 ---
 
-## Services — public (HTTPRoute via Gateway)
+## Services
+
+### Public (HTTPRoute via Gateway at 192.168.178.200)
 
 | Service | URL | What it does | Credentials |
 |---|---|---|---|
-| ArgoCD | https://argocd.cluster.home | GitOps — deploy and sync K8s apps | `kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' \| base64 -d` |
-| Grafana | https://grafana.cluster.home | Dashboards — metrics, alerts, traces, logs | `admin` / `admin` |
-| Pi-hole | https://pihole.cluster.home | DNS admin — blocklists, query log | `changeme` |
-| helm-dashboard | https://helm-dashboard.cluster.home | Helm release management UI (read-only) | N/A |
+| ArgoCD | https://argocd.cluster.home | GitOps | `kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' \| base64 -d` |
+| Grafana | https://grafana.cluster.home | Metrics, logs, traces, dashboards | `admin` / `admin` |
+| Pi-hole | https://pihole.cluster.home | DNS admin + ad-block | `changeme` |
+| helm-dashboard | https://helm-dashboard.cluster.home | Helm release UI | N/A |
+| HolmesGPT | https://holmes.cluster.home | AI SRE API | — |
+| Holmes UI | https://holmes-ui.cluster.home | Chat UI for HolmesGPT | — |
+| Hermes Agent | https://hermes.cluster.home | AI assistant (Telegram + web) | — |
+| kagent | https://kagent.cluster.home | AI agent platform (CRDs + MCP) | — |
 
----
+### Security (dedicated LoadBalancer — Cilium doesn't support TLS passthrough)
 
-## Services — security (dedicated LoadBalancer)
-
-| Service | URL | What it does | Credentials |
-|---|---|---|---|
-| NeuVector | https://192.168.178.204 | Container runtime security, vulnerability scanning | `admin` / set in UI on first login |
-
-NeuVector is installed in two steps:
-1. **bootstrap.yml** → core (controller, enforcer, manager, scanner)
-2. **security.yml** → Prometheus exporter + Grafana dashboard (requires password change in UI first)
-
----
-
-## Services — AI stack (namespace: ai + registry)
-
-| Service | Access | What it does |
+| Service | URL | Notes |
 |---|---|---|
-| Hermes Agent | `https://hermes.cluster.home` | Self-improving AI assistant (ARM64, NousResearch) |
-| HolmesGPT | `https://holmes.cluster.home` | SRE assistant API — Kubernetes + logs + metrics toolsets |
-| Holmes UI | `https://holmes-ui.cluster.home` | Chat UI for HolmesGPT — ask questions, get markdown answers |
-| kagent | `https://kagent.cluster.home` | AI agent platform — multi-tenant K8s agent orchestration + MCP servers (kmcp bundled) |
-| LiteLLM proxy | `http://litellm-proxy.ai:4000` (cluster-internal) | OpenRouter model router — free→free2→cheap fallback |
-| Docker Registry | `registry.registry:5000` (cluster-internal) | ARM64 image storage for kaniko builds (5Gi PVC) |
+| NeuVector | https://192.168.178.204 | Runtime security, vuln scanning | `admin` / set on first login |
 
-```bash
-make ai-registry       # deploy registry (fast)
-make ai-hermes-build   # kaniko ARM64 build (~60 min)
-make ai-hermes-deploy  # deploy litellm-proxy + hermes-agent
-make ai-holmes         # deploy HolmesGPT + Holmes UI (chat interface)
-make holmes-ui         # deploy Holmes UI only
-make kagent            # deploy kagent + kmcp (AI agent platform)
-make ai               # all in sequence
-```
-
-```bash
-./scripts/holmes-chat "Using Prometheus, how many pods are using more than 500 MiB of RAM right now?"
-./scripts/holmes-chat "Using Prometheus, show the top 5 pods by CPU in namespace monitoring over the last 15m."
-./scripts/holmes-chat "Check whether Grafana latency or error rate spiked in the last 30m."
-```
-
-The wrapper uses a local `kubectl port-forward` to the Holmes service and prints only the `analysis` field.
-
-For Telegram Hermes, send plain text like:
-
-```text
-che como está mi cluster
-cuantos pods hay en monitoring
-mostrame los pods con más de 500 MiB de RAM
-```
-
-Hermes runs as a persistent gateway on the high-resource node and mounts its
-`gateway.json` from the `hermes-gateway-config` ConfigMap into `HERMES_HOME`.
-The role now uses `emptyDir` for `/opt/data`, so Hermes starts clean on each
-recreate instead of carrying stale PVC state.
-The Deployment uses `strategy: Recreate` so Telegram polling never has two
-Hermes instances overlapping during rollout.
-The gateway is kept alive by the webhook platform so the pod stays `1/1` under
-Ansible as well as manual cluster updates.
-
-Both Hermes and HolmesGPT route through the in-cluster LiteLLM proxy at
-`http://litellm-proxy.ai.svc.cluster.local:4000` using `sk-hermes-internal`.
-LiteLLM routes to OpenRouter (free→free2→cheap fallback) using the user's
-`OPENROUTER_API_KEY` from `roles/install-hermes-agent/defaults/secrets.yml`.
-No credentials are exposed in deployments.
-
-Holmes uses `gpt-5.4` as its default model name — this alias must exist in
-LiteLLM config or Holmes fails. Chat UI: `https://holmes-ui.cluster.home`.
-
----
-
-## Services — internal (no public URL)
-
-Access via `kubectl port-forward` or from within the cluster.
+### Internal (cluster-only)
 
 | Service | Internal DNS | What it does |
 |---|---|---|
-| Prometheus | `kube-prometheus-stack-prometheus.monitoring:9090` | Scrapes cluster metrics |
-| AlertManager | `kube-prometheus-stack-alertmanager.monitoring:9093` | Routes alerts |
-| Tempo | `tempo.monitoring:3200` | Distributed tracing backend |
-| Alloy | `alloy.monitoring:4317` (gRPC) / `alloy.monitoring:4318` (HTTP) | OTLP pipeline — receives traces from apps, scrapes pod logs → Loki |
-| Loki | `loki-gateway.monitoring:80` | Log aggregation backend |
+| Prometheus | `kube-prometheus-stack-prometheus.monitoring:9090` | Metrics |
+| AlertManager | `kube-prometheus-stack-alertmanager.monitoring:9093` | Alerts |
+| Tempo | `tempo.monitoring:3200` | Distributed tracing |
+| Loki | `loki-gateway.monitoring:80` | Log aggregation |
+| Alloy | `alloy.monitoring:4317` (gRPC) | OTel pipeline |
+| LiteLLM | `litellm-proxy.ai:4000` | LLM router (free→cheap→paid) |
+| Registry | `registry.registry:5000` | ARM64 image storage |
 
-## MCPs
+---
 
-OpenCode uses MCPs to inspect live infrastructure and the GitHub repo without
-guessing. Keep these in mind when debugging or documenting changes:
+## AI Stack
 
-| MCP | Use |
+```bash
+make ai-registry       # deploy registry
+make ai-hermes-build   # kaniko ARM64 build (~60 min on CM4)
+make ai-hermes-deploy  # litellm-proxy + hermes-agent
+make ai-holmes         # HolmesGPT + Holmes UI
+make kagent            # multi-tenant agent platform + kmcp
+make ai                # all in sequence
+```
+
+Ask HolmesGPT from CLI:
+```bash
+./scripts/holmes-chat "What pods are using more than 500 MiB of RAM?"
+./scripts/holmes-chat "Check whether Grafana error rate spiked in the last 30m"
+```
+
+Hermes (Telegram): send plain text like `che como está mi cluster` or `cuantos pods hay en monitoring`.
+
+All AI services route through the in-cluster LiteLLM proxy (`sk-hermes-internal`).
+OpenRouter API key: `roles/install-hermes-agent/defaults/secrets.yml` (gitignored).
+
+---
+
+## Knowledge Graph (cluster-advisor MCP)
+
+The cluster-advisor MCP cross-references hardware survey data against a knowledge graph to answer planning questions, recommend hardware, and guide learning.
+
+```
+survey/*.json           → live hardware facts per node (make survey)
+stacks.yaml             → 29 modular stacks (11 live, 12 planned)
+projects.yaml           → 44 projects: CNCF status, license, stars, maintenance health
+learners.yaml           → 5 learning profiles with curricula and milestones
+hardware-catalog.yaml   → 12 ARM64 boards with prices and vendor URLs
+skills/*/SKILL.md       → deep technical docs per component
+```
+
+**Start the MCP:**
+```bash
+python3 mcp/cluster-advisor/server.py
+# or: configured in .mcp.json (Claude Code) and opencode.json (OpenCode)
+```
+
+**Ask questions:**
+```
+"Analyze my cluster and tell me what I can deploy"
+"I want to learn DevOps — what should I deploy and in what order?"
+"What's the CNCF status of the AI stack projects?"
+"What hardware should I buy to run local AI inference?"
+"How powerful is my cluster for ML workloads?"
+```
+
+**MCP tools:**
+
+| Tool | What it does |
 |---|---|
-| Kubernetes | Live cluster state: pods, services, events, leases, logs |
-| GitHub | PRs, issues, file contents, repo metadata |
-| context7 | Upstream docs for libraries and tools |
+| `list_nodes()` | Table of all surveyed nodes |
+| `node_profile(hostname)` | Deep hardware + K8s readiness |
+| `analyze_cluster()` | Flavor + node assignments + make commands |
+| `cluster_stacks()` | RAM budget per stack + storage tiers |
+| `cluster_roadmap()` | 7-phase deployment plan |
+| `cluster_power_score()` | S/A/B/C/D across 5 dimensions |
+| `learning_roadmap(profile)` | Curriculum for beginner/devops/ai-builder/security/full-stack |
+| `hardware_catalog()` | Boards to buy with prices + K8s readiness |
+| `what_to_buy(goal)` | ha / npu / budget / local-inference / full-cluster |
+| `stack_projects(stack)` | CNCF status + stars + maintenance health per stack |
+| `get_skill(name)` | Read deep technical skill doc |
 
-Workflow rule: prove a change manually or with Helm first, then run Ansible in
-the background with logs redirected, then re-run the same Ansible command in
-foreground only after the background run is clean.
+**Planned stacks** (YAML-defined, roles to be written):
+`gitops-alternatives` · `data-engineering` · `databases` · `ml-platform` ·
+`networking-advanced` · `observability-advanced` · `wasm` · `virtualization` ·
+`cost-modeling` · `sustainability` · `gpu-sharing` · `storage-distributed`
 
 ---
 
 ## Infrastructure
 
-| IP | What it is |
-|---|---|
-| `192.168.178.85` | K3s server (`srv-super6c-01-nvme`) |
-| `192.168.178.86` | K3s server (`srv-super6c-02-nvme`) |
-| `192.168.178.87` | K3s server (`srv-super6c-03-nvme`) |
-| `192.168.178.104` | K3s server (`srv-super6c-05-emmc`) |
-| `192.168.178.105` | K3s server (`srv-super6c-06-emmc`) |
-| `192.168.178.30` | K3s agent (`srv-rk1-nvme-01`) |
-| `192.168.178.48` | K3s agent (`srv-rk1-nvme-02`) |
-| `192.168.178.51` | K3s agent (`srv-rk1-nvme-03`) |
-| `192.168.178.54` | K3s agent (`srv-rk1-nvme-04`) |
-| `192.168.178.133` | Standalone CM4 (`srv-super6c-04-emmc`) |
-| `192.168.178.200` | Shared Cilium Gateway (all HTTP/HTTPS via LB-IPAM) |
-| `192.168.178.203` | Pi-hole DNS — wildcard `*.cluster.home → .200` |
-| `192.168.178.204` | NeuVector HTTPS (dedicated LoadBalancer) |
+| IP | Host | Role |
+|---|---|---|
+| `192.168.178.85` | srv-super6c-01-nvme | K3s server, etcd CP |
+| `192.168.178.86` | srv-super6c-02-nvme | K3s server, etcd CP |
+| `192.168.178.87` | srv-super6c-03-nvme | K3s server, etcd CP |
+| `192.168.178.104` | srv-super6c-05-emmc | K3s server, etcd CP |
+| `192.168.178.105` | srv-super6c-06-emmc | K3s server, etcd CP |
+| `192.168.178.30` | srv-rk1-nvme-01 | K3s agent, AI worker (31GB, NPU) |
+| `192.168.178.48` | srv-rk1-nvme-02 | K3s agent, AI worker (31GB, NPU) |
+| `192.168.178.51` | srv-rk1-nvme-03 | K3s agent, AI worker (31GB, NPU) |
+| `192.168.178.54` | srv-rk1-nvme-04 | K3s agent, AI worker (31GB, NPU) |
+| `192.168.178.133` | srv-super6c-04-emmc | Standalone (not in K3s) |
+| `192.168.178.200` | — | Shared Cilium Gateway (LB-IPAM, all HTTP/HTTPS) |
+| `192.168.178.203` | — | Pi-hole DNS — wildcard `*.cluster.home → .200` |
+| `192.168.178.204` | — | NeuVector HTTPS (dedicated LoadBalancer) |
 
-- **Domain**: `cluster.home` — wildcard TLS via cert-manager internal CA
-- **Storage**: `local-path` (default StorageClass)
-- **DNS**: Pi-hole at `.203` resolves `*.cluster.home → .200` automatically
-- **Important**: `.203` is the DNS VIP and `.200` is the HTTP/HTTPS Gateway.
-  They are different services; `dig @192.168.178.203` tests DNS, while `curl`
-  to `https://<name>.cluster.home` uses the Gateway at `.200` after DNS resolves.
+- **Domain:** `cluster.home` — wildcard TLS via cert-manager internal CA
+- **DNS:** Pi-hole at `.203` → `*.cluster.home → .200` (Gateway)
+- **Storage:** `local-path` (default, K3s built-in) + `smb-nas` (NAS at 192.168.178.102)
+- **Pi-hole** MUST use `local-path` — SQLite FTL is incompatible with SMB/CIFS file locking
 
 ---
 
 ## Bootstrap Tags
 
-Each role is tagged for selective deployment. Tags are cumulative — include
-all tags up to the layer you need.
-
 | Tag | Roles | Requires |
-|-----|-------|----------|
-| `core` | k3s + kubeconfig | — |
-| `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
-| `ingress` | cert-manager + gateway | `networking` |
-| `services` | pihole + argocd + helm-dashboard | `ingress` |
-| `observability` | prometheus + tempo + loki + alloy | `networking` |
-| `security` | neuvector (PVC backend: smb-nas) | `services`, `storage` |
-| `storage` | storage backends / PVC backends | `networking` |
+|-----|-------|---------|
+| `core` | K3s + kubeconfig | — |
+| `networking` | Cilium + LB-IPAM + Gateway API CRDs | `core` |
+| `ingress` | cert-manager + Gateway | `networking` |
+| `dns` | Pi-hole (local-path) | `ingress` |
+| `gitops` | ArgoCD | `ingress` |
+| `storage` | SMB/CIFS CSI driver | `networking` |
+| `observability` | Prometheus + Tempo + Loki + Alloy | `networking`, `storage` |
+| `security` | NeuVector | `gitops`, `storage` |
 | `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking`, `storage` |
 | `ai-registry` | registry only | `networking`, `storage` |
 | `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
 | `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
-| `ai-holmes` | holmes + holmes-ui | `ai-hermes-deploy` |
-| `kagent` | kagent + kmcp (AI agent platform) | `networking` + LiteLLM |
+| `ai-holmes` | HolmesGPT + Holmes UI | `ai-hermes-deploy` |
+| `kagent` | kagent + kmcp | `networking` + LiteLLM |
 
-Pi-hole uses `local-path` (SQLite incompatible with SMB/CIFS).
-NeuVector, Prometheus, Loki, Tempo, the registry, Hermes, and kaniko use `smb-nas`.
-Those roles require the storage backend role to be installed first (`make storage` or `--tags storage`).
-
-```bash
-# Minimal cluster (kubectl works, no networking)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core
-
-# Cluster with networking (deploy ClusterIPs, internal services)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking
-
-# Full stack with public URLs (HTTPS + DNS + GitOps)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core,networking,ingress,services
-
-# Add observability to an existing cluster
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags observability
-
-# Full bootstrap (all roles)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini
-```
+⚠ `make core` alone = broken cluster (K3s installed with `--flannel-backend=none`). Always pair with `make networking`.
 
 ---
 
 ## Workflow — adding a new service
 
-1. `helm install` manually on cluster → verify working
+1. `helm install` manually → verify working
 2. `helm uninstall` to clean up
 3. Write Ansible role in `roles/<name>/`
 4. Add role to `playbooks/bootstrap.yml`
 5. `ansible-playbook playbooks/bootstrap.yml` → must pass `failed=0`
-6. Create skill: `skills/<name>/SKILL.md` (in this repo)
-7. **Update this README** — add the service to the table above
-8. Commit + push
+6. Create skill: `skills/<name>/SKILL.md`
+7. Add project to `mcp/cluster-advisor/projects.yaml` (CNCF status, license, stars, health)
+8. Add stack entry to `mcp/cluster-advisor/stacks.yaml` (remove `status: planned` if it was there)
+9. **Update this README** — add to services table
+10. Commit + push
 
-See `CLAUDE.md` for the full bootstrap role order and architectural constraints.
-See `AGENTS.md` for project rules, golden rules, and troubleshooting.
+See `CLAUDE.md` for bootstrap role order, architectural constraints, and security rules.
+See `skills/cluster-planning/SKILL.md` for the knowledge graph architecture.
