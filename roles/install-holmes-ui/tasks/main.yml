@@ -1,0 +1,333 @@
+# Holmes UI — minimal nginx-based chat UI for HolmesGPT.
+# Serves static HTML/JS from a ConfigMap, proxies /api/ to Holmes backend.
+# No custom image needed — uses nginx:alpine (multi-arch).
+
+- name: Create Holmes UI nginx ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: holmes-ui-config
+        namespace: "{{ holmes_ui_namespace }}"
+      data:
+        nginx.conf: |
+          server {
+              listen {{ holmes_ui_port }};
+              root /usr/share/nginx/html;
+              index index.html;
+
+              location / {
+                  try_files $uri /index.html;
+              }
+
+              location /api/ {
+                  proxy_pass {{ holmes_ui_backend }}/api/;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_read_timeout 300s;
+                  proxy_connect_timeout 10s;
+                  proxy_send_timeout 300s;
+              }
+          }
+
+        index.html: |
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Holmes — K8s AI Detective</title>
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              :root {
+                --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+                --border: #30363d; --text: #c9d1d9; --text-dim: #8b949e;
+                --accent: #58a6ff; --green: #3fb950; --error: #f85149;
+              }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                background: var(--bg); color: var(--text);
+                min-height: 100vh; display: flex; flex-direction: column;
+              }
+              header {
+                background: var(--surface); border-bottom: 1px solid var(--border);
+                padding: 14px 24px; display: flex; align-items: center; gap: 12px;
+              }
+              .logo { font-size: 18px; font-weight: 700; color: var(--accent); }
+              .subtitle { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+              .badge {
+                margin-left: auto; background: var(--surface2);
+                border: 1px solid var(--border); padding: 4px 10px;
+                border-radius: 20px; font-size: 11px; color: var(--text-dim);
+              }
+              main {
+                flex: 1; max-width: 860px; margin: 0 auto; width: 100%;
+                padding: 24px 20px; display: flex; flex-direction: column; gap: 16px;
+              }
+              .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+              .chip-label { width: 100%; font-size: 11px; color: var(--text-dim); margin-bottom: 2px; }
+              .chip {
+                background: var(--surface); border: 1px solid var(--border);
+                padding: 5px 12px; border-radius: 20px; font-size: 12px;
+                cursor: pointer; transition: border-color 0.15s, color 0.15s;
+                user-select: none;
+              }
+              .chip:hover { border-color: var(--accent); color: var(--accent); }
+              .input-box {
+                background: var(--surface); border: 1px solid var(--border);
+                border-radius: 10px; overflow: hidden; transition: border-color 0.15s;
+              }
+              .input-box:focus-within { border-color: var(--accent); }
+              textarea {
+                width: 100%; padding: 14px 16px; background: transparent;
+                border: none; outline: none; color: var(--text); font-size: 14px;
+                resize: none; min-height: 80px; font-family: inherit; line-height: 1.6;
+              }
+              .input-footer {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 8px 12px; border-top: 1px solid var(--border);
+              }
+              .hint { font-size: 11px; color: var(--text-dim); }
+              button {
+                background: var(--accent); color: #000; border: none;
+                padding: 7px 18px; border-radius: 6px; font-size: 13px;
+                font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+              }
+              button:hover { opacity: 0.85; }
+              button:disabled { opacity: 0.35; cursor: not-allowed; }
+              .card {
+                background: var(--surface); border: 1px solid var(--border);
+                border-radius: 10px; overflow: hidden;
+              }
+              .card-header {
+                display: flex; align-items: center; gap: 8px;
+                padding: 10px 16px; border-bottom: 1px solid var(--border);
+                font-size: 12px; color: var(--text-dim);
+              }
+              .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+              .card-body { padding: 20px; font-size: 14px; line-height: 1.75; }
+              .loading-row {
+                display: flex; align-items: center; gap: 12px;
+                color: var(--text-dim); padding: 20px; font-size: 13px;
+              }
+              .spinner {
+                width: 18px; height: 18px; border: 2px solid var(--border);
+                border-top-color: var(--accent); border-radius: 50%;
+                animation: spin 0.75s linear infinite; flex-shrink: 0;
+              }
+              @keyframes spin { to { transform: rotate(360deg); } }
+              .ellipsis::after { content: ''; animation: ell 1.5s steps(4,end) infinite; }
+              @keyframes ell { 0%,20%{content:''} 40%{content:'.'} 60%{content:'..'} 80%,100%{content:'...'} }
+              .err { background: rgba(248,81,73,.08); border: 1px solid var(--error); border-radius: 10px; padding: 14px 16px; color: var(--error); font-size: 13px; }
+              .hidden { display: none; }
+              /* markdown */
+              .card-body h1,.card-body h2,.card-body h3 { color: var(--accent); margin: 16px 0 8px; }
+              .card-body h1 { font-size: 18px; } .card-body h2 { font-size: 16px; } .card-body h3 { font-size: 14px; }
+              .card-body code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New',monospace; font-size: 12px; }
+              .card-body pre { background: var(--surface2); border: 1px solid var(--border); padding: 14px 16px; border-radius: 6px; overflow-x: auto; margin: 12px 0; }
+              .card-body pre code { background: none; padding: 0; font-size: 12px; }
+              .card-body table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+              .card-body th,.card-body td { padding: 7px 12px; border: 1px solid var(--border); text-align: left; }
+              .card-body th { background: var(--surface2); color: var(--accent); }
+              .card-body tr:hover td { background: rgba(88,166,255,.04); }
+              .card-body ul,.card-body ol { margin: 8px 0; padding-left: 22px; }
+              .card-body li { margin: 3px 0; }
+              .card-body blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text-dim); margin: 10px 0; }
+              .card-body a { color: var(--accent); }
+              .card-body p { margin: 6px 0; }
+              footer { text-align: center; padding: 14px; font-size: 11px; color: var(--text-dim); border-top: 1px solid var(--border); }
+            </style>
+          </head>
+          <body>
+            <header>
+              <div>
+                <div class="logo">&#128269; Holmes</div>
+                <div class="subtitle">AI Kubernetes Detective &mdash; powered by LiteLLM &rarr; OpenRouter</div>
+              </div>
+              <span class="badge">holmes.cluster.home</span>
+            </header>
+
+            <main>
+              <div class="chips">
+                <div class="chip-label">Try asking:</div>
+                <span class="chip" onclick="fill(this)">What pods are failing?</span>
+                <span class="chip" onclick="fill(this)">Is the ai namespace healthy?</span>
+                <span class="chip" onclick="fill(this)">What is using the most memory?</span>
+                <span class="chip" onclick="fill(this)">List all services in the cluster</span>
+                <span class="chip" onclick="fill(this)">Are there any node problems?</span>
+                <span class="chip" onclick="fill(this)">Show recent events in kube-system</span>
+              </div>
+
+              <div class="input-box">
+                <textarea id="q" placeholder="Ask about your Kubernetes cluster&#8230;" rows="3"></textarea>
+                <div class="input-footer">
+                  <span class="hint">Enter to submit &middot; Shift+Enter for new line</span>
+                  <button id="btn" onclick="ask()">Ask Holmes</button>
+                </div>
+              </div>
+
+              <div id="out" class="hidden"></div>
+            </main>
+
+            <footer>Responses may take 60&ndash;90 seconds &mdash; Holmes queries the live cluster and reasons with a free AI model</footer>
+
+            <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+            <script>
+              const q = document.getElementById('q');
+              const btn = document.getElementById('btn');
+              const out = document.getElementById('out');
+
+              marked.setOptions({ breaks: true, gfm: true });
+
+              q.addEventListener('keydown', e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+              });
+
+              function fill(el) { q.value = el.textContent.trim(); q.focus(); }
+
+              function esc(s) {
+                return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+              }
+
+              function showLoading(question) {
+                out.className = '';
+                out.innerHTML = '<div class="card">'
+                  + '<div class="card-header"><div class="spinner"></div><span>' + esc(question) + '</span></div>'
+                  + '<div class="loading-row">Holmes is investigating your cluster<span class="ellipsis"></span></div>'
+                  + '</div>';
+              }
+
+              function showResult(question, analysis) {
+                out.innerHTML = '<div class="card">'
+                  + '<div class="card-header"><div class="dot"></div><span>' + esc(question) + '</span></div>'
+                  + '<div class="card-body">' + marked.parse(analysis) + '</div>'
+                  + '</div>';
+              }
+
+              function showError(msg) {
+                out.innerHTML = '<div class="err">&#9888; ' + esc(msg) + '</div>';
+              }
+
+              async function ask() {
+                const question = q.value.trim();
+                if (!question) return;
+                btn.disabled = true;
+                showLoading(question);
+                try {
+                  const r = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ask: question })
+                  });
+                  if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + await r.text());
+                  const d = await r.json();
+                  showResult(question, d.analysis || d.answer || JSON.stringify(d, null, 2));
+                } catch(e) {
+                  showError('Request failed: ' + e.message);
+                } finally {
+                  btn.disabled = false;
+                }
+              }
+            </script>
+          </body>
+          </html>
+
+- name: Deploy Holmes UI
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: holmes-ui
+        namespace: "{{ holmes_ui_namespace }}"
+        labels:
+          app: holmes-ui
+      spec:
+        replicas: "{{ holmes_ui_replicas }}"
+        selector:
+          matchLabels:
+            app: holmes-ui
+        template:
+          metadata:
+            labels:
+              app: holmes-ui
+          spec:
+            tolerations:
+              - operator: Exists
+            containers:
+              - name: nginx
+                image: nginx:alpine
+                ports:
+                  - containerPort: "{{ holmes_ui_port }}"
+                    name: http
+                volumeMounts:
+                  - name: config
+                    mountPath: /etc/nginx/conf.d/default.conf
+                    subPath: nginx.conf
+                  - name: config
+                    mountPath: /usr/share/nginx/html/index.html
+                    subPath: index.html
+                resources:
+                  requests:
+                    cpu: "{{ holmes_ui_cpu_request }}"
+                    memory: "{{ holmes_ui_memory_request }}"
+                  limits:
+                    cpu: "{{ holmes_ui_cpu_limit }}"
+                    memory: "{{ holmes_ui_memory_limit }}"
+                readinessProbe:
+                  httpGet:
+                    path: /
+                    port: "{{ holmes_ui_port }}"
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+            volumes:
+              - name: config
+                configMap:
+                  name: holmes-ui-config
+
+- name: Create Holmes UI Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: holmes-ui
+        namespace: "{{ holmes_ui_namespace }}"
+      spec:
+        type: ClusterIP
+        selector:
+          app: holmes-ui
+        ports:
+          - name: http
+            port: "{{ holmes_ui_port }}"
+            targetPort: "{{ holmes_ui_port }}"
+
+- name: Expose Holmes UI via HTTPRoute (holmes-ui.cluster.home)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: holmes-ui
+        namespace: "{{ holmes_ui_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ holmes_ui_hostname }}"
+        rules:
+          - backendRefs:
+              - name: holmes-ui
+                port: "{{ holmes_ui_port }}"
+
+- name: Wait for Holmes UI rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/holmes-ui -n {{ holmes_ui_namespace }} --timeout=60s
+  changed_when: false

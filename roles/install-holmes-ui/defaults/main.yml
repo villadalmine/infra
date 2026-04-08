@@ -1,0 +1,12 @@
+holmes_ui_namespace: ai
+holmes_ui_hostname: holmes-ui.cluster.home
+holmes_ui_port: 80
+holmes_ui_replicas: 1
+
+holmes_ui_cpu_request: "10m"
+holmes_ui_memory_request: "32Mi"
+holmes_ui_cpu_limit: "100m"
+holmes_ui_memory_limit: "64Mi"
+
+# Holmes backend (proxied by nginx — same namespace)
+holmes_ui_backend: "http://holmesgpt-holmes.ai.svc.cluster.local:80"
