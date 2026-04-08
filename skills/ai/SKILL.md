@@ -23,6 +23,8 @@ metadata:
 | LiteLLM proxy | `ghcr.io/berriai/litellm` | main-latest | ai | In-cluster OpenRouter router with fallbacks |
 | Hermes Agent | `registry.registry:5000/ai/hermes-agent` | 0.7.0 | ai | Gateway mode + Telegram polling + MCP sidecar |
 | kubernetes-mcp-server | `registry.registry:5000/ai/kubernetes-mcp-server` | v0.0.60 | ai (sidecar) | K8s read-only MCP server sidecar in Hermes pod |
+| HolmesGPT | `robusta/holmes` (Helm) | 0.24.0 | ai | SRE assistant — K8s + logs + Prometheus toolsets |
+| Holmes UI | `nginx:alpine` | — | ai | Chat UI at `holmes-ui.cluster.home` (no kaniko, ConfigMap) |
 | Kaniko | `gcr.io/kaniko-project/executor` | latest | kaniko | In-cluster ARM64 image builder |
 
 ---
@@ -304,11 +306,50 @@ See `skills/storage/SKILL.md` for the full pattern documentation.
 
 ---
 
+## HolmesGPT + Holmes UI
+
+HolmesGPT (Helm `robusta/holmes` v0.24.0) is deployed in the `ai` namespace alongside Hermes.
+
+- API: `https://holmes.cluster.home` → `POST /api/chat` `{"ask": "question"}` → `{"analysis": "markdown"}`
+- Chat UI: `https://holmes-ui.cluster.home` — nginx:alpine + ConfigMap, no kaniko needed
+- Backend: LiteLLM proxy (`sk-hermes-internal` → OpenRouter via `OPENROUTER_API_KEY`)
+- Latency: 60–90s (multiple LLM tool-use calls per query)
+
+### gpt-5.4 alias (REQUIRED in LiteLLM)
+
+Holmes v0.24.0 defaults to model `gpt-5.4` when no model is specified. LiteLLM must have
+this alias or Holmes fails with `BadRequestError: Invalid model name passed in model=gpt-5.4`.
+
+Aliases defined in `roles/install-litellm-proxy/tasks/main.yml`:
+```yaml
+- model_name: gpt-5.4       # Holmes default
+  litellm_params:
+    model: openrouter/qwen/qwen3-coder:free
+- model_name: gpt-4o        # common OpenAI alias
+  litellm_params:
+    model: openrouter/qwen/qwen3-coder:free
+```
+Plus fallback entries: `{"gpt-5.4": ["free2", "cheap"]}`, `{"gpt-4o": ["free2", "cheap"]}`.
+
+### Holmes UI pattern — nginx:alpine + ConfigMap (no kaniko)
+
+For simple static UIs (HTML/JS), skip kaniko entirely:
+- HTML + nginx.conf live in a ConfigMap (`holmes-ui-config`)
+- nginx:alpine deployment mounts them via `subPath`
+- nginx proxies `/api/` → Holmes with `proxy_read_timeout 300s`
+
+```bash
+make ai-holmes      # deploy Holmes + Holmes UI
+make holmes-ui      # deploy Holmes UI only
+```
+
+---
+
 ## Repo Paths
 
-- Roles: `roles/install-registry/`, `roles/install-litellm-proxy/`, `roles/install-hermes-agent-image/`, `roles/install-hermes-agent/`
-- Playbook tags: `ai`, `ai-registry`, `ai-hermes-build`, `ai-hermes-deploy`
-- Makefile: `make ai`, `make ai-registry`, `make ai-hermes-build`, `make ai-hermes-deploy`
+- Roles: `roles/install-registry/`, `roles/install-litellm-proxy/`, `roles/install-hermes-agent-image/`, `roles/install-hermes-agent/`, `roles/install-holmes/`, `roles/install-holmes-ui/`
+- Playbook tags: `ai`, `ai-registry`, `ai-hermes-build`, `ai-hermes-deploy`, `ai-holmes`, `ai-holmes-ui`
+- Makefile: `make ai`, `make ai-registry`, `make ai-hermes-build`, `make ai-hermes-deploy`, `make ai-holmes`, `make holmes-ui`
 - Secrets: `roles/install-hermes-agent/defaults/secrets.yml` (gitignored, shared with litellm-proxy)
 
 ### Hermes secrets — `include_vars` required

@@ -175,7 +175,7 @@ Read the relevant skill before working on a component.
 | `argocd` | GitOps, ApplicationSets, sync waves |
 | `pihole` | Wildcard DNS, Pi-hole 6 gotchas |
 | `monitoring` | Prometheus, Grafana, Tempo, Alloy — full observability stack |
-| `ai` | Registry + LiteLLM proxy + Hermes Agent — ARM64 AI stack |
+| `ai` | Registry + LiteLLM proxy + Hermes + HolmesGPT + Holmes UI — full ARM64 AI stack |
 | `kagent` | kagent + kmcp — multi-tenant AI agent platform, CRDs, RBAC, LiteLLM integration |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |

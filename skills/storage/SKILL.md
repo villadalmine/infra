@@ -104,7 +104,7 @@ The `when` condition means:
 
 | Role | Storage var | StorageClass | Condition |
 |------|-------------|--------------|-----------|
-| `install-pihole` | `pihole_storage_class` | `smb-nas` | `!= 'local-path'` |
+| `install-pihole` | `pihole_storage_class` | `local-path` (FORCED) | SQLite incompatible with SMB — never use smb-nas |
 | `install-kube-prometheus-stack` | `kube_prometheus_stack_storage_class` | `smb-nas` | `!= 'local-path'` |
 | `install-loki` | `loki_storage_class` | `smb-nas` | `!= 'local-path'` |
 | `install-tempo` | `tempo_storage_class` | `smb-nas` | `!= 'local-path'` |
