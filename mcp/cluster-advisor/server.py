@@ -32,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SURVEY_DIR = REPO_ROOT / "survey"
 SKILLS_DIR = REPO_ROOT / "skills"
 FLAVORS_FILE = Path(__file__).resolve().parent / "flavors.yaml"
+STACKS_FILE  = Path(__file__).resolve().parent / "stacks.yaml"
 
 # ── MCP server ────────────────────────────────────────────────────────────────
 mcp = FastMCP(
@@ -1140,6 +1141,221 @@ def cluster_roadmap() -> str:
     out.append("")
     out.append("  Use analyze_cluster() for flavor details and per-node assignments.")
     out.append("  Use cluster_power_score() for a hardware capability breakdown.")
+    out.append("")
+
+    return "\n".join(out)
+
+
+@mcp.tool()
+def cluster_stacks() -> str:
+    """
+    Analyze which modular behavioral stacks fit the cluster's hardware budget.
+
+    Stacks are self-contained purpose units: observability, ai, security, etc.
+    core + networking are always required (K3s + Cilium — no alternatives).
+
+    For each stack combination, shows:
+    - RAM budget consumed vs available
+    - Whether it fits on the current hardware
+    - Which nodes are best suited for each stack
+    - Make commands to deploy each combination
+
+    Use this instead of cluster_roadmap() when you want to think in terms of
+    "what can I run together" rather than "what phases to deploy in order".
+    """
+    nodes = _load_surveys()
+    if not nodes:
+        return "No survey data found.\nRun: make survey"
+
+    raw = yaml.safe_load(STACKS_FILE.read_text())
+    all_stacks = raw.get("stacks", {})
+
+    caps_map = {h: _node_capabilities(d) for h, d in nodes.items() if "_error" not in d}
+    all_caps = list(caps_map.values())
+
+    # ── Cluster metrics ────────────────────────────────────────────────────────
+    node_count = len(all_caps)
+    total_ram_gb = sum(c["ram_gb"] for c in all_caps)
+    total_ram_mb = total_ram_gb * 1024
+    max_node_ram_gb = max((c["ram_gb"] for c in all_caps), default=0)
+    best_server_ram_gb = max(
+        (c["ram_gb"] for c in all_caps if c["control_plane_capable"]), default=0
+    )
+    has_cgroups_v2 = any(c["cgroups_v2"] for c in all_caps)
+    has_ebpf = any(c["ebpf"] for c in all_caps)
+    has_npu = any(c["has_npu"] for c in all_caps)
+
+    # ── Per-stack feasibility ──────────────────────────────────────────────────
+    def _stack_feasible(sdef: dict) -> tuple[bool, list[str]]:
+        """Returns (feasible, list_of_gaps)."""
+        gaps = []
+        req = sdef
+        if not has_cgroups_v2:
+            gaps.append("cgroups v2 required")
+        if req.get("kind") in ("foundation", "additive", "behavioral"):
+            if "min_ram_gb_server" in req and best_server_ram_gb < req["min_ram_gb_server"]:
+                gaps.append(f"server node needs {req['min_ram_gb_server']}GB RAM (have {best_server_ram_gb:.0f}GB)")
+            if "min_cluster_ram_gb" in req and total_ram_gb < req["min_cluster_ram_gb"]:
+                delta = req["min_cluster_ram_gb"] - total_ram_gb
+                gaps.append(f"need {req['min_cluster_ram_gb']}GB total RAM (have {total_ram_gb:.0f}GB, need +{delta:.0f}GB)")
+            if "min_nodes" in req and node_count < req["min_nodes"]:
+                gaps.append(f"need {req['min_nodes']} nodes (have {node_count})")
+            # Networking-specific: needs eBPF
+            if sdef.get("always_required") and "cilium" in str(sdef.get("roles", [])).lower():
+                if not has_ebpf:
+                    gaps.append("eBPF required for Cilium (kernel ≥5.4)")
+        return (len(gaps) == 0, gaps)
+
+    # ── Behavioral stacks (the interesting ones) ───────────────────────────────
+    behavioral_stacks = {k: v for k, v in all_stacks.items()
+                         if v.get("kind") == "behavioral" and not k.startswith("_")}
+    foundation_ram_mb = sum(
+        all_stacks[k].get("ram_mb", 0)
+        for k in ["core", "networking", "ingress", "dns", "gitops"]
+        if k in all_stacks
+    )
+
+    # ── Meta-stacks (predefined combinations) ─────────────────────────────────
+    meta_stacks = {k: v for k, v in all_stacks.items() if v.get("kind") == "meta"}
+
+    # ── Format output ──────────────────────────────────────────────────────────
+    out = ["═══ Cluster Stack Analysis ═══", ""]
+
+    out += [
+        f"  Hardware: {node_count} nodes | {total_ram_gb:.0f}GB total RAM | {max_node_ram_gb:.0f}GB max/node",
+        f"  K3s (base): always-on | Cilium (networking): always-on",
+        "",
+    ]
+
+    # ── Foundation always-on budget ────────────────────────────────────────────
+    out.append("━━━ Always-On Base (required for everything) ━━━")
+    out.append("")
+    foundation_gb = foundation_ram_mb / 1024
+    out.append(f"  core + networking + ingress + dns + gitops")
+    out.append(f"  RAM: ~{foundation_gb:.1f}GB  |  Make: make core && make networking && make ingress && make dns && make gitops")
+    out.append(f"  Budget remaining after foundation: {total_ram_gb - foundation_gb:.0f}GB / {total_ram_mb - foundation_ram_mb:.0f}MB")
+    out.append("")
+
+    # ── Individual behavioral stacks ───────────────────────────────────────────
+    out.append("━━━ Behavioral Stacks ━━━")
+    out.append("")
+    remaining_after_foundation = total_ram_mb - foundation_ram_mb
+
+    for sname, sdef in behavioral_stacks.items():
+        feasible, gaps = _stack_feasible(sdef)
+        ram_mb = sdef.get("ram_mb", 0)
+        ram_gb = ram_mb / 1024
+        fits_budget = remaining_after_foundation >= ram_mb
+        icon = "✓" if (feasible and fits_budget) else "✗"
+        pct = int(ram_mb / total_ram_mb * 100) if total_ram_mb else 0
+
+        out.append(f"  {icon} {sname.upper():<16} ~{ram_gb:.0f}GB  ({pct}% of cluster RAM)")
+        out.append(f"     {sdef['behavior']}")
+        out.append(f"     Run: {sdef['make']}")
+
+        if sdef.get("what_you_get"):
+            out.append("     Includes:")
+            for item in sdef["what_you_get"][:3]:
+                out.append(f"       + {item}")
+
+        if not feasible:
+            out.append(f"     ✗ Blocked: {'; '.join(gaps)}")
+        elif not fits_budget:
+            needed_extra = ram_mb - remaining_after_foundation
+            out.append(f"     ✗ RAM tight: needs +{needed_extra/1024:.0f}GB more cluster RAM")
+
+        out.append("")
+
+    # ── Combinations that fit simultaneously ──────────────────────────────────
+    out.append("━━━ What Fits Simultaneously ━━━")
+    out.append("")
+
+    feasible_behavioral = [
+        (k, v) for k, v in behavioral_stacks.items()
+        if _stack_feasible(v)[0] and remaining_after_foundation >= v.get("ram_mb", 0)
+    ]
+
+    if feasible_behavioral:
+        total_behavioral_ram = sum(v.get("ram_mb", 0) for _, v in feasible_behavioral)
+        total_with_foundation = foundation_ram_mb + total_behavioral_ram
+        total_gb = total_with_foundation / 1024
+        pct_used = int(total_with_foundation / total_ram_mb * 100) if total_ram_mb else 0
+
+        out.append(f"  All behavioral stacks can run simultaneously:")
+        for k, v in feasible_behavioral:
+            out.append(f"    + {k:<20} ~{v['ram_mb']/1024:.0f}GB")
+        out.append(f"  ─────────────────────────────")
+        out.append(f"  Total (incl. foundation): ~{total_gb:.0f}GB / {total_ram_gb:.0f}GB available ({pct_used}% used)")
+        spare = total_ram_gb - total_gb
+        out.append(f"  Headroom: ~{spare:.0f}GB spare — {'comfortable' if spare > 20 else 'tight' if spare > 5 else 'very tight'}")
+        out.append("")
+    else:
+        out.append("  ✗ No behavioral stacks fit — check hardware requirements.")
+        out.append("")
+
+    # ── Predefined combination recipes ────────────────────────────────────────
+    out.append("━━━ Combination Recipes ━━━")
+    out.append("")
+
+    for mname, mdef in sorted(meta_stacks.items(), key=lambda x: x[1].get("ram_mb_total", 0)):
+        if mname.startswith("_"):
+            label = mdef.get("label", mname)
+        else:
+            label = mname
+        ram_total_gb = mdef.get("ram_mb_total", 0) / 1024
+        fits = total_ram_gb >= ram_total_gb
+        icon = "✓" if fits else "✗"
+        pct = int(mdef.get("ram_mb_total", 0) / total_ram_mb * 100) if total_ram_mb else 0
+
+        out.append(f"  {icon} {label}")
+        out.append(f"     {mdef['description']}")
+        out.append(f"     RAM: ~{ram_total_gb:.0f}GB ({pct}% of cluster) — {'fits' if fits else f'needs +{ram_total_gb - total_ram_gb:.0f}GB'}")
+        out.append("     Deploy sequence:")
+        for cmd in mdef.get("make_sequence", []):
+            out.append(f"       {cmd}")
+        out.append("")
+
+    # ── Node placement recommendations ────────────────────────────────────────
+    out.append("━━━ Node Placement Recommendations ━━━")
+    out.append("")
+
+    # Best control-plane nodes (fastest disk, 4+ GB)
+    cp_sorted = sorted(
+        [(h, c) for h, c in caps_map.items() if c["control_plane_capable"]],
+        key=lambda x: _etcd_score(x[1]), reverse=True
+    )
+    ai_sorted = sorted(
+        [(h, c) for h, c in caps_map.items() if c["ai_worker_capable"]],
+        key=lambda x: x[1]["ram_gb"], reverse=True
+    )
+
+    if cp_sorted:
+        out.append("  Control-plane (K3s server) — pick fastest disk:")
+        for h, c in cp_sorted[:3]:
+            lat = f"{c['write_latency_ms']:.2f}ms" if c["write_latency_ms"] else "?"
+            out.append(f"    {h:<36} {c['ram_gb']:.0f}GB | {'NVMe' if c['has_nvme'] else 'eMMC'} | {lat}")
+
+    if ai_sorted:
+        out.append("")
+        out.append("  AI stack workers — pick highest-RAM (memory-bound workloads):")
+        for h, c in ai_sorted[:4]:
+            npu = " [NPU]" if c["has_npu"] else ""
+            out.append(f"    {h:<36} {c['ram_gb']:.0f}GB{npu}")
+
+    # Observability placement
+    obs_nodes = sorted(
+        [(h, c) for h, c in caps_map.items() if c["worker_capable"]],
+        key=lambda x: x[1]["ram_gb"], reverse=True
+    )
+    if obs_nodes:
+        out.append("")
+        out.append("  Observability stack — any node with ≥4GB RAM:")
+        for h, c in obs_nodes[:2]:
+            out.append(f"    {h:<36} {c['ram_gb']:.0f}GB")
+
+    out.append("")
+    out.append("  Tip: K3s node labels let you pin stacks to specific nodes via nodeSelector.")
+    out.append("       e.g. kubectl label node srv-rk1-nvme-01 role=ai-worker")
     out.append("")
 
     return "\n".join(out)
