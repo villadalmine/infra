@@ -1,0 +1,892 @@
+# Project catalog — CNCF membership, license, GitHub, suitability, maintenance health
+#
+# Used by: stack_projects() MCP tool
+# Cross-referenced with: survey/*.json (actual cluster hardware)
+#
+# Fields:
+#   cncf_status:      graduated | incubating | sandbox | lfai | none
+#   license:          apache-2.0 | mit | agpl-3.0 | mpl-2.0 | gpl-2.0 | mixed | commercial
+#   oss:              true = fully open source  |  false = has paid/proprietary tier
+#   arm64:            true | false | partial
+#   stars_approx:     GitHub star count (approximate, updated field shows when)
+#   suitable_for:     [homelab, smb, enterprise, testing, edge]
+#   stacks:           which stacks.yaml keys reference this project
+#
+# Maintenance health fields (update periodically — check github releases page):
+#   last_release:     "YYYY-MM"  — month of most recent release tag
+#   release_cadence:  "monthly" | "quarterly" | "6-monthly" | "irregular" | "LTS"
+#   maintained:       true | false | "community" (no corporate backing)
+#   health_notes:     free text — e.g. "very active, 2-week release cycle"
+#
+# How to refresh:
+#   1. Go to github.com/<org>/<repo>/releases
+#   2. Note the date of the most recent tag
+#   3. Count releases in the last 12 months → cadence
+#   4. Check if there are commits in the last 90 days → maintained: true/false
+#
+# Maintenance → recommended use mapping:
+#   last_release < 6 months + maintained: true  → safe for production
+#   last_release 6-12 months               → use with care, check changelog
+#   last_release > 12 months or maintained: false → avoid or fork
+
+projects:
+
+  # ── Currently installed ──────────────────────────────────────────────────────
+
+  k3s:
+    name: "K3s"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=platform--certified-kubernetes-distribution--k3s"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/k3s-io/k3s"
+    website: "https://k3s.io"
+    stars_approx: 30000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise, edge]
+    suitability_notes: "Production-grade lightweight K8s. Powers this cluster. First-class ARM64 support."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active — releases track upstream K8s minor versions within weeks. SUSE/Rancher backed."
+    stacks: [core, quick]
+
+  cilium:
+    name: "Cilium"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=runtime--cloud-native-network--cilium"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/cilium/cilium"
+    website: "https://cilium.io"
+    stars_approx: 21000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated. eBPF CNI, replaces kube-proxy. Production-grade on ARM64 (tested on RK3588S + CM4)."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Monthly minor releases + regular patch releases. Isovalent (Cisco) backed."
+    stacks: [networking, quick]
+
+  cert-manager:
+    name: "cert-manager"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=provisioning--security-compliance--cert-manager"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/cert-manager/cert-manager"
+    website: "https://cert-manager.io"
+    stars_approx: 13000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Incubating. TLS automation. Wildcard cert with internal CA for cluster.home."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Stable. Quarterly minor releases. Venafi backed. Upgrade carefully (see helm upgrade gotcha in MEMORY.md)."
+    stacks: [ingress]
+
+  argocd:
+    name: "Argo CD"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--continuous-integration-continuous-delivery--argo"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/argoproj/argo-cd"
+    website: "https://argo-cd.readthedocs.io"
+    stars_approx: 18500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated (Argo project). Industry-standard GitOps. UI-first, app model."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Monthly releases. Large community, Intuit/Red Hat/CNCF backed."
+    stacks: [gitops]
+
+  prometheus:
+    name: "Prometheus"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=observability-and-analysis--monitoring--prometheus"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/prometheus/prometheus"
+    website: "https://prometheus.io"
+    stars_approx: 57000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated. Standard K8s metrics. kube-prometheus-stack bundles Grafana + Alertmanager."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. One of the most maintained CNCF projects. LTS releases available."
+    stacks: [observability]
+
+  grafana:
+    name: "Grafana"
+    cncf_status: none
+    cncf_url: null
+    license: agpl-3.0
+    oss: true
+    github: "https://github.com/grafana/grafana"
+    website: "https://grafana.com/oss/grafana/"
+    stars_approx: 67000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Not in CNCF but AGPL-3.0 OSS. Grafana Cloud is SaaS paid. Self-hosted is free."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Grafana Labs backed. Weekly patch releases. AGPL-3.0 means self-hosted is free but redistribution has restrictions."
+    stacks: [observability]
+
+  loki:
+    name: "Grafana Loki"
+    cncf_status: none
+    cncf_url: null
+    license: agpl-3.0
+    oss: true
+    github: "https://github.com/grafana/loki"
+    website: "https://grafana.com/oss/loki/"
+    stars_approx: 24000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Not in CNCF. AGPL-3.0. Log aggregation, label-based indexing. Needs NAS PVC for retention."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Monthly releases. Grafana Labs backed. Chart migrated to grafana/loki (monolithic mode used here)."
+    stacks: [observability]
+
+  tempo:
+    name: "Grafana Tempo"
+    cncf_status: none
+    cncf_url: null
+    license: agpl-3.0
+    oss: true
+    github: "https://github.com/grafana/tempo"
+    website: "https://grafana.com/oss/tempo/"
+    stars_approx: 4200
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Not in CNCF. AGPL-3.0. Distributed tracing backend. Use grafana-community/tempo chart (grafana/tempo deprecated)."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Pinned to chart v1.26.7 (v2.0.0 has template bug). Use grafana-community repo."
+    stacks: [observability]
+
+  alloy:
+    name: "Grafana Alloy"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/grafana/alloy"
+    website: "https://grafana.com/oss/alloy-opentelemetry-collector/"
+    stars_approx: 2500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Not in CNCF. Apache-2.0 (unlike other Grafana). OTel-compatible collector, replaces Grafana Agent."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Replaces Grafana Agent (now in maintenance mode). Apache-2.0 unlike rest of Grafana stack."
+    stacks: [observability]
+
+  neuvector:
+    name: "NeuVector"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=provisioning--security-compliance--neuvector"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/neuvector/neuvector"
+    website: "https://neuvector.com"
+    stars_approx: 2200
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Sandbox. Donated by SUSE 2022. Full container runtime security. ARM64 production-ready."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Stable. SUSE backing. Quarterly releases. Dedicated LoadBalancer required (no HTTPRoute — Cilium TLS passthrough not supported)."
+    stacks: [security]
+
+  pihole:
+    name: "Pi-hole"
+    cncf_status: none
+    cncf_url: null
+    license: eupl-1.2
+    oss: true
+    github: "https://github.com/pi-hole/pi-hole"
+    website: "https://pi-hole.net"
+    stars_approx: 50000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab]
+    suitability_notes: "Not CNCF. EUPL-1.2 OSS. DNS + ad-block. SQLite FTL — must use local-path StorageClass."
+    last_release: "2025-06"
+    release_cadence: irregular
+    maintained: true
+    health_notes: "Community maintained. Pi-hole 6.x changed extraEnvVars format (map not list). FTL takes 110s first boot."
+    stacks: [dns]
+
+  litellm:
+    name: "LiteLLM"
+    cncf_status: none
+    cncf_url: null
+    license: mit
+    oss: true
+    github: "https://github.com/BerriAI/litellm"
+    website: "https://litellm.ai"
+    stars_approx: 21000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb]
+    suitability_notes: "Not CNCF. MIT. Universal LLM proxy. Routes OpenRouter/Anthropic/OpenAI. Free self-hosted."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Rapid development. BerriAI backed. main-latest tag used here (pin version for stability)."
+    stacks: [ai]
+
+  holmesgpt:
+    name: "HolmesGPT"
+    cncf_status: none
+    cncf_url: null
+    license: mit
+    oss: true
+    github: "https://github.com/robusta-dev/holmesgpt"
+    website: "https://holmesgpt.com"
+    stars_approx: 3500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb]
+    suitability_notes: "Not CNCF. MIT. AI-powered K8s SRE. Queries cluster, explains failures. ARM64 native."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Robusta Dev backed. Monthly releases. Deployed via Helm at robusta/holmes."
+    stacks: [ai]
+
+  kagent:
+    name: "kagent"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/kagent-dev/kagent"
+    website: "https://kagent.dev"
+    stars_approx: 800
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, testing]
+    suitability_notes: "Not CNCF. Apache-2.0. Multi-tenant agent platform with CRDs. New (2024), homelab/testing maturity."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "New project (2024). Active development. API may break between versions — pin chart version."
+    stacks: [ai]
+
+  registry:
+    name: "Docker Registry v2"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/distribution/distribution"
+    website: "https://distribution.github.io/distribution/"
+    stars_approx: 9500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Not CNCF (CNCF uses Harbor). Apache-2.0. Simple ARM64 image registry. No auth (private network only)."
+    last_release: "2025-06"
+    release_cadence: irregular
+    maintained: true
+    health_notes: "Stable. Slow-moving. Mature, used as base for Harbor. CNCF Distribution project governs spec."
+    stacks: [ai]
+
+  # ── Planned — GitOps alternatives ───────────────────────────────────────────
+
+  flux:
+    name: "Flux"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--continuous-integration-continuous-delivery--flux"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/fluxcd/flux2"
+    website: "https://fluxcd.io"
+    stars_approx: 15000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated. API-first GitOps. SOPS secret encryption. Lighter than ArgoCD, no web UI by default."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Monthly releases. Weaveworks split → now fully community. Strong ARM64 support."
+    stacks: [gitops-alternatives]
+
+  flagger:
+    name: "Flagger"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--continuous-integration-continuous-delivery--flagger"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/fluxcd/flagger"
+    website: "https://flagger.app"
+    stars_approx: 5200
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Sandbox. Progressive delivery: canary/A-B/blue-green via Cilium/Istio/Linkerd. ARM64 tested."
+    last_release: "2025-06"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Stable. Flux org maintained. Works natively with Cilium Gateway API HTTPRoute traffic splitting."
+    stacks: [networking-advanced, observability-advanced]
+
+  # ── Planned — Data engineering ───────────────────────────────────────────────
+
+  strimzi:
+    name: "Strimzi (Kafka Operator)"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--streaming-messaging--strimzi"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/strimzi/strimzi-kafka-operator"
+    website: "https://strimzi.io"
+    stars_approx: 5100
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Incubating. Production Kafka on K8s. ARM64 verified. Memory-heavy: 2GB+ per broker."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. Red Hat / community maintained. Quarterly releases. ARM64 multi-arch images since v0.38."
+    stacks: [data-engineering]
+
+  spark-operator:
+    name: "Spark Operator (Kubeflow)"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/kubeflow/spark-operator"
+    website: "https://www.kubeflow.org/docs/components/spark-operator/"
+    stars_approx: 3200
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Not CNCF (Kubeflow ecosystem). Apache-2.0. Spark jobs as K8s CRDs. ARM64 works from Spark 3.4+."
+    last_release: "2025-06"
+    release_cadence: irregular
+    maintained: true
+    health_notes: "Moderate activity. Community maintained. Apache Spark 3.4+ has official ARM64 images."
+    stacks: [data-engineering]
+
+  airflow:
+    name: "Apache Airflow"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/apache/airflow"
+    website: "https://airflow.apache.org"
+    stars_approx: 38000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Apache project (not CNCF). Apache-2.0. KubernetesExecutor runs each task as a pod. ARM64 ready."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Apache project, Astronomer backed. Monthly releases. Astro provider for K8s operators."
+    stacks: [data-engineering]
+
+  # ── Planned — Databases ──────────────────────────────────────────────────────
+
+  cloudnativepg:
+    name: "CloudNativePG"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--database--cloudnativepg"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/cloudnative-pg/cloudnative-pg"
+    website: "https://cloudnative.pg"
+    stars_approx: 5200
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Sandbox. Best PostgreSQL operator for K8s. ARM64 production-ready. PITR backup to S3/MinIO."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. EDB backed. Monthly releases. Recommended starting point for databases stack."
+    stacks: [databases]
+
+  kubedb:
+    name: "KubeDB"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: false
+    github: "https://github.com/kubedb/operator"
+    website: "https://kubedb.com"
+    stars_approx: 1500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [smb, enterprise]
+    suitability_notes: "Not CNCF. Free tier limited (community edition). Multi-DB (Postgres/MySQL/Redis/MongoDB). Commercial license for production."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. AppsCode backed. Community edition limited to single instance. Eval for homelab, commercial for production."
+    stacks: [databases]
+
+  vitess:
+    name: "Vitess"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--database--vitess"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/vitessio/vitess"
+    website: "https://vitess.io"
+    stars_approx: 19000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [enterprise]
+    suitability_notes: "CNCF Graduated. MySQL sharding at scale (PlanetScale). Overkill for homelab. ARM64 works."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. PlanetScale backed. Production at YouTube scale. Only relevant at large scale — overkill for homelab."
+    stacks: [databases]
+
+  # ── Planned — ML Platform ────────────────────────────────────────────────────
+
+  kubeflow:
+    name: "Kubeflow"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=machine-learning-ai-data--machine-learning--kubeflow"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/kubeflow/kubeflow"
+    website: "https://www.kubeflow.org"
+    stars_approx: 14500
+    stars_updated: "2025-08"
+    arm64: partial
+    suitable_for: [smb, enterprise, testing]
+    suitability_notes: "CNCF Incubating. Full MLOps platform, heavy (12GB+ RAM). ARM64 partial — some components need multi-arch images."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. Google/Apple/Microsoft backed. Quarterly releases. Start with MLflow for homelab — full Kubeflow is heavy."
+    stacks: [ml-platform]
+
+  kserve:
+    name: "KServe"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=machine-learning-ai-data--model-serving--kserve"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/kserve/kserve"
+    website: "https://kserve.github.io/website/"
+    stars_approx: 3500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Incubating. Standard model serving CRDs. Lighter than full Kubeflow. ARM64 tested."
+    last_release: "2025-06"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. Bloomberg/IBM/NVIDIA backed. Quarterly releases. InferenceService CRD is the standard K8s model serving pattern."
+    stacks: [ml-platform]
+
+  mlflow:
+    name: "MLflow"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/mlflow/mlflow"
+    website: "https://mlflow.org"
+    stars_approx: 19500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Linux Foundation AI (not CNCF). Apache-2.0. Experiment tracking + model registry. Best homelab ML start."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Databricks backed. Monthly releases. Best starting point for ML stack — lightweight, ARM64 native."
+    stacks: [ml-platform]
+
+  ray:
+    name: "Ray"
+    cncf_status: none
+    cncf_url: null
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/ray-project/ray"
+    website: "https://ray.io"
+    stars_approx: 35000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "Not CNCF (Anyscale). Apache-2.0. Distributed Python + LLM serving. ARM64 native since Ray 2.6."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. Anyscale backed. Monthly releases. RK1 nodes (31GB RAM) suitable for Ray workers."
+    stacks: [ml-platform]
+
+  # ── Planned — Advanced networking / service mesh ─────────────────────────────
+
+  istio:
+    name: "Istio"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=orchestration-management--service-mesh--istio"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/istio/istio"
+    website: "https://istio.io"
+    stars_approx: 36000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [smb, enterprise]
+    suitability_notes: "CNCF Graduated. Full service mesh with Envoy sidecars. Heavy (2GB+). Cilium mesh is lighter alternative for homelab."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. Google/IBM/CNCF backed. Solo.io and Tetrate offer enterprise distributions. Heavy for homelab."
+    stacks: [networking-advanced]
+
+  linkerd:
+    name: "Linkerd"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=orchestration-management--service-mesh--linkerd"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/linkerd/linkerd2"
+    website: "https://linkerd.io"
+    stars_approx: 10500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated. Rust-based, lightweight service mesh (~150MB). Simpler than Istio. ARM64 first-class."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Buoyant backed. Edge releases monthly, stable releases quarterly. Lightest service mesh option."
+    stacks: [networking-advanced]
+
+  # ── Planned — Observability advanced ────────────────────────────────────────
+
+  opentelemetry:
+    name: "OpenTelemetry"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=observability-and-analysis--observability--opentelemetry"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/open-telemetry/opentelemetry-collector"
+    website: "https://opentelemetry.io"
+    stars_approx: 4500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated. OTel Operator auto-instruments apps. Alloy (already installed) is OTel-compatible."
+    last_release: "2025-08"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Very active. CNCF flagship project. Monthly releases. Alloy (installed) is already OTel-compatible collector."
+    stacks: [observability-advanced]
+
+  chaos-mesh:
+    name: "Chaos Mesh"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=observability-and-analysis--chaos-engineering--chaos-mesh"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/chaos-mesh/chaos-mesh"
+    website: "https://chaos-mesh.org"
+    stars_approx: 6400
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise, testing]
+    suitability_notes: "CNCF Incubating. Chaos engineering on K8s. ARM64 supported. Inject failures, network delays, pod kills."
+    last_release: "2025-06"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. PingCAP backed. Quarterly releases. ARM64 verified. Good for homelab resilience testing."
+    stacks: [observability-advanced]
+
+  opencost:
+    name: "OpenCost"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=observability-and-analysis--observability--opencost"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/opencost/opencost"
+    website: "https://opencost.io"
+    stars_approx: 5100
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Incubating. Per-pod cost visibility. Custom pricing model for on-prem/homelab. ARM64 ready."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Kubecost backed. Monthly releases. Integrates with Prometheus (already installed)."
+    stacks: [observability-advanced, cost-modeling]
+
+  kepler:
+    name: "Kepler"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=observability-and-analysis--observability--kepler"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/sustainable-computing-io/kepler"
+    website: "https://sustainable-computing.io"
+    stars_approx: 1200
+    stars_updated: "2025-08"
+    arm64: partial
+    suitable_for: [homelab, testing]
+    suitability_notes: "CNCF Sandbox. eBPF power measurement per pod. ARM64 model-based (no RAPL). Active development."
+    last_release: "2025-05"
+    release_cadence: irregular
+    maintained: true
+    health_notes: "Active. Red Hat / community backed. ARM64 power model improving. RAPL not available on ARM — uses CPU model estimates."
+    stacks: [cost-modeling, sustainability]
+
+  # ── Planned — WASM ───────────────────────────────────────────────────────────
+
+  wasmedge:
+    name: "WasmEdge"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=wasm--wasm-runtimes--wasmedge"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/WasmEdge/WasmEdge"
+    website: "https://wasmedge.org"
+    stars_approx: 9200
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, testing, edge]
+    suitability_notes: "CNCF Sandbox. WASM runtime with containerd integration. ARM64 native. Fast startup <1ms."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Monthly releases. Good ARM64 support. Works with containerd (K3s runtime) via runwasi shim."
+    stacks: [wasm]
+
+  spinkube:
+    name: "SpinKube"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=wasm--wasm-frameworks--spinkube"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/spinkube/spin-operator"
+    website: "https://spinkube.dev"
+    stars_approx: 900
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, testing]
+    suitability_notes: "CNCF Sandbox. Fermyon Spin apps as K8s CRDs. ARM64 tested. New project (2024), homelab/testing maturity."
+    last_release: "2025-06"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. Fermyon / Microsoft backed. New project (2024). API stabilizing. Good for WASM experimentation."
+    stacks: [wasm]
+
+  # ── Planned — Virtualization ─────────────────────────────────────────────────
+
+  kubevirt:
+    name: "KubeVirt"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=runtime--cloud-native-storage--kubevirt"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/kubevirt/kubevirt"
+    website: "https://kubevirt.io"
+    stars_approx: 5600
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Incubating. VMs as K8s pods. ARM64 production-ready since v1.2. RK3588S + CM4 both support KVM."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. Red Hat / IBM backed. Quarterly releases. ARM64 on v1.2+ (2024). Check /dev/kvm on nodes before deploying."
+    stacks: [virtualization]
+
+  # ── Planned — GPU sharing ────────────────────────────────────────────────────
+
+  hami:
+    name: "HAMi (Heterogeneous AI Computing)"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=machine-learning-ai-data--scheduling-orchestration--hami"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/Project-HAMi/HAMi"
+    website: "https://project-hami.io"
+    stars_approx: 1100
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, testing]
+    suitability_notes: "CNCF Sandbox. GPU/NPU sharing: NVIDIA, Rockchip, Cambricon, Hygon. ARM64 Rockchip plugin available."
+    last_release: "2025-06"
+    release_cadence: irregular
+    maintained: true
+    health_notes: "Active. Rockchip NPU plugin available in contrib. New project (2023). ARM64 support maturing."
+    stacks: [gpu-sharing]
+
+  # ── Infrastructure / Storage ─────────────────────────────────────────────────
+
+  longhorn:
+    name: "Longhorn"
+    cncf_status: incubating
+    cncf_url: "https://landscape.cncf.io/?item=runtime--cloud-native-storage--longhorn"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/longhorn/longhorn"
+    website: "https://longhorn.io"
+    stars_approx: 6500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Incubating. Distributed block storage, RANCHER origin. ARM64 first-class. Replaces NAS for distributed CSI."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. SUSE/Rancher backed. Monthly releases. Best distributed storage for K3s ARM64 homelab."
+    stacks: [storage-distributed]
+
+  openebs:
+    name: "OpenEBS"
+    cncf_status: sandbox
+    cncf_url: "https://landscape.cncf.io/?item=runtime--cloud-native-storage--openebs"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/openebs/openebs"
+    website: "https://openebs.io"
+    stars_approx: 9000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Sandbox. LocalPV-Hostpath is zero-overhead local storage. Full distributed with Mayastor."
+    last_release: "2025-06"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. DataCore backed (acquired MayaData). LocalPV-Hostpath good for local scratch storage."
+    stacks: [storage-distributed]
+
+  harbor:
+    name: "Harbor"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=provisioning--container-registry--harbor"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/goharbor/harbor"
+    website: "https://goharbor.io"
+    stars_approx: 24000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [smb, enterprise]
+    suitability_notes: "CNCF Graduated. Full OCI registry with RBAC, vulnerability scanning, replication. Heavier than registry:2."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. VMware/Broadcom backed. Quarterly releases. Production-grade upgrade from registry:2."
+    stacks: []
+
+  # ── Notable CNCF projects not yet planned ────────────────────────────────────
+
+  falco:
+    name: "Falco"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=provisioning--security-compliance--falco"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/falcosecurity/falco"
+    website: "https://falco.org"
+    stars_approx: 8000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated. Runtime threat detection (syscall-level). Pairs well with NeuVector. ARM64 eBPF mode works."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Sysdig backed. Monthly releases. Kernel module mode + eBPF mode (recommended for ARM64)."
+    stacks: []
+
+  spire:
+    name: "SPIFFE/SPIRE"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=provisioning--key-management--spire"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/spiffe/spire"
+    website: "https://spiffe.io"
+    stars_approx: 2800
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [smb, enterprise]
+    suitability_notes: "CNCF Graduated. Workload identity (mTLS between services without manual certs). ARM64 ready. Enterprise pattern."
+    last_release: "2025-06"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Stable. CNCF Graduated. Hewlett Packard / community backed. Enterprise identity pattern, overkill for simple homelab."
+    stacks: []
+
+  crossplane:
+    name: "Crossplane"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--application-definition-image-build--crossplane"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/crossplane/crossplane"
+    website: "https://crossplane.io"
+    stars_approx: 10000
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [smb, enterprise]
+    suitability_notes: "CNCF Graduated. Infrastructure-as-CRDs. Provision cloud resources from K8s. Less relevant without cloud provider."
+    last_release: "2025-07"
+    release_cadence: quarterly
+    maintained: true
+    health_notes: "Active. Upbound backed. Best for multi-cloud IaC. Less relevant for pure homelab without cloud resources."
+    stacks: []
+
+  argo-workflows:
+    name: "Argo Workflows"
+    cncf_status: graduated
+    cncf_url: "https://landscape.cncf.io/?item=app-definition-and-development--continuous-integration-continuous-delivery--argo"
+    license: apache-2.0
+    oss: true
+    github: "https://github.com/argoproj/argo-workflows"
+    website: "https://argoproj.github.io/workflows/"
+    stars_approx: 15500
+    stars_updated: "2025-08"
+    arm64: true
+    suitable_for: [homelab, smb, enterprise]
+    suitability_notes: "CNCF Graduated (Argo project). DAG-based workflow engine for ML/data pipelines. Shares Argo install."
+    last_release: "2025-07"
+    release_cadence: monthly
+    maintained: true
+    health_notes: "Active. Intuit backed. Monthly releases. Shares controller with ArgoCD — can coexist if already installed."
+    stacks: [data-engineering, ml-platform]
