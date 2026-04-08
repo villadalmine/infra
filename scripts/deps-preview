@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# deps-preview — show exactly what 'make deps' will install on your machine.
-# Read-only: makes NO changes. Run 'make deps' to actually install.
+# deps-preview — show exactly what a deps target will install.
+# Usage: deps-preview [core|ai|ops|full]  (default: core)
+# Read-only: makes NO changes.
 
 set -euo pipefail
 
+CATEGORY="${1:-core}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MISE_TOML="$REPO_ROOT/.mise.toml"
-REQUIREMENTS_TXT="$REPO_ROOT/setup/requirements.txt"
 REQUIREMENTS_YML="$REPO_ROOT/setup/requirements.yml"
 
 # Colors
@@ -17,8 +18,63 @@ YELLOW='\033[33m'
 DIM='\033[2m'
 RESET='\033[0m'
 
+# ── Category definitions ──────────────────────────────────────────────────────
+# Each array lists the raw .mise.toml key patterns for that category
+CORE_TOOLS=(python "kubernetes/kubectl" "helm/helm" "jqlang/jq")
+AI_TOOLS=(node opencode)
+OPS_TOOLS=("FairwindsOps/nova" "derailed/k9s")
+
+CORE_REQS="setup/requirements-core.txt"
+AI_REQS="setup/requirements-ai.txt"
+OPS_REQS="setup/requirements-ops.txt"
+
+# ── Resolve which files to show based on category ────────────────────────────
+case "$CATEGORY" in
+  core)
+    TITLE="make deps (core — mandatory)"
+    SHOW_TOOLS=("${CORE_TOOLS[@]}")
+    SHOW_REQS=("$CORE_REQS")
+    SHOW_COLLECTIONS=true
+    INSTALL_CMD="make deps"
+    ;;
+  ai)
+    TITLE="make deps-ai (core + ai)"
+    SHOW_TOOLS=("${CORE_TOOLS[@]}" "${AI_TOOLS[@]}")
+    SHOW_REQS=("$CORE_REQS" "$AI_REQS")
+    SHOW_COLLECTIONS=true
+    INSTALL_CMD="make deps-ai"
+    ;;
+  ops)
+    TITLE="make deps-ops (core + ops)"
+    SHOW_TOOLS=("${CORE_TOOLS[@]}" "${OPS_TOOLS[@]}")
+    SHOW_REQS=("$CORE_REQS" "$OPS_REQS")
+    SHOW_COLLECTIONS=true
+    INSTALL_CMD="make deps-ops"
+    ;;
+  full)
+    TITLE="make deps-full (core + ai + ops)"
+    SHOW_TOOLS=("${CORE_TOOLS[@]}" "${AI_TOOLS[@]}" "${OPS_TOOLS[@]}")
+    SHOW_REQS=("$CORE_REQS" "$AI_REQS" "$OPS_REQS")
+    SHOW_COLLECTIONS=true
+    INSTALL_CMD="make deps-full"
+    ;;
+  *)
+    echo "Usage: deps-preview [core|ai|ops|full]" >&2
+    exit 1
+    ;;
+esac
+
+# ── Helper: check if a tool key is in the selected set ───────────────────────
+tool_in_category() {
+  local raw_key="$1"
+  for pattern in "${SHOW_TOOLS[@]}"; do
+    [[ "$raw_key" == *"$pattern"* ]] && return 0
+  done
+  return 1
+}
+
 echo ""
-echo -e "${BOLD}make deps — what will be installed on YOUR machine${RESET}"
+echo -e "${BOLD}${TITLE} — what will be installed on YOUR machine${RESET}"
 echo -e "${DIM}─────────────────────────────────────────────────────────────────${RESET}"
 echo ""
 
@@ -31,112 +87,100 @@ if command -v mise >/dev/null 2>&1; then
 else
   echo -e "   ${YELLOW}→ will install${RESET}: ~/.local/bin/mise (latest)"
   echo -e "   ${DIM}   source: curl https://mise.run | sh${RESET}"
-  echo -e "   ${DIM}   disk: ~5 MB${RESET}"
   echo -e "   ${YELLOW}→ shell change${RESET}: adds 1 line to ~/.bashrc"
   echo -e "   ${DIM}   eval \"\$(~/.local/bin/mise activate bash)\"${RESET}"
 fi
 echo ""
 
-# ── 2. mise-managed tools (from .mise.toml) ─────────────────────────────────
+# ── 2. mise-managed tools ────────────────────────────────────────────────────
 echo -e "${BOLD}2. Tools managed by mise${RESET}"
 echo -e "   ${DIM}Install path: ~/.local/share/mise/installs/<tool>/<version>${RESET}"
 echo ""
 printf "   %-22s %-12s %s\n" "TOOL" "VERSION" "STATUS"
 printf "   %-22s %-12s %s\n" "────────────────────" "──────────" "──────────"
 
-# Parse .mise.toml [tools] section
 while IFS= read -r line; do
-  # Skip comments, empty lines, section headers, [env], [tasks]
   [[ "$line" =~ ^[[:space:]]*# ]] && continue
   [[ -z "${line// }" ]] && continue
   [[ "$line" =~ ^\[env\] ]] && break
   [[ "$line" =~ ^\[tasks ]] && break
   [[ "$line" =~ ^\[tools\] ]] && continue
 
-  # Match: key = "version"
   if [[ "$line" =~ ^[[:space:]]*\"?([^\"=]+)\"?[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
     raw_key="${BASH_REMATCH[1]}"
     version="${BASH_REMATCH[2]}"
 
-    # Friendly display name
+    tool_in_category "$raw_key" || continue
+
     case "$raw_key" in
-      python)                  tool_name="python" ;;
-      node)                    tool_name="node" ;;
-      *kubernetes/kubectl*)    tool_name="kubectl (aqua)" ;;
-      *helm/helm*)             tool_name="helm (aqua)" ;;
-      *FairwindsOps/nova*)     tool_name="nova (aqua)" ;;
-      *opencode*)              tool_name="opencode (npm, via node)" ;;
-      *jqlang/jq*)             tool_name="jq (aqua)" ;;
-      *derailed/k9s*)          tool_name="k9s (aqua)" ;;
-      *)                       tool_name="$raw_key" ;;
+      python)               tool_name="python" ;;
+      node)                 tool_name="node" ;;
+      *kubernetes/kubectl*) tool_name="kubectl (aqua)" ;;
+      *helm/helm*)          tool_name="helm (aqua)" ;;
+      *FairwindsOps/nova*)  tool_name="nova (aqua)" ;;
+      *opencode*)           tool_name="opencode (npm, via node)" ;;
+      *jqlang/jq*)          tool_name="jq (aqua)" ;;
+      *derailed/k9s*)       tool_name="k9s (aqua)" ;;
+      *)                    tool_name="$raw_key" ;;
     esac
 
-    # Check if already installed via mise
-    if command -v mise >/dev/null 2>&1; then
-      if mise which "$tool_name" >/dev/null 2>&1; then
-        status="${GREEN}✓ installed${RESET}"
-      else
-        status="${YELLOW}→ will install${RESET}"
-      fi
-    else
-      status="${YELLOW}→ will install${RESET}"
-    fi
-
+    status="${YELLOW}→ will install${RESET}"
     printf "   %-22s %-12s " "$tool_name" "$version"
     echo -e "$status"
   fi
 done < "$MISE_TOML"
-
 echo ""
 
-# ── 3. Python packages (.venv/) ─────────────────────────────────────────────
+# ── 3. Python packages ────────────────────────────────────────────────────────
 echo -e "${BOLD}3. Python packages${RESET}"
 echo -e "   ${DIM}Install path: $REPO_ROOT/.venv/ (repo-local, not system-wide)${RESET}"
 echo ""
 
-if [[ -f "$REQUIREMENTS_TXT" ]]; then
-  while IFS= read -r line; do
-    [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ -z "${line// }" ]] && continue
-    pkg="${line%%>=*}"
-    pkg="${pkg%%<=*}"
-    pkg="${pkg%%==*}"
-    pkg="${pkg%%[*}"
-    echo -e "   ${CYAN}•${RESET} $line"
-  done < "$REQUIREMENTS_TXT"
-else
-  echo -e "   ${DIM}(setup/requirements.txt not found)${RESET}"
+for req_file in "${SHOW_REQS[@]}"; do
+  full_path="$REPO_ROOT/$req_file"
+  if [[ -f "$full_path" ]]; then
+    # Print category label from first comment line
+    first_comment=$(grep -m1 '^#' "$full_path" 2>/dev/null | sed 's/^# //' || true)
+    [[ -n "$first_comment" ]] && echo -e "   ${DIM}[$first_comment]${RESET}"
+    while IFS= read -r line; do
+      [[ "$line" =~ ^[[:space:]]*# ]] && continue
+      [[ -z "${line// }" ]] && continue
+      [[ "$line" =~ ^-r ]] && continue
+      echo -e "   ${CYAN}•${RESET} $line"
+    done < "$full_path"
+    echo ""
+  fi
+done
+
+# ── 4. Ansible collections (core only) ───────────────────────────────────────
+if [[ "$SHOW_COLLECTIONS" == "true" ]]; then
+  echo -e "${BOLD}4. Ansible collections${RESET}"
+  echo -e "   ${DIM}Install path: ~/.ansible/collections/ansible_collections/${RESET}"
+  echo ""
+  if [[ -f "$REPO_ROOT/$REQUIREMENTS_YML" ]]; then
+    while IFS= read -r line; do
+      [[ "$line" =~ ^[[:space:]]*# ]] && continue
+      [[ -z "${line// }" ]] && continue
+      [[ "$line" =~ ^collections: ]] && continue
+      if [[ "$line" =~ name:[[:space:]]*([^ ]+) ]]; then
+        echo -e "   ${CYAN}•${RESET} ${BASH_REMATCH[1]}"
+      fi
+    done < "$REPO_ROOT/$REQUIREMENTS_YML"
+  fi
+  echo ""
 fi
-echo ""
 
-# ── 4. Ansible collections ──────────────────────────────────────────────────
-echo -e "${BOLD}4. Ansible collections${RESET}"
-echo -e "   ${DIM}Install path: ~/.ansible/collections/ansible_collections/${RESET}"
-echo ""
-
-if [[ -f "$REQUIREMENTS_YML" ]]; then
-  while IFS= read -r line; do
-    [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ -z "${line// }" ]] && continue
-    [[ "$line" =~ ^collections: ]] && continue
-    if [[ "$line" =~ name:[[:space:]]*([^ ]+) ]]; then
-      echo -e "   ${CYAN}•${RESET} ${BASH_REMATCH[1]}"
-    fi
-  done < "$REQUIREMENTS_YML"
-else
-  echo -e "   ${DIM}(setup/requirements.yml not found)${RESET}"
-fi
-echo ""
-
-# ── Summary ─────────────────────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────────
 echo -e "${DIM}─────────────────────────────────────────────────────────────────${RESET}"
 echo -e "${BOLD}Summary${RESET}"
 echo -e "  • All changes are ${GREEN}user-local${RESET} — no root, no system packages"
 echo -e "  • mise tools    → ~/.local/share/mise/ (shared across projects)"
 echo -e "  • Python venv   → .venv/ inside THIS repo (repo-local, gitignored)"
 echo -e "  • Ansible       → ~/.ansible/collections/ (user home)"
-echo -e "  • Shell change  → 1 line in ~/.bashrc (only if mise not installed)"
+[[ "$CATEGORY" == "core" ]] && \
+  echo -e "  • Shell change  → 1 line in ~/.bashrc (only if mise not installed)"
 echo ""
-echo -e "  Undo everything with: ${CYAN}make uninstall-local${RESET}"
-echo -e "  Install now with:     ${CYAN}make deps${RESET}"
+echo -e "  Other categories:  ${DIM}make preview-ai   make preview-ops   make preview-full${RESET}"
+echo -e "  Install now with:  ${CYAN}${INSTALL_CMD}${RESET}"
+echo -e "  Undo with:         ${CYAN}make uninstall-local${RESET}"
 echo ""

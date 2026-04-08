@@ -1,0 +1,11 @@
+# ai — tools for local AI work (make deps-ai installs this)
+# Tools: node, opencode  (via mise)
+# Enables: make litellm, mcp/cluster-advisor/server.py, opencode
+
+# LiteLLM — local AI proxy (routes to OpenRouter, Claude, Gemini, Ollama, etc.)
+# Start with: make litellm
+litellm[proxy]>=1.50
+
+# MCP server toolkit — used by mcp/cluster-advisor/server.py
+fastmcp>=2.0
+pyyaml>=6.0

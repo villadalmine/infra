@@ -11,16 +11,19 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps preview uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
 	@echo "  First time? Run in order:"
 	@echo "    0. make preview       see exactly what make deps will install (read-only)"
-	@echo "    1. make deps          install workstation tools (mise + pip + ansible-galaxy)"
+	@echo "    1. make deps          install mandatory tools (ansible, kubectl, helm, jq)"
+	@echo "       make deps-ai       add AI tools  (litellm, fastmcp, opencode)"
+	@echo "       make deps-ops      add ops tools (k9s, nova, ansible-lint)"
+	@echo "       make deps-full     install everything at once"
 	@echo "    2. make setup-nodes   copy SSH key + configure sudo on nodes (needs password once)"
 	@echo "    3. make survey        collect hardware info from all nodes"
-	@echo "    4. make litellm       start local AI assistant (optional)"
+	@echo "    4. make litellm       start local AI assistant (optional — needs deps-ai)"
 	@echo "    5. make core          bootstrap K3s cluster"
 	@echo ""
 	@echo "  Undo workstation install: make uninstall-local"
@@ -29,10 +32,19 @@ help: ## Show this help message (start here if you're new)
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-preview: ## Show what 'make deps' will install — no changes made (run this first)
-	@bash scripts/deps-preview
+preview: ## Show what 'make deps' (core) will install — no changes made
+	@bash scripts/deps-preview core
 
-uninstall-local: ## Remove all workstation tools installed by 'make deps'
+preview-ai: ## Show what 'make deps-ai' will install — no changes made
+	@bash scripts/deps-preview ai
+
+preview-ops: ## Show what 'make deps-ops' will install — no changes made
+	@bash scripts/deps-preview ops
+
+preview-full: ## Show what 'make deps-full' will install — no changes made
+	@bash scripts/deps-preview full
+
+uninstall-local: ## Remove all workstation tools installed by any deps target
 	@bash scripts/uninstall-local
 
 hermes-install: ## Install Hermes Agent CLI locally — hermes chat -q "ask something" (optional)
@@ -41,13 +53,22 @@ hermes-install: ## Install Hermes Agent CLI locally — hermes chat -q "ask some
 holmesgpt-install: ## Install HolmesGPT CLI locally — holmes ask "why is X crashing?" (optional)
 	@mise run install-holmesgpt
 
-deps: ## Install workstation tools — mise + Python packages + Ansible collections (run once)
-	@echo "Run 'make preview' first to see exactly what will be installed."
+deps: ## Install mandatory tools only — ansible, kubectl, helm, jq (run this first)
+	@echo "Installing core workstation tools. Run 'make preview' to see what changes."
 	@echo ""
-	@echo "Checking mise..."
 	@command -v mise >/dev/null 2>&1 || (echo "Installing mise..." && curl https://mise.run | sh && echo 'eval "$$(~/.local/bin/mise activate bash)"' >> ~/.bashrc)
-	@mise install
-	@mise run setup
+	@mise install python "aqua:kubernetes/kubectl" "aqua:helm/helm" "aqua:jqlang/jq"
+	@mise run setup-core
+
+deps-ai: deps ## Add AI tools — litellm, fastmcp, opencode, node
+	@mise install node "npm:opencode-ai"
+	@mise run setup-ai
+
+deps-ops: deps ## Add ops tools — k9s, nova, ansible-lint
+	@mise install "aqua:derailed/k9s" "aqua:FairwindsOps/nova"
+	@mise run setup-ops
+
+deps-full: deps deps-ai deps-ops ## Install everything — core + ai + ops
 
 setup-nodes: ## Configure SSH access + sudo on nodes (run once, needs password)
 	@SSH_KEY="$(SSH_KEY)" SUDOERS_MODE="$(SUDOERS_MODE)" bash scripts/setup-node-access
