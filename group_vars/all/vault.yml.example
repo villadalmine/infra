@@ -1,0 +1,8 @@
+---
+# Example Ansible Vault file for secrets used by litellm-proxy
+# Copy this to group_vars/all/vault.yml and encrypt with `ansible-vault encrypt`.
+
+hermes_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
+holmes_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
+kagent_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
+openclaw_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
