@@ -1,12 +1,37 @@
 - name: Load Hermes secrets (API keys, tokens)
   ansible.builtin.include_vars:
     file: "{{ role_path }}/defaults/secrets.yml"
-  failed_when: false  # gracefully skip if file doesn't exist yet
+  failed_when: false
+
+- name: Create Hermes Secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: hermes-secrets
+        namespace: "{{ hermes_namespace }}"
+      type: Opaque
+      stringData:
+        TELEGRAM_BOT_TOKEN: "{{ hermes_telegram_token | default('') }}"
+        DISCORD_BOT_TOKEN: "{{ hermes_discord_token | default('') }}"
+        OPENAI_API_KEY: "{{ hermes_openai_api_key }}"
 
 - name: Ensure custom Storage backend is installed before deploying Hermes Agent
   ansible.builtin.include_role:
     name: "{{ hermes_storage_role }}"
   when: hermes_storage_class != 'local-path' and hermes_storage_role is defined
+
+- name: Apply Hermes gateway ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    template: hermes-gateway-configmap.yaml.j2
+
+- name: Apply Hermes config ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    template: hermes-config-configmap.yaml.j2
 
 - name: Render Hermes MCP manifest
   ansible.builtin.template:
