@@ -40,13 +40,17 @@ spec:
         - name: openclaw-init
           image: {{ openclaw_image }}:{{ openclaw_version }}
           imagePullPolicy: Always
+          # Run onboard non-interactively by piping a single 'y' to stdin
+          # Some upstream images do not support a --yes flag; use a shell pipeline
           command:
-            - node
-            - dist/index.js
-            - onboard
-            - --mode
-            - local
-            - --no-install-daemon
+            - sh
+            - -c
+            - |
+              # Remove any invalid or empty config before onboarding to ensure the
+              # onboarding command can run non-interactively. Some images lack a
+              # non-interactive flag, so we avoid prompts by deleting stale files.
+              rm -f /home/node/.openclaw/openclaw.json || true
+              printf 'y\n' | node dist/index.js onboard --mode local --no-install-daemon
           env:
             - name: HOME
               value: /home/node

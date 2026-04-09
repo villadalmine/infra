@@ -19,11 +19,7 @@ data:
           "sandbox": {
             "mode": "{{ 'docker' if openclaw_sandbox_enabled else 'off' }}"
           },
-          "model": "{{ openclaw_model_primary }}",
-          "fallbackModels": [
-            "{{ openclaw_model_fallback1 }}",
-            "{{ openclaw_model_fallback2 }}"
-          ]
+          "model": "{{ openclaw_model_primary }}"
         }
       },
       "channels": {
