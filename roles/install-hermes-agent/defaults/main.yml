@@ -2,10 +2,12 @@ hermes_version: "latest"
 hermes_namespace: ai
 hermes_hostname: hermes.cluster.home
 
-# Model configuration (OpenRouter direct)
-hermes_model: "openai/gpt-4o-mini"
+# Model configuration (Forced through LiteLLM)
+hermes_model: "hermes-qwen"
 hermes_temperature: 0.7
-hermes_inference_provider: "openrouter"
+hermes_inference_provider: "openai"
+hermes_openai_api_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+hermes_openai_api_key: "sk-hermes-internal"
 
 # Resource limits (CM4-friendly)
 hermes_cpu_limit: "500m"
@@ -16,18 +18,16 @@ hermes_memory_request: "128Mi"
 # Schedule Hermes on the high-resource node.
 hermes_node_hostname: "srv-rk1-nvme-01"
 
-# Storage for ~/.hermes (skills, memory, config)
-# Cluster default is local-path, but this role uses smb-nas. The storage
-# backend role must exist before installing/upgrading it.
+# Storage for ~/.hermes
 hermes_storage_size: "100Gi"
 hermes_storage_class: "smb-nas"
 hermes_storage_role: "install-cifs-nas"
 
-# Platform integrations (set via secrets.yml)
+# Platform integrations
 hermes_telegram_enabled: true
 hermes_discord_enabled: false
 
-# Telegram gateway settings (polling mode by default)
+# Telegram gateway settings
 hermes_telegram_allowed_users: "8492872858"
 hermes_telegram_webhook_url: ""
 
@@ -36,7 +36,7 @@ hermes_registry: "registry.registry:5000"
 hermes_image_name: "ai/hermes-agent"
 hermes_image_tag: "0.7.0"
 
-# Kubernetes MCP sidecar (HTTP /mcp endpoint)
+# Kubernetes MCP sidecar
 hermes_mcp_image_name: "ai/kubernetes-mcp-server"
 hermes_mcp_image_tag: "v0.0.60"
 

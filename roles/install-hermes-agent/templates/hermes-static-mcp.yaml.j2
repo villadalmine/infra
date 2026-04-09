@@ -1,65 +1,4 @@
 apiVersion: v1
-kind: Secret
-metadata:
-  name: hermes-secrets
-  namespace: {{ hermes_namespace }}
-type: Opaque
-stringData:
-  .env: |
-    OPENROUTER_API_KEY={{ hermes_openrouter_api_key | default('') }}
-    TELEGRAM_BOT_TOKEN={{ hermes_telegram_token | default('') }}
-    TELEGRAM_ALLOWED_USERS={{ hermes_telegram_allowed_users }}
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hermes-gateway-config
-  namespace: {{ hermes_namespace }}
-data:
-  gateway.json: |
-    {
-      "platforms": {
-        "telegram": {
-          "enabled": {{ hermes_telegram_enabled | lower }},
-          "extra": {
-            "allowed_users": "{{ hermes_telegram_allowed_users }}",
-            "require_mention": true,
-            "mention_patterns": [
-              "^\\s*ask\\b",
-              "^\\s*hermes\\b"
-            ]
-          }
-        }
-      }
-    }
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hermes-config-mcp-test
-  namespace: {{ hermes_namespace }}
-data:
-  config.yaml: |
-    model:
-      default: {{ hermes_model }}
-      provider: {{ hermes_inference_provider }}
-
-    fallback_model:
-      provider: openrouter
-      model: qwen/qwen3-coder:free
-
-    agent:
-      tool_use_enforcement: true
-      system_prompt: |
-        {{ hermes_system_prompt | indent(8) }}
-
-    mcp_servers:
-      kubernetes:
-        url: {{ hermes_mcp_url }}
-        timeout: {{ hermes_mcp_timeout }}
-        connect_timeout: {{ hermes_mcp_connect_timeout }}
----
-apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: hermes-agent-mcp
@@ -71,24 +10,27 @@ metadata:
   name: hermes-agent-mcp-readonly
 rules:
   - apiGroups: [""]
-    resources: ["pods", "pods/log", "namespaces"]
+    resources: ["pods", "pods/log", "namespaces", "services", "configmaps", "nodes", "events"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["apps", "batch"]
-    resources: ["deployments", "replicasets", "statefulsets", "daemonsets", "jobs", "cronjobs"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: hermes-agent-mcp-readonly
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: hermes-agent-mcp-readonly
 subjects:
   - kind: ServiceAccount
     name: hermes-agent-mcp
     namespace: {{ hermes_namespace }}
+roleRef:
+  kind: ClusterRole
+  name: hermes-agent-mcp-readonly
+  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -106,8 +48,6 @@ spec:
     metadata:
       labels:
         app: hermes-agent-mcp
-      annotations:
-        hermes-config-rev: "1"
     spec:
       serviceAccountName: hermes-agent-mcp
       nodeSelector:
@@ -119,6 +59,20 @@ spec:
         runAsGroup: 1000
         runAsNonRoot: true
         fsGroup: 1000
+      initContainers:
+        - name: create-env-file
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              cat <<EOF > /opt/data/.env
+              OPENAI_API_KEY={{ hermes_openai_api_key }}
+              OPENAI_API_BASE={{ hermes_openai_api_base }}
+              EOF
+              chmod 644 /opt/data/.env
+          volumeMounts:
+            - name: hermes-data
+              mountPath: /opt/data
       containers:
         - name: hermes-agent
           image: {{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}
@@ -131,12 +85,22 @@ spec:
               value: /opt/data
             - name: HERMES_MODEL
               value: {{ hermes_model }}
-            - name: HERMES_INFERENCE_PROVIDER
-              value: {{ hermes_inference_provider }}
             - name: HERMES_TEMPERATURE
               value: "{{ hermes_temperature }}"
+            - name: OPENAI_API_BASE
+              value: {{ hermes_openai_api_base }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-secrets
+                  key: OPENAI_API_KEY
             - name: HERMES_HOME
               value: /opt/data
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-secrets
+                  key: TELEGRAM_BOT_TOKEN
             - name: HERMES_SYSTEM_PROMPT
               value: |
                 {{ hermes_system_prompt | indent(16) }}
@@ -144,11 +108,6 @@ spec:
               value: "true"
             - name: TELEGRAM_ALLOWED_USERS
               value: "{{ hermes_telegram_allowed_users }}"
-            - name: TELEGRAM_WEBHOOK_URL
-              value: "{{ hermes_telegram_webhook_url }}"
-          envFrom:
-            - secretRef:
-                name: hermes-secrets
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -160,43 +119,44 @@ spec:
               mountPath: /opt/data
             - name: hermes-home
               mountPath: /opt/data/.hermes
-            - name: hermes-config
-              mountPath: /opt/data/config.yaml
-              subPath: config.yaml
-            - name: hermes-env
-              mountPath: /opt/data/.env
-              subPath: .env
+            - name: tmp
+              mountPath: /tmp
             - name: hermes-gateway-config
               mountPath: /opt/data/gateway.json
               subPath: gateway.json
-            - name: tmp
-              mountPath: /tmp
+            - name: hermes-config
+              mountPath: /opt/data/config.yaml
+              subPath: config.yaml
         - name: kubernetes-mcp-server
           image: {{ hermes_registry }}/{{ hermes_mcp_image_name }}:{{ hermes_mcp_image_tag }}
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-lc"]
+          command: ["sh", "-c"]
           args:
             - |
-              cat >/tmp/hermes-kubeconfig <<EOF
+              # Generate kubeconfig for sidecar
+              mkdir -p ~/.kube
+              CA=$(cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt | base64 | tr -d '\n')
+              TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              cat <<EOF > ~/.kube/config
               apiVersion: v1
               kind: Config
               clusters:
-              - name: in-cluster
-                cluster:
-                  server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}
-                  certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              - cluster:
+                  certificate-authority-data: ${CA}
+                  server: https://kubernetes.default.svc
+                name: cluster
               contexts:
-              - name: in-cluster
-                context:
-                  cluster: in-cluster
-                  user: hermes
-              current-context: in-cluster
+              - context:
+                  cluster: cluster
+                  user: default
+                name: default
+              current-context: default
               users:
-              - name: hermes
+              - name: default
                 user:
-                  tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+                  token: ${TOKEN}
               EOF
-              exec /usr/local/bin/kubernetes-mcp-server --port 8080 --kubeconfig /tmp/hermes-kubeconfig --cluster-provider kubeconfig --read-only --disable-multi-cluster --stateless
+              exec /usr/local/bin/kubernetes-mcp-server --port 8080
           ports:
             - name: sse
               containerPort: 8080
@@ -204,90 +164,26 @@ spec:
           env:
             - name: HOME
               value: /tmp
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: hermes-data
           emptyDir: {}
         - name: hermes-home
           emptyDir: {}
-        - name: hermes-config
-          configMap:
-            name: hermes-config-mcp-test
-        - name: hermes-env
-          secret:
-            secretName: hermes-secrets
-        - name: hermes-gateway-config
-          configMap:
-            name: hermes-gateway-config
         - name: tmp
           emptyDir:
             sizeLimit: 128Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hermes-agent-mcp
-  namespace: {{ hermes_namespace }}
-spec:
-  type: ClusterIP
-  selector:
-    app: hermes-agent-mcp
-  ports:
-    - name: http
-      port: 8644
-      targetPort: 8644
-      protocol: TCP
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: hermes-agent-mcp
-  namespace: {{ hermes_namespace }}
-spec:
-  parentRefs:
-    - name: cluster-gateway
-      namespace: gateway
-  hostnames:
-    - hermes-mcp.cluster.home
-  rules:
-    - backendRefs:
-        - name: hermes-agent-mcp
-          port: 8644
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: hermes-agent-mcp-egress
-  namespace: {{ hermes_namespace }}
-spec:
-  podSelector:
-    matchLabels:
-      app: hermes-agent-mcp
-  policyTypes:
-    - Egress
-  egress:
-    - ports:
-        - port: 53
-          protocol: UDP
-        - port: 53
-          protocol: TCP
-    - to:
-        - podSelector:
-            matchLabels:
-              app: litellm-proxy
-      ports:
-        - port: 4000
-          protocol: TCP
-    - ports:
-        - port: 443
-          protocol: TCP
-        - port: 6443
-          protocol: TCP
+        - name: hermes-gateway-config
+          configMap:
+            name: hermes-gateway-config
+        - name: hermes-config
+          configMap:
+            name: hermes-config
