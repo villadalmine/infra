@@ -56,6 +56,11 @@
               litellm_params:
                 model: openrouter/qwen/qwen-turbo
                 api_key: os.environ/OPENROUTER_API_KEY
+            # Recommended higher-quality Qwen model (pro). Use this for heavier workloads.
+            - model_name: qwen-pro
+              litellm_params:
+                model: openrouter/qwen/qwen-pro
+                api_key: os.environ/OPENROUTER_API_KEY
 
             # ── Holmes routing ──────────────────────────────────────────────
             - model_name: holmes-llama
@@ -100,6 +105,13 @@
               litellm_params:
                 model: openrouter/google/gemini-2.5-pro-exp-03-25:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            # Backwards-compat alias: some clients (OpenClaw) may prefix provider
+            # (eg. openai/gemini-free). Provide a passthrough alias so those IDs
+            # resolve to the same backend and avoid Unknown model errors.
+            - model_name: openai/gemini-free
+              litellm_params:
+                model: openrouter/google/gemini-2.5-pro-exp-03-25:free
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: gpt-4o
               litellm_params:
                 model: openrouter/qwen/qwen-turbo
@@ -121,7 +133,7 @@
 
           litellm_settings:
             fallbacks:
-              - {"hermes-qwen": ["free2", "cheap"]}
+              - {"hermes-qwen": ["qwen-pro", "free2", "cheap"]}
               - {"holmes-llama": ["holmes-free2", "holmes-cheap"]}
               - {"openclaw-gemini": ["hermes-qwen", "gemini-free2", "cheap"]}
               - {"kagent-orchestrator": ["cheap"]}
@@ -244,6 +256,8 @@
         litellm-ai-traffic.json: |
           {% raw %}
           {
+            "uid": "litellm-ai-traffic",
+            "title": "LiteLLM AI Traffic",
             "annotations": { "list": [] },
             "description": "LiteLLM AI traffic — requests, latency, tokens, spend per model. Models: openclaw-gemini=OpenClaw, hermes-qwen=Hermes, holmes-llama=Holmes, kagent-orchestrator=Kagent",
             "editable": true,
@@ -317,12 +331,23 @@
                 ],
                 "title": "🔄 Fallback Activations",
                 "type": "timeseries"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "decimals": 0 } },
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+                "id": 7,
+                "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
+                "targets": [
+                  { "expr": "sum by (agent) (label_replace(label_replace(label_replace(label_replace(litellm_requests_metric_total, \"agent\", \"Hermes\", \"requested_model\", \"hermes-qwen|free|free2|cheap|gpt-4o|claude-sonnet|gemini-flash|default\"), \"agent\", \"Holmes\", \"requested_model\", \"holmes-llama|holmes-free2|holmes-cheap|gpt-5.4\"), \"agent\", \"kagent\", \"requested_model\", \"kagent-orchestrator\"), \"agent\", \"OpenClaw\", \"requested_model\", \"openclaw-gemini|gemini-free|gemini-free2\"))", "legendFormat": "{{agent}}", "refId": "A" }
+                ],
+                "title": "🤖 Total Queries by Agent",
+                "type": "bargauge"
               }
             ],
             "refresh": "30s",
             "schemaVersion": 38,
-            "tags": ["litellm", "ai", "llm", "openclaw", "hermes"]
+            "tags": ["litellm", "ai", "llm", "openclaw", "hermes", "kagent"]
           }
           {% endraw %}
   when: litellm_monitoring_ns.rc == 0
-

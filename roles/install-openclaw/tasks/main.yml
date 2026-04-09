@@ -15,7 +15,7 @@
 
 # ─── Namespace ────────────────────────────────────────────────────────────────
 - name: Ensure OpenClaw namespace exists
-  ansible.builtin.command:
+  ansible.builtin.shell:
     cmd: kubectl create namespace {{ openclaw_namespace }} --dry-run=client -o yaml | kubectl apply -f -
   changed_when: false
 
