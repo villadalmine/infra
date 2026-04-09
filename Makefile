@@ -11,7 +11,7 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -102,7 +102,7 @@ dns-metrics: ## Install DNS and Metrics (Pi-hole)
 services: ## Install ingress + services (ArgoCD, helm-dashboard, registry)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,ingress,services
 
-observability: ## Install networking + observability (Prometheus, Grafana, Tempo, Loki, Alloy, version-checker)
+observability: ## Install networking + observability (Prometheus, Grafana, Tempo, Loki, Alloy)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags observability
 
 storage: ## Install networking + storage (CSI SMB driver + PV/PVC test)
@@ -131,6 +131,12 @@ holmes-ui: ## Deploy Holmes UI only (chat interface at holmes-ui.cluster.home)
 
 kagent: ## Deploy kagent + kmcp AI agent platform (multi-tenant, LiteLLM backend)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags kagent
+
+openclaw: ## Deploy OpenClaw personal AI gateway (Telegram + LiteLLM + modular RBAC)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags openclaw
+
+openclaw-rbac: ## Change OpenClaw RBAC level — LEVEL=readonly|operator|admin|cluster-admin
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags openclaw -e "openclaw_rbac_level=$(LEVEL)"
 
 security: ## Install NeuVector core (controller, enforcer, manager, scanner)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags security

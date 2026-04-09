@@ -1,0 +1,178 @@
+# Upstream reference: github.com/openclaw/openclaw/scripts/k8s/manifests/deployment.yaml
+# Additions vs upstream: nodeSelector, tolerations, smb PVC, LiteLLM env, healthz probes
+# To sync with upstream changes: diff against scripts/k8s/manifests/deployment.yaml in the
+# openclaw release matching {{ openclaw_version }}.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw
+  namespace: {{ openclaw_namespace }}
+  labels:
+    app: openclaw
+    rbac-level: {{ openclaw_rbac_level }}
+    llm-backend: {{ openclaw_llm_backend }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: openclaw
+  template:
+    metadata:
+      labels:
+        app: openclaw
+    spec:
+      serviceAccountName: openclaw
+      # Cluster-specific: schedule on high-RAM RK1 node
+      nodeSelector:
+        kubernetes.io/hostname: {{ openclaw_node_hostname }}
+      # Required: project-wide toleration for transient NoExecute taints
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+      initContainers:
+        # Init: non-interactive first-run setup (creates openclaw.json, agent state)
+        - name: openclaw-init
+          image: {{ openclaw_image }}:{{ openclaw_version }}
+          imagePullPolicy: Always
+          command:
+            - node
+            - dist/index.js
+            - onboard
+            - --mode
+            - local
+            - --no-install-daemon
+          env:
+            - name: HOME
+              value: /home/node
+            - name: OPENCLAW_CONFIG_DIR
+              value: /home/node/.openclaw
+            - name: OPENCLAW_WORKSPACE_DIR
+              value: /home/node/.openclaw/workspace
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENCLAW_GATEWAY_TOKEN
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: openclaw-data
+              mountPath: /home/node/.openclaw
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: openclaw-gateway
+          image: {{ openclaw_image }}:{{ openclaw_version }}
+          imagePullPolicy: Always
+          command:
+            - node
+            - dist/index.js
+            - gateway
+            - --port
+            - "{{ openclaw_gateway_port }}"
+          env:
+            - name: HOME
+              value: /home/node
+            - name: OPENCLAW_CONFIG_DIR
+              value: /home/node/.openclaw
+            - name: OPENCLAW_WORKSPACE_DIR
+              value: /home/node/.openclaw/workspace
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENCLAW_GATEWAY_TOKEN
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: TELEGRAM_BOT_TOKEN
+                  optional: true
+            - name: TELEGRAM_ALLOWED_USERS
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: TELEGRAM_ALLOWED_USERS
+                  optional: true
+{% if openclaw_llm_backend == 'litellm' %}
+            # Route all LLM traffic through shared in-cluster proxy for Grafana visibility
+            - name: OPENAI_API_BASE
+              value: "{{ openclaw_litellm_url }}/v1"
+            - name: OPENAI_API_KEY
+              value: "{{ openclaw_litellm_master_key }}"
+{% else %}
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENROUTER_API_KEY
+{% endif %}
+          ports:
+            - name: gateway
+              containerPort: {{ openclaw_gateway_port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ openclaw_gateway_port }}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ openclaw_gateway_port }}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: {{ openclaw_cpu_request }}
+              memory: {{ openclaw_memory_request }}
+            limits:
+              cpu: {{ openclaw_cpu_limit }}
+              memory: {{ openclaw_memory_limit }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: openclaw-data
+              mountPath: /home/node/.openclaw
+            - name: openclaw-config-json
+              mountPath: /home/node/.openclaw/openclaw.json
+              subPath: openclaw.json
+            - name: openclaw-agents-md
+              mountPath: /home/node/.openclaw/AGENTS.md
+              subPath: AGENTS.md
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: openclaw-data
+          persistentVolumeClaim:
+            claimName: openclaw-data
+        - name: openclaw-config-json
+          configMap:
+            name: openclaw-config
+            items:
+              - key: openclaw.json
+                path: openclaw.json
+        - name: openclaw-agents-md
+          configMap:
+            name: openclaw-config
+            items:
+              - key: AGENTS.md
+                path: AGENTS.md
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

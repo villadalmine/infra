@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-config
+  namespace: {{ openclaw_namespace }}
+data:
+  openclaw.json: |
+    {
+      "gateway": {
+        "mode": "local",
+        "bind": "{{ openclaw_gateway_bind }}",
+        "port": {{ openclaw_gateway_port }},
+        "auth": {
+          "mode": "{{ openclaw_gateway_auth_mode }}"
+        }
+      },
+      "agents": {
+        "defaults": {
+          "sandbox": {
+            "mode": "{{ 'docker' if openclaw_sandbox_enabled else 'off' }}"
+          },
+          "model": "{{ openclaw_model_primary }}",
+          "fallbackModels": [
+            "{{ openclaw_model_fallback1 }}",
+            "{{ openclaw_model_fallback2 }}"
+          ]
+        }
+      },
+      "channels": {
+        "telegram": {
+          "enabled": {{ openclaw_telegram_enabled | lower }},
+          "dmPolicy": "{{ openclaw_telegram_dm_policy }}"
+        }
+      }
+    }
+  AGENTS.md: |
+    {{ openclaw_agent_instructions | indent(4) }}

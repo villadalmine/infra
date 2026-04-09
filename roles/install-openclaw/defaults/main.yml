@@ -1,0 +1,73 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenClaw — Personal AI Gateway
+# https://github.com/openclaw/openclaw
+# Image: ghcr.io/openclaw/openclaw (multi-arch, arm64 supported natively)
+# ─────────────────────────────────────────────────────────────────────────────
+
+openclaw_version: "latest"
+openclaw_namespace: "openclaw"
+openclaw_image: "ghcr.io/openclaw/openclaw"
+openclaw_hostname: "openclaw.cluster.home"
+
+# ─── Resource limits ──────────────────────────────────────────────────────────
+# Schedule on RK1 (32 GB RAM). See AGENTS.md for node table.
+openclaw_node_hostname: "srv-rk1-nvme-02"
+openclaw_cpu_request: "200m"
+openclaw_cpu_limit: "2000m"
+openclaw_memory_request: "512Mi"
+openclaw_memory_limit: "2Gi"
+
+# ─── Storage ──────────────────────────────────────────────────────────────────
+# smb-nas StorageClass (default). Override to local-path for no-NAS testing.
+# The storage backend role is auto-installed first (idempotent include_role).
+openclaw_storage_size: "10Gi"
+openclaw_storage_class: "smb-nas"
+openclaw_storage_role: "install-cifs-nas"
+
+# ─── LiteLLM backend (shared in-cluster proxy) ───────────────────────────────
+# Uses the shared LiteLLM proxy already in namespace 'ai'.
+# All model traffic is tracked in Prometheus and visible in Grafana.
+# To bypass LiteLLM and go direct to OpenRouter, set openclaw_llm_backend: "openrouter"
+# and provide openclaw_openrouter_api_key in secrets.yml.
+openclaw_llm_backend: "litellm"
+openclaw_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000"
+openclaw_litellm_master_key: "sk-hermes-internal"
+
+# OpenClaw virtual model names (resolved by LiteLLM routing):
+#   gemini-free  → google/gemini-2.5-pro-exp:free  (primary)
+#   free         → qwen/qwen3-coder:free            (fallback 1)
+#   free2        → google/gemini-2.0-flash-exp:free (fallback 2)
+openclaw_model_primary: "gemini-free"
+openclaw_model_fallback1: "free"
+openclaw_model_fallback2: "free2"
+
+# ─── RBAC — Kubernetes permission level ──────────────────────────────────────
+# Controls what ClusterRole/RoleBinding the ServiceAccount gets.
+# Override per run: -e "openclaw_rbac_level=operator"
+#
+#  readonly      → get/list/watch only (safe default)
+#  operator      → readonly + exec/logs + create/patch/delete jobs & deployments
+#  admin         → namespaced admin (all resources in openclaw namespace)
+#  cluster-admin → full cluster access (explicit, use carefully)
+openclaw_rbac_level: "readonly"
+
+# ─── Channel: Telegram ───────────────────────────────────────────────────────
+# Token loaded from defaults/secrets.yml (gitignored — see secrets.yml.example).
+openclaw_telegram_enabled: true
+openclaw_telegram_allowed_users: ""   # overridden in secrets.yml
+openclaw_telegram_dm_policy: "pairing"  # pairing | open
+
+# ─── Agent sandboxing ─────────────────────────────────────────────────────────
+# DinD not supported on K3s without special setup. Keep off.
+openclaw_sandbox_enabled: false
+
+# ─── OpenClaw Gateway config ──────────────────────────────────────────────────
+openclaw_gateway_bind: "lan"
+openclaw_gateway_port: 18789
+openclaw_gateway_auth_mode: "token"
+
+# Agent system prompt — customize per deployment
+openclaw_agent_instructions: |
+  You are a personal AI assistant running inside a Kubernetes cluster.
+  You help the user with questions, cluster operations, and automation tasks.
+  Be concise and precise. When asked about Kubernetes, prefer using available tools.

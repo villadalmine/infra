@@ -185,7 +185,7 @@ profiles:
       - "No GPU required — OpenRouter API provides free/cheap inference"
       - "RK1 nodes (31GB RAM) are ideal AI workers — memory-bound, not compute-bound"
       - "For local inference: need NPU (/dev/rknpu0) or dedicated GPU"
-      - "OpenRouter API key required: roles/install-hermes-agent/defaults/secrets.yml"
+      - "OpenRouter API key required: roles/install-litellm-proxy/defaults/secrets.yml"
 
   security-engineer:
     label: "Security Engineer"

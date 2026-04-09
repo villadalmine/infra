@@ -164,7 +164,7 @@ kubectl get pods -n ai
 ### Secrets
 
 ```bash
-# Crear roles/install-hermes-agent/defaults/secrets.yml (gitignored):
+# Crear roles/install-litellm-proxy/defaults/secrets.yml (gitignored):
 hermes_openrouter_api_key: "sk-or-v1-..."
 hermes_telegram_token: ""   # opcional
 hermes_discord_token: ""    # opcional

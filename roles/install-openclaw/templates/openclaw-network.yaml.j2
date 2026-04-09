@@ -1,0 +1,71 @@
+# Service — ClusterIP (never LoadBalancer per project rules)
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw
+  namespace: {{ openclaw_namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: openclaw
+  ports:
+    - name: gateway
+      port: {{ openclaw_gateway_port }}
+      targetPort: gateway
+      protocol: TCP
+---
+# HTTPRoute — Cilium Gateway at 192.168.178.200
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openclaw
+  namespace: {{ openclaw_namespace }}
+spec:
+  parentRefs:
+    - name: cluster-gateway
+      namespace: gateway
+  hostnames:
+    - {{ openclaw_hostname }}
+  rules:
+    - backendRefs:
+        - name: openclaw
+          port: {{ openclaw_gateway_port }}
+---
+# NetworkPolicy — restrict egress to known endpoints only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openclaw-egress
+  namespace: {{ openclaw_namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: openclaw
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # LiteLLM proxy (in-cluster — all LLM traffic)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+          podSelector:
+            matchLabels:
+              app: litellm-proxy
+      ports:
+        - port: 4000
+          protocol: TCP
+    # External HTTPS (Telegram API, OpenRouter if direct, etc.)
+    - ports:
+        - port: 443
+          protocol: TCP
+    # K8s API server
+    - ports:
+        - port: 6443
+          protocol: TCP

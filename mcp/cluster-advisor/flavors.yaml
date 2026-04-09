@@ -105,7 +105,7 @@ flavors:
     make_command: "make ai && make ai-holmes && make kagent"
     tags: [ai, kagent]
     notes:
-      - "Requires OPENROUTER_API_KEY in roles/install-hermes-agent/defaults/secrets.yml"
+      - "Requires OPENROUTER_API_KEY in roles/install-litellm-proxy/defaults/secrets.yml"
       - "ARM64 build takes ~60min for hermes-agent (kaniko on control-plane node)"
       - "No GPU required — LiteLLM routes to OpenRouter free/cheap models"
       - "RK1 nodes recommended for agent workloads (31GB RAM, NPU for future local inference)"

@@ -1,0 +1,131 @@
+# RBAC level: {{ openclaw_rbac_level }}
+# Controlled via openclaw_rbac_level in defaults/main.yml or Ansible -e flag.
+# Levels: readonly | operator | admin | cluster-admin
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openclaw
+  namespace: {{ openclaw_namespace }}
+---
+{% if openclaw_rbac_level == 'readonly' %}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openclaw-readonly
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints", "namespaces",
+                "nodes", "events", "configmaps", "persistentvolumeclaims",
+                "persistentvolumes", "resourcequotas"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "gateways"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumloadbalancerippools", "ciliuml2announcementpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openclaw-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openclaw-readonly
+subjects:
+  - kind: ServiceAccount
+    name: openclaw
+    namespace: {{ openclaw_namespace }}
+
+{% elif openclaw_rbac_level == 'operator' %}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openclaw-operator
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec", "pods/attach",
+                "services", "endpoints", "namespaces", "nodes",
+                "events", "configmaps", "persistentvolumeclaims",
+                "persistentvolumes", "resourcequotas", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "gateways"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumloadbalancerippools", "ciliuml2announcementpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openclaw-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openclaw-operator
+subjects:
+  - kind: ServiceAccount
+    name: openclaw
+    namespace: {{ openclaw_namespace }}
+
+{% elif openclaw_rbac_level == 'admin' %}
+# Namespaced admin — full control within openclaw namespace only
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openclaw-admin
+  namespace: {{ openclaw_namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - kind: ServiceAccount
+    name: openclaw
+    namespace: {{ openclaw_namespace }}
+---
+# Plus read-only cluster view for inspection
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openclaw-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: openclaw
+    namespace: {{ openclaw_namespace }}
+
+{% elif openclaw_rbac_level == 'cluster-admin' %}
+# FULL CLUSTER ACCESS — use with care.
+# Enable only for trusted, supervised agent sessions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openclaw-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: openclaw
+    namespace: {{ openclaw_namespace }}
+{% endif %}

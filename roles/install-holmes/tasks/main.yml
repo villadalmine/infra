@@ -4,7 +4,7 @@
 
 - name: Load Holmes secrets (if secrets.yml exists)
   ansible.builtin.include_vars:
-    file: "{{ playbook_dir }}/../roles/install-hermes-agent/defaults/secrets.yml"
+    file: "{{ playbook_dir }}/../roles/install-litellm-proxy/defaults/secrets.yml"
   failed_when: false
 
 - name: Create Holmes namespace
