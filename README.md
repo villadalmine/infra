@@ -102,7 +102,7 @@ Ask HolmesGPT from CLI:
 Hermes (Telegram): send plain text like `che como está mi cluster` or `cuantos pods hay en monitoring`.
 
 All AI services route through the in-cluster LiteLLM proxy (`sk-hermes-internal`).
-OpenRouter API key: `roles/install-hermes-agent/defaults/secrets.yml` (gitignored).
+OpenRouter API keys: `roles/install-litellm-proxy/defaults/secrets.yml` (gitignored).
 
 ---
 
@@ -218,5 +218,12 @@ python3 mcp/cluster-advisor/server.py
 9. **Update this README** — add to services table
 10. Commit + push
 
-See `CLAUDE.md` for bootstrap role order, architectural constraints, and security rules.
-See `skills/cluster-planning/SKILL.md` for the knowledge graph architecture.
+---
+
+## Documentation
+
+- **[AGENTS.md](AGENTS.md)** — Project rules, inventory, golden rules, scheduling
+- **[CLAUDE.md](CLAUDE.md)** — Bootstrap role order, architectural constraints, versions
+- **[docs/hermes-architecture.md](docs/hermes-architecture.md)** — Complete Hermes Agent reference (architecture, config, MCP tools, troubleshooting)
+- **[docs/hermes-troubleshooting-2026-04-08.md](docs/hermes-troubleshooting-2026-04-08.md)** — Case study: fixing 401 error and enforcing security architecture
+- **[skills/cluster-planning/SKILL.md](skills/cluster-planning/SKILL.md)** — Knowledge graph architecture
