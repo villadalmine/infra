@@ -6,7 +6,7 @@ kagent_hostname: kagent.cluster.home
 kagent_node: srv-rk1-nvme-01
 
 # LiteLLM proxy as OpenAI-compatible backend (already deployed in ai namespace)
-kagent_llm_model: "free"
+kagent_llm_model: "kagent-orchestrator"
 kagent_llm_base_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
 kagent_llm_api_key: "sk-hermes-internal"
 

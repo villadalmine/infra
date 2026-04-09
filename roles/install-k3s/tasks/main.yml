@@ -43,7 +43,6 @@
   become: true
   when:
     - "'server_nodes' in group_names"
-    - "k3s_server_active.stdout != 'active'"
   changed_when: "'server_nodes' in group_names"
 
 - name: Install K3s server
@@ -55,7 +54,6 @@
     K3S_KUBECONFIG_MODE: "{{ k3s_kubeconfig_mode }}"
   when:
     - "'server_nodes' in group_names"
-    - "k3s_server_active.stdout != 'active'"
   changed_when: "'server_nodes' in group_names"
 
 - name: Ensure K3s server is started
@@ -65,7 +63,6 @@
     enabled: true
   when:
     - "'server_nodes' in group_names"
-    - "k3s_server_active.stdout != 'active'"
   changed_when: false
 
 - name: Check if K3s agent is running

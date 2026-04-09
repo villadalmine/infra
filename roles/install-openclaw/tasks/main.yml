@@ -1,0 +1,130 @@
+---
+# ─── Load secrets (tokens, keys) ──────────────────────────────────────────────
+- name: Load OpenClaw secrets
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+  failed_when: false  # graceful: empty vars if file missing
+
+# ─── Storage dependency guard ─────────────────────────────────────────────────
+# Pattern: auto-install smb-nas before first PVC-backed resource.
+# install-cifs-nas is idempotent — safe to call multiple times per run.
+- name: Ensure storage backend is installed before OpenClaw
+  ansible.builtin.include_role:
+    name: "{{ openclaw_storage_role }}"
+  when: openclaw_storage_class != 'local-path' and openclaw_storage_role is defined
+
+# ─── Namespace ────────────────────────────────────────────────────────────────
+- name: Ensure OpenClaw namespace exists
+  ansible.builtin.command:
+    cmd: kubectl create namespace {{ openclaw_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+  changed_when: false
+
+# ─── Secrets ──────────────────────────────────────────────────────────────────
+- name: Render OpenClaw secret manifest
+  ansible.builtin.template:
+    src: openclaw-secret.yaml.j2
+    dest: /tmp/openclaw-secret.yaml
+    mode: "0600"
+
+- name: Apply OpenClaw secret
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/openclaw-secret.yaml
+  changed_when: false
+
+- name: Remove temporary secret manifest
+  ansible.builtin.file:
+    path: /tmp/openclaw-secret.yaml
+    state: absent
+
+# ─── ConfigMap (openclaw.json + AGENTS.md) ───────────────────────────────────
+- name: Render OpenClaw ConfigMap
+  ansible.builtin.template:
+    src: openclaw-configmap.yaml.j2
+    dest: /tmp/openclaw-configmap.yaml
+
+- name: Apply OpenClaw ConfigMap
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/openclaw-configmap.yaml
+  changed_when: false
+
+- name: Remove temporary ConfigMap manifest
+  ansible.builtin.file:
+    path: /tmp/openclaw-configmap.yaml
+    state: absent
+
+# ─── Storage (PVC) ────────────────────────────────────────────────────────────
+- name: Render OpenClaw PVC manifest
+  ansible.builtin.template:
+    src: openclaw-pvc.yaml.j2
+    dest: /tmp/openclaw-pvc.yaml
+
+- name: Apply OpenClaw PVC
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/openclaw-pvc.yaml
+  changed_when: false
+
+- name: Remove temporary PVC manifest
+  ansible.builtin.file:
+    path: /tmp/openclaw-pvc.yaml
+    state: absent
+
+# ─── RBAC (modular, level-controlled) ────────────────────────────────────────
+- name: Render OpenClaw RBAC manifest (level={{ openclaw_rbac_level }})
+  ansible.builtin.template:
+    src: openclaw-rbac.yaml.j2
+    dest: /tmp/openclaw-rbac.yaml
+
+- name: Apply OpenClaw RBAC
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/openclaw-rbac.yaml
+  changed_when: false
+
+- name: Remove temporary RBAC manifest
+  ansible.builtin.file:
+    path: /tmp/openclaw-rbac.yaml
+    state: absent
+
+# ─── Deployment ───────────────────────────────────────────────────────────────
+- name: Render OpenClaw Deployment manifest
+  ansible.builtin.template:
+    src: openclaw-deployment.yaml.j2
+    dest: /tmp/openclaw-deployment.yaml
+
+- name: Apply OpenClaw Deployment
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/openclaw-deployment.yaml
+  changed_when: false
+
+- name: Remove temporary Deployment manifest
+  ansible.builtin.file:
+    path: /tmp/openclaw-deployment.yaml
+    state: absent
+
+# ─── Service + HTTPRoute ──────────────────────────────────────────────────────
+- name: Render OpenClaw Service + HTTPRoute manifest
+  ansible.builtin.template:
+    src: openclaw-network.yaml.j2
+    dest: /tmp/openclaw-network.yaml
+
+- name: Apply OpenClaw Service + HTTPRoute
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/openclaw-network.yaml
+  changed_when: false
+
+- name: Remove temporary network manifest
+  ansible.builtin.file:
+    path: /tmp/openclaw-network.yaml
+    state: absent
+
+# ─── Wait for rollout ─────────────────────────────────────────────────────────
+- name: Wait for OpenClaw deployment to be ready
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/openclaw -n {{ openclaw_namespace }} --timeout=180s
+  changed_when: false
+  register: openclaw_rollout
+  failed_when: openclaw_rollout.rc != 0
+
+- name: Show OpenClaw pod status
+  ansible.builtin.command:
+    cmd: kubectl get pods -n {{ openclaw_namespace }} -l app=openclaw
+  changed_when: false

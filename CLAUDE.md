@@ -179,6 +179,7 @@ Read the relevant skill before working on a component.
 | `kagent` | kagent + kmcp — multi-tenant AI agent platform, CRDs, RBAC, LiteLLM integration |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |
+| `ai-memory` | Guidelines for cross-session AI Memory persistence |
 
 ## AI Tools (self-contained)
 
@@ -206,6 +207,8 @@ All route through OpenRouter by default (one `OPENROUTER_API_KEY` covers everyth
 Configured in `.mcp.json` (Claude Code) and `opencode.json` → `mcp` key (OpenCode).
 - `kubernetes` — `npx -y kubernetes-mcp-server@latest` — requires `~/.kube/config`
   Available after `make core` deploys K3s and kubeconfig is fetched.
+  *Survey note: For cluster survey reports, the MCP server parses `make node-stats` and `kubectl top nodes` outputs directly, feeding them into the AI memory.*
+- `memory` — Continuous AI memory persistence across sessions via Knowledge Items (KIs).
 
 Full AI setup guide: `docs/ai-setup.md`
 

@@ -81,6 +81,20 @@
       --timeout=60s
   changed_when: false
 
+# ── Create kagent OpenAI API key secret BEFORE Helm install ──────────────
+- name: Create kagent OpenAI API key secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: kagent-openai
+        namespace: "{{ kagent_namespace }}"
+      type: Opaque
+      stringData:
+        OPENAI_API_KEY: "{{ kagent_llm_api_key }}"
+
 # ── Step 2: install main chart ────────────────────────────────────────────
 - name: Install or upgrade kagent
   kubernetes.core.helm:
@@ -92,12 +106,14 @@
     wait: false
     values:
       # ── LLM provider: reuse in-cluster LiteLLM proxy ──────────────────────
+      # Use apiKeySecretRef instead of inline apiKey for proper secret management
       providers:
         default: openAI
         openAI:
           provider: OpenAI
           model: "{{ kagent_llm_model }}"
-          apiKey: "{{ kagent_llm_api_key }}"
+          apiKeySecretRef: kagent-openai
+          apiKeySecretKey: OPENAI_API_KEY
           config:
             baseUrl: "{{ kagent_llm_base_url }}"
 
@@ -164,6 +180,7 @@
 # The bundled postgres template doesn't support global tolerations,
 # so we patch it directly after helm install.
 # Patch deployments that don't inherit global tolerations (postgres, grafana-mcp, querydoc)
+
 - name: Patch {{ item }} deployment with tolerations (no nodeSelector)
   kubernetes.core.k8s:
     api_version: apps/v1
@@ -194,17 +211,18 @@
     cmd: kubectl rollout status deployment/kagent-postgresql -n {{ kagent_namespace }} --timeout=120s
   changed_when: false
 
-- name: Fix kagent-postgresql pg_hba.conf (allow TCP from all pod CIDRs)
-  ansible.builtin.command:
-    cmd: >
-      kubectl exec -n {{ kagent_namespace }} deployment/kagent-postgresql --
-      sh -c "
-        grep -q '0.0.0.0/0' /var/lib/postgresql/data/pgdata/pg_hba.conf ||
-        echo 'host    all    all    0.0.0.0/0    trust' >>
-          /var/lib/postgresql/data/pgdata/pg_hba.conf &&
-        pg_ctl reload -D /var/lib/postgresql/data/pgdata
-      "
+- name: Get kagent-postgresql pod name
+  ansible.builtin.shell:
+    cmd: kubectl get pods -n {{ kagent_namespace }} -l app.kubernetes.io/name=postgresql -o jsonpath='{.items[0].metadata.name}'
+  register: shell_pg_pod
   changed_when: false
+
+- name: Fix kagent-postgresql pg_hba.conf (allow TCP from all pod CIDRs)
+  kubernetes.core.k8s_exec:
+    namespace: "{{ kagent_namespace }}"
+    pod: "{{ shell_pg_pod.stdout }}"
+    command: >- 
+      sh -c "grep -q '0.0.0.0/0' /var/lib/postgresql/data/pgdata/pg_hba.conf || (echo 'host all all 0.0.0.0/0 trust' >> /var/lib/postgresql/data/pgdata/pg_hba.conf && pg_ctl reload -D /var/lib/postgresql/data/pgdata)"
 
 - name: Create kagent database if not exists
   ansible.builtin.command:

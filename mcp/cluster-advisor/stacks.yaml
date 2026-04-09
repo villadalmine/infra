@@ -316,7 +316,7 @@ stacks:
       - "No GPU needed — routes all inference via OpenRouter API"
       - "Cost: $0–$5/month (free tier available on OpenRouter)"
       - "Hermes build takes ~60min (kaniko ARM64 build on first deploy)"
-      - "Requires OPENROUTER_API_KEY in roles/install-hermes-agent/defaults/secrets.yml"
+      - "Requires OPENROUTER_API_KEY in roles/install-litellm-proxy/defaults/secrets.yml"
       - "RK1 nodes (31GB) ideal for AI workloads — memory-bound, not compute-bound"
 
   security:

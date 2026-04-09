@@ -15,6 +15,7 @@
 #   observability  → prometheus + tempo + loki + alloy         (requires networking + storage for Prometheus/Loki)
 #   storage        → storage backends / PVC backends             (requires networking)
 #   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
+#   openclaw       → OpenClaw personal AI gateway (Telegram + LiteLLM + modular RBAC)
 #   ai-registry    → registry only (requires storage)
 #   security       → neuvector                                   (requires networking + storage)
 #   ai-hermes-build  → kaniko ARM64 image build only
@@ -89,3 +90,5 @@
       tags: [ai, ai-holmes, ai-holmes-ui]
     - role: install-kagent
       tags: [kagent, ai-platform]
+    - role: install-openclaw
+      tags: [openclaw]

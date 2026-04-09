@@ -110,6 +110,21 @@ LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 Fallback chain: `free → free2 → cheap` (automatic, transparent to Hermes).
 Use `cheap` or `strong` directly when you want to skip free tiers.
 
+### LiteLLM Metrics & Grafana Dashboard
+
+LiteLLM exposes AI traffic and billing metrics to Prometheus when `success_callback: ["prometheus"]` is set.
+
+The `install-litellm-proxy` role automates observability:
+1. **ServiceMonitor**: Deploys a `ServiceMonitor` looking for labels `app: litellm-proxy` (the LiteLLM service must have these labels in its metadata or Prometheus will silently ignore it).
+2. **Grafana Dashboard**: Injects a custom JSON dashboard via ConfigMap labeled `grafana_dashboard: "1"` into the `monitoring` namespace. The Grafana sidecar automatically provisions it.
+
+**Key Metrics Tracked:**
+- `litellm_requests_metric_total`: Total successful and failed API requests.
+- `litellm_request_total_latency_seconds_bucket`: Request latency histograms.
+- `litellm_tokens_metric_total`: Prompt and completion tokens processed.
+- `litellm_spend_metric_total`: Estimated USD cost of the inference based on model pricing.
+- `litellm_deployment_successful_fallbacks_total`: Counter for when fallback chains trigger successfully.
+
 ---
 
 ## Installation
@@ -151,7 +166,7 @@ make ai  # registry + hermes-build + kubernetes-mcp-build + hermes-deploy (~70 m
 
 ### API key (required)
 
-Create `roles/install-hermes-agent/defaults/secrets.yml` (gitignored):
+Create `roles/install-litellm-proxy/defaults/secrets.yml` (gitignored):
 
 ```yaml
 hermes_openrouter_api_key: "sk-or-v1-..."
@@ -248,7 +263,7 @@ kubectl logs -n ai -l app=litellm-proxy --tail=50
 ```
 
 - Missing `litellm-secrets` → run `make ai-hermes-deploy`
-- Bad API key → check `roles/install-hermes-agent/defaults/secrets.yml`
+- Bad API key → check `roles/install-litellm-proxy/defaults/secrets.yml`
 
 ### Hermes calling wrong model / 429 errors
 
@@ -328,8 +343,29 @@ Aliases defined in `roles/install-litellm-proxy/tasks/main.yml`:
 - model_name: gpt-4o        # common OpenAI alias
   litellm_params:
     model: openrouter/qwen/qwen3-coder:free
+Plus fallback              - {"gemini-free": ["free", "gemini-free2", "cheap"]}
+              - {"gemini-free2": ["free", "cheap"]}
+            request_timeout: 120
+            num_retries: 1
+            set_verbose: false
+            success_callback: ["prometheus"]
+            failure_callback: ["prometheus"]
 ```
-Plus fallback entries: `{"gpt-5.4": ["free2", "cheap"]}`, `{"gpt-4o": ["free2", "cheap"]}`.
+
+### LiteLLM Metrics & Grafana Dashboard
+
+LiteLLM exposes AI traffic and billing metrics to Prometheus when `success_callback: ["prometheus"]` is set.
+
+The `install-litellm-proxy` role automates observability:
+1. **ServiceMonitor**: Deploys a `ServiceMonitor` looking for labels `app: litellm-proxy` (the LiteLLM service must have these labels in its metadata or Prometheus will silently ignore it).
+2. **Grafana Dashboard**: Injects a custom JSON dashboard via ConfigMap labeled `grafana_dashboard: "1"` into the `monitoring` namespace. The Grafana sidecar automatically provisions it.
+
+**Key Metrics Tracked:**
+- `litellm_requests_metric_total`: Total successful and failed API requests.
+- `litellm_request_total_latency_seconds_bucket`: Request latency histograms.
+- `litellm_tokens_metric_total`: Prompt and completion tokens processed.
+- `litellm_spend_metric_total`: Estimated USD cost of the inference based on model pricing.
+- `litellm_deployment_successful_fallbacks_total`: Counter for when fallback chains trigger successfully.
 
 ### Holmes UI pattern — nginx:alpine + ConfigMap (no kaniko)
 
@@ -350,7 +386,7 @@ make holmes-ui      # deploy Holmes UI only
 - Roles: `roles/install-registry/`, `roles/install-litellm-proxy/`, `roles/install-hermes-agent-image/`, `roles/install-hermes-agent/`, `roles/install-holmes/`, `roles/install-holmes-ui/`
 - Playbook tags: `ai`, `ai-registry`, `ai-hermes-build`, `ai-hermes-deploy`, `ai-holmes`, `ai-holmes-ui`
 - Makefile: `make ai`, `make ai-registry`, `make ai-hermes-build`, `make ai-hermes-deploy`, `make ai-holmes`, `make holmes-ui`
-- Secrets: `roles/install-hermes-agent/defaults/secrets.yml` (gitignored, shared with litellm-proxy)
+- Secrets: `roles/install-hermes-agent/defaults/secrets.yml` (Hermes bot tokens) & `roles/install-litellm-proxy/defaults/secrets.yml` (OpenRouter keys)
 
 ### Hermes secrets — `include_vars` required
 
@@ -359,7 +395,7 @@ make holmes-ui      # deploy Holmes UI only
 at the start to load secrets. If `secrets.yml` is missing, the role continues with
 empty vars (`failed_when: false`) — resulting in empty OPENROUTER_API_KEY.
 
-Credentials location: `roles/install-hermes-agent/defaults/secrets.yml` (gitignored).
+
 
 ### Operational notes
 

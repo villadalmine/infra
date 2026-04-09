@@ -1,14 +1,11 @@
-# In-cluster LiteLLM proxy for AI workloads.
-# Provides OpenRouter model routing with fallback chains (free → free2 → cheap).
-# Hermes Agent points here instead of calling OpenRouter directly.
-# API key loaded from install-hermes-agent/defaults/secrets.yml (shared file).
+# LiteLLM proxy deployment with multi-tenant API tokens.
+# Metrics enabled for Prometheus discovery.
 
-- name: Load OpenRouter API key (from hermes-agent secrets)
+- name: Load OpenRouter API keys (from litellm-proxy secrets)
   ansible.builtin.include_vars:
-    file: "{{ playbook_dir }}/../roles/install-hermes-agent/defaults/secrets.yml"
-  failed_when: false
+    file: "{{ playbook_dir }}/../roles/install-litellm-proxy/defaults/secrets.yml"
 
-- name: Create ai namespace
+- name: Create LiteLLM namespace
   kubernetes.core.k8s:
     definition:
       apiVersion: v1
@@ -17,7 +14,7 @@
         name: "{{ litellm_namespace }}"
     state: present
 
-- name: Create LiteLLM proxy secret
+- name: Create LiteLLM secrets
   kubernetes.core.k8s:
     state: present
     definition:
@@ -29,6 +26,9 @@
       type: Opaque
       stringData:
         OPENROUTER_API_KEY: "{{ hermes_openrouter_api_key | default('') }}"
+        HOLMES_OPENROUTER_API_KEY: "{{ holmes_openrouter_api_key | default('') }}"
+        KAGENT_OPENROUTER_API_KEY: "{{ kagent_openrouter_api_key | default('') }}"
+        OPENCLAW_OPENROUTER_API_KEY: "{{ openclaw_openrouter_api_key | default('') }}"
   when: hermes_openrouter_api_key | default('') | length > 0
 
 - name: Create LiteLLM proxy ConfigMap
@@ -43,8 +43,8 @@
       data:
         config.yaml: |
           model_list:
-            # ── Free tier (OpenRouter :free models) ──────────────────────────
-            - model_name: free
+            # ── Hermes routing ──────────────────────────────────────────────
+            - model_name: hermes-qwen
               litellm_params:
                 model: openrouter/qwen/qwen3-coder:free
                 api_key: os.environ/OPENROUTER_API_KEY
@@ -52,14 +52,60 @@
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENROUTER_API_KEY
-
-            # ── Cheap paid tier ──────────────────────────────────────────────
             - model_name: cheap
               litellm_params:
                 model: openrouter/qwen/qwen-turbo
                 api_key: os.environ/OPENROUTER_API_KEY
 
-            # ── Premium models (via OpenRouter — one key covers all) ─────────
+            # ── Holmes routing ──────────────────────────────────────────────
+            - model_name: holmes-llama
+              litellm_params:
+                model: openrouter/meta-llama/llama-3.1-8b-instruct:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+            - model_name: holmes-free2
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+            - model_name: holmes-cheap
+              litellm_params:
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+
+            # ── OpenClaw routing ────────────────────────────────────────────
+            - model_name: openclaw-gemini
+              litellm_params:
+                model: openrouter/google/gemini-2.5-pro-exp-03-25:free
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            - model_name: gemini-free2
+              litellm_params:
+                model: openrouter/google/gemini-2.0-flash-exp:free
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+
+            # ── Kagent routing ──────────────────────────────────────────────
+            - model_name: kagent-orchestrator
+              litellm_params:
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/KAGENT_OPENROUTER_API_KEY
+
+            # ── Legacy Aliases & Tool Defaults ──────────────────────────────
+            - model_name: free
+              litellm_params:
+                model: openrouter/qwen/qwen3-coder:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: gpt-5.4
+              litellm_params:
+                model: openrouter/meta-llama/llama-3.1-8b-instruct:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+            - model_name: gemini-free
+              litellm_params:
+                model: openrouter/google/gemini-2.5-pro-exp-03-25:free
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            - model_name: gpt-4o
+              litellm_params:
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/OPENROUTER_API_KEY
+
+            # ── Premium models ──────────────────────────────────────────────
             - model_name: claude-sonnet
               litellm_params:
                 model: openrouter/anthropic/claude-sonnet-4-5
@@ -68,24 +114,6 @@
               litellm_params:
                 model: openrouter/google/gemini-flash-1.5
                 api_key: os.environ/OPENROUTER_API_KEY
-            - model_name: gpt-4o-mini
-              litellm_params:
-                model: openrouter/openai/gpt-4o-mini
-                api_key: os.environ/OPENROUTER_API_KEY
-
-            # ── OpenAI model aliases (for tools that default to OpenAI model names) ─
-            # Holmes defaults to 'gpt-5.4' if no model is specified in the API call.
-            # Route all gpt-* aliases to the free→cheap fallback chain.
-            - model_name: gpt-5.4
-              litellm_params:
-                model: openrouter/qwen/qwen3-coder:free
-                api_key: os.environ/OPENROUTER_API_KEY
-            - model_name: gpt-4o
-              litellm_params:
-                model: openrouter/qwen/qwen3-coder:free
-                api_key: os.environ/OPENROUTER_API_KEY
-
-            # ── Default alias → claude-sonnet with fallback ──────────────────
             - model_name: default
               litellm_params:
                 model: openrouter/anthropic/claude-sonnet-4-5
@@ -93,15 +121,18 @@
 
           litellm_settings:
             fallbacks:
-              - {"default": ["claude-sonnet", "cheap"]}
+              - {"hermes-qwen": ["free2", "cheap"]}
+              - {"holmes-llama": ["holmes-free2", "holmes-cheap"]}
+              - {"openclaw-gemini": ["hermes-qwen", "gemini-free2", "cheap"]}
+              - {"kagent-orchestrator": ["cheap"]}
               - {"free": ["free2", "cheap"]}
-              - {"free2": ["cheap"]}
-              - {"claude-sonnet": ["cheap"]}
-              - {"gpt-5.4": ["free2", "cheap"]}
-              - {"gpt-4o": ["free2", "cheap"]}
+              - {"gpt-5.4": ["holmes-free2", "holmes-cheap"]}
+              - {"gemini-free": ["openclaw-gemini", "free2", "cheap"]}
             request_timeout: 120
             num_retries: 1
             set_verbose: false
+            success_callback: ["prometheus"]
+            failure_callback: ["prometheus"]
 
           general_settings:
             master_key: "{{ litellm_master_key }}"
@@ -127,49 +158,47 @@
             labels:
               app: litellm-proxy
           spec:
+            tolerations:
+              - operator: Exists
             containers:
-              - name: litellm
-                image: "ghcr.io/berriai/litellm:{{ litellm_proxy_version }}"
-                args:
-                  - "--config"
-                  - "/etc/litellm/config.yaml"
-                  - "--port"
-                  - "{{ litellm_port | string }}"
+              - name: litellm-proxy
+                image: ghcr.io/berriai/litellm:main-latest
                 ports:
-                  - containerPort: "{{ litellm_port }}"
-                    name: http
+                  - containerPort: 4000
                 env:
                   - name: OPENROUTER_API_KEY
                     valueFrom:
                       secretKeyRef:
                         name: litellm-secrets
                         key: OPENROUTER_API_KEY
+                  - name: HOLMES_OPENROUTER_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: litellm-secrets
+                        key: HOLMES_OPENROUTER_API_KEY
+                  - name: KAGENT_OPENROUTER_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: litellm-secrets
+                        key: KAGENT_OPENROUTER_API_KEY
+                  - name: OPENCLAW_OPENROUTER_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: litellm-secrets
+                        key: OPENCLAW_OPENROUTER_API_KEY
+                  - name: LITELLM_MASTER_KEY
+                    value: "{{ litellm_master_key }}"
                 volumeMounts:
-                  - name: config
-                    mountPath: /etc/litellm
-                resources:
-                  requests:
-                    cpu: "{{ litellm_cpu_request }}"
-                    memory: "{{ litellm_memory_request }}"
-                  limits:
-                    cpu: "{{ litellm_cpu_limit }}"
-                    memory: "{{ litellm_memory_limit }}"
-                readinessProbe:
-                  httpGet:
-                    path: /health/readiness
-                    port: "{{ litellm_port }}"
-                  initialDelaySeconds: 15
-                  periodSeconds: 10
-                  failureThreshold: 6
-                livenessProbe:
-                  httpGet:
-                    path: /health/liveliness
-                    port: "{{ litellm_port }}"
-                  initialDelaySeconds: 30
-                  periodSeconds: 30
-                  failureThreshold: 3
+                  - name: config-volume
+                    mountPath: /app/config.yaml
+                    subPath: config.yaml
+                args:
+                  - --config
+                  - /app/config.yaml
+                  - --port
+                  - "4000"
             volumes:
-              - name: config
+              - name: config-volume
                 configMap:
                   name: litellm-proxy-config
 
@@ -182,77 +211,118 @@
       metadata:
         name: litellm-proxy
         namespace: "{{ litellm_namespace }}"
+        labels:
+          app: litellm-proxy # Label for ServiceMonitor discovery
       spec:
-        type: ClusterIP
         selector:
           app: litellm-proxy
         ports:
-          - name: http
-            port: "{{ litellm_port }}"
-            targetPort: "{{ litellm_port }}"
+          - protocol: TCP
+            port: 4000
+            targetPort: 4000
+        type: ClusterIP
 
-- name: Expose LiteLLM proxy via HTTPRoute (litellm.cluster.home)
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: gateway.networking.k8s.io/v1
-      kind: HTTPRoute
-      metadata:
-        name: litellm-proxy
-        namespace: "{{ litellm_namespace }}"
-      spec:
-        parentRefs:
-          - name: cluster-gateway
-            namespace: gateway
-        hostnames:
-          - "litellm.cluster.home"
-        rules:
-          - matches:
-              - path:
-                  type: PathPrefix
-                  value: /
-            backendRefs:
-              - name: litellm-proxy
-                port: "{{ litellm_port }}"
-
-- name: Create NetworkPolicy for LiteLLM proxy (egress to OpenRouter only)
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: networking.k8s.io/v1
-      kind: NetworkPolicy
-      metadata:
-        name: litellm-proxy-netpol
-        namespace: "{{ litellm_namespace }}"
-      spec:
-        podSelector:
-          matchLabels:
-            app: litellm-proxy
-        policyTypes:
-          - Egress
-        egress:
-          - to: []
-            ports:
-              - port: 53
-                protocol: UDP
-              - port: 53
-                protocol: TCP
-          - to:
-              - ipBlock:
-                  cidr: 0.0.0.0/0
-                  except:
-                    - 10.0.0.0/8
-                    - 172.16.0.0/12
-                    - 192.168.0.0/16
-            ports:
-              - port: 443
-                protocol: TCP
-
-- name: Wait for LiteLLM proxy rollout
+- name: Check if monitoring namespace exists
   ansible.builtin.command:
-    cmd: kubectl rollout status deployment/litellm-proxy -n {{ litellm_namespace }} --timeout=180s
-  register: litellm_rollout
-  until: litellm_rollout.rc == 0
-  retries: 18
-  delay: 10
+    cmd: kubectl get namespace monitoring
+  register: litellm_monitoring_ns
   changed_when: false
+  failed_when: false
+
+- name: Create LiteLLM Grafana dashboard ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: litellm-ai-traffic-dashboard
+        namespace: monitoring
+        labels:
+          grafana_dashboard: "1"
+      data:
+        litellm-ai-traffic.json: |
+          {% raw %}
+          {
+            "annotations": { "list": [] },
+            "description": "LiteLLM AI traffic — requests, latency, tokens, spend per model. Models: openclaw-gemini=OpenClaw, hermes-qwen=Hermes, holmes-llama=Holmes, kagent-orchestrator=Kagent",
+            "editable": true,
+            "graphTooltip": 1,
+            "id": null,
+            "panels": [
+              {
+                "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+                "id": 1,
+                "targets": [
+                  { "expr": "sum by (requested_model) (rate(litellm_requests_metric_total[5m]))", "legendFormat": "{{requested_model}}", "refId": "A" }
+                ],
+                "title": "📊 Requests/s by Model (service)",
+                "type": "timeseries"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" } },
+                "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+                "id": 2,
+                "targets": [
+                  { "expr": "histogram_quantile(0.95, sum by (requested_model,le) (rate(litellm_request_total_latency_metric_bucket[5m])))", "legendFormat": "p95 {{requested_model}}", "refId": "A" },
+                  { "expr": "histogram_quantile(0.50, sum by (requested_model,le) (rate(litellm_request_total_latency_metric_bucket[5m])))", "legendFormat": "p50 {{requested_model}}", "refId": "B" }
+                ],
+                "title": "⏱ Latency p50/p95 by Model",
+                "type": "timeseries"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" } },
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+                "id": 3,
+                "targets": [
+                  { "expr": "sum by (requested_model) (rate(litellm_total_tokens_metric_total[5m]))", "legendFormat": "{{requested_model}}", "refId": "A" }
+                ],
+                "title": "🔢 Tokens/s by Model",
+                "type": "timeseries"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "currencyUSD", "decimals": 5 } },
+                "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+                "id": 4,
+                "options": { "reduceOptions": { "calcs": ["sum"] }, "orientation": "horizontal", "colorMode": "background" },
+                "targets": [
+                  { "expr": "sum by (requested_model) (litellm_spend_metric_total)", "legendFormat": "{{requested_model}}", "refId": "A" }
+                ],
+                "title": "💰 Total Spend by Model (USD)",
+                "type": "bargauge"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+                "id": 5,
+                "targets": [
+                  { "expr": "sum by (requested_model) (rate(litellm_requests_metric_total{status_code!~\"2..\"}[5m]))", "legendFormat": "err {{requested_model}}", "refId": "A" }
+                ],
+                "title": "❌ Error Rate by Model",
+                "type": "timeseries"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" } },
+                "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+                "id": 6,
+                "targets": [
+                  { "expr": "sum by (fallback_model) (rate(litellm_deployment_successful_fallbacks_total[5m]))", "legendFormat": "→ {{fallback_model}}", "refId": "A" }
+                ],
+                "title": "🔄 Fallback Activations",
+                "type": "timeseries"
+              }
+            ],
+            "refresh": "30s",
+            "schemaVersion": 38,
+            "tags": ["litellm", "ai", "llm", "openclaw", "hermes"]
+          }
+          {% endraw %}
+  when: litellm_monitoring_ns.rc == 0
+

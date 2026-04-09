@@ -246,6 +246,7 @@ ansible -i inventory/hosts.ini all -m shell -a "hostname; hostname -I | awk '{pr
   hermes-agent-image, kagent, kubernetes-mcp-server-image.
 - **Never commit before running the playbook and verifying it passes.** Write → deploy → fix → commit.
 - `k3s_token` in `roles/install-k3s/defaults/main.yml` is a placeholder — use Ansible Vault for production
+- **Built-in `metrics-server`**: K3s bundles and automatically deploys `metrics-server` in the `kube-system` namespace. **DO NOT** attempt to install `metrics-server` via Helm or Ansible, as it will cause APIService registration conflicts and fail liveness probes. Use `kubectl top nodes` out of the box.
 
 ---
 
@@ -313,6 +314,7 @@ NAS: LG N2R1 @ `192.168.178.102`, share `//192.168.178.102/service`, SMB1 only.
 | Hermes Agent | `ai` | `hermes.cluster.home` | ARM64 custom build via kaniko |
 | HolmesGPT | `ai` | `holmes.cluster.home` | SRE assistant |
 | kagent | `kagent` | `kagent.cluster.home` | AI agent platform + kmcp, multi-tenant |
+| **OpenClaw** | `openclaw` | `openclaw.cluster.home` | Personal AI gateway (Telegram + LiteLLM) |
 
 kagent uses `smb-nas-pg` StorageClass for bundled PostgreSQL.
 Built-in agents need `tolerations: [{operator: Exists}]` patched onto Agent CRDs after deploy.
@@ -368,7 +370,8 @@ ssh dalmine@192.168.178.85
 | `pihole` | wildcard DNS, Pi-hole 6 gotchas |
 | `monitoring` | Prometheus, Grafana, Tempo, Loki, Alloy |
 | `storage` | CSI SMB, StorageClasses, dependency pattern (all PVC-backed roles) |
-| `ai` | registry + LiteLLM + Hermes Agent |
+| `ai` | registry + LiteLLM + Hermes Agent + OpenClaw |
+| `openclaw` | Personal AI gateway, Telegram bot, modular RBAC, LiteLLM config |
 | `kagent` | AI agent platform, CRDs, RBAC, LiteLLM integration |
 | `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops |
 | `k8s-debug` | debug pods, network, nodes |

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openclaw-data
+  namespace: {{ openclaw_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ openclaw_storage_class }}
+  resources:
+    requests:
+      storage: {{ openclaw_storage_size }}
