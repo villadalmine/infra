@@ -118,16 +118,18 @@ spec:
             httpGet:
               path: /healthz
               port: {{ openclaw_gateway_port }}
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
             periodSeconds: 20
-            failureThreshold: 6
+            timeoutSeconds: 10
+            failureThreshold: 15
           readinessProbe:
             httpGet:
               path: /readyz
               port: {{ openclaw_gateway_port }}
-            initialDelaySeconds: 20
+            initialDelaySeconds: 30
             periodSeconds: 10
-            failureThreshold: 3
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             requests:
               cpu: {{ openclaw_cpu_request }}

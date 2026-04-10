@@ -319,6 +319,30 @@ stacks:
       - "Requires OPENROUTER_API_KEY in roles/install-litellm-proxy/defaults/secrets.yml"
       - "RK1 nodes (31GB) ideal for AI workloads — memory-bound, not compute-bound"
 
+  openclaw:
+    kind: behavioral
+    behavior: "Personal AI gateway — Telegram bot + LiteLLM routing with modular RBAC. Bot: @tito_es_tu_bot"
+    roles:
+      - install-openclaw
+    make: "make openclaw"
+    ram_mb: 512           # openclaw: ~256MB + init-config: transient
+    min_nodes: 1
+    min_cluster_ram_gb: 4
+    min_ram_gb_server: 4
+    requires: [networking]
+    what_you_get:
+      - "OpenClaw gateway — Anthropic-compatible LLM proxy with Telegram integration"
+      - "Telegram bot @tito_es_tu_bot — DM pairing required, routes to LiteLLM"
+      - "LiteLLM model routing — gpt-oss-120b:free (primary) + nemotron fallback + qwen-turbo"
+      - "Modular RBAC — readonly / operator / admin / cluster-admin levels"
+    notes:
+      - "Requires LiteLLM proxy deployed first (make ai or make ai-hermes-deploy)"
+      - "Requires secrets: openclaw_gateway_token, openclaw_telegram_bot_token in roles/install-openclaw/defaults/secrets.yml"
+      - "LiteLLM fix required: LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true (already in role)"
+      - "Models use openai/ prefix + api_base — NOT openrouter/ prefix (avoids double-prefix bug)"
+      - "Storage: smb-nas PVC for openclaw-data (state, logs)"
+      - "Node: srv-rk1-nvme-02 (nodeSelector — 32GB RAM RK1)"
+
   security:
     kind: behavioral
     behavior: "Container runtime security — policy enforcement, vulnerability scanning, zero-trust network policies"
