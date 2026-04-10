@@ -47,6 +47,18 @@ openclaw_model_primary: "litellm/gpt-4o"
 openclaw_model_fallback1: "openrouter/qwen/qwen3-coder:free"
 openclaw_model_fallback2: "openrouter/google/gemini-2.0-flash-exp:free"
 
+# ─── kubernetes-mcp sidecar ──────────────────────────────────────────────────
+# Sidecar container that exposes Kubernetes MCP at http://127.0.0.1:8080/mcp.
+# Same image used by hermes-agent-mcp. Uses the pod ServiceAccount token (no extra creds).
+openclaw_mcp_k8s_image: "registry.registry:5000/ai/kubernetes-mcp-server"
+openclaw_mcp_k8s_tag: "v0.0.60"
+
+# ─── Subagent endpoints (for NetworkPolicy + AGENTS.md) ──────────────────────
+openclaw_holmes_url: "http://holmesgpt-holmes.ai.svc.cluster.local"
+openclaw_kagent_url: "http://kagent-app.kagent.svc.cluster.local:8080"
+openclaw_hermes_url: "http://hermes-agent-mcp.ai.svc.cluster.local:7860"
+openclaw_prometheus_url: "http://prometheus-operated.monitoring.svc.cluster.local:9090"
+
 # ─── RBAC — Kubernetes permission level ──────────────────────────────────────
 # Controls what ClusterRole/RoleBinding the ServiceAccount gets.
 # Override per run: -e "openclaw_rbac_level=operator"

@@ -28,8 +28,21 @@ rules:
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes", "gateways"]
     verbs: ["get", "list", "watch"]
+  # Network analysis — read-only, never includes secrets
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["cilium.io"]
-    resources: ["ciliumloadbalancerippools", "ciliuml2announcementpolicies"]
+    resources:
+      - ciliumloadbalancerippools
+      - ciliuml2announcementpolicies
+      - ciliumnetworkpolicies
+      - ciliumclusterwidenetworkpolicies
+      - ciliumendpoints
+      - ciliumidentities
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["grpcroutes", "tcproutes", "tlsroutes"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
