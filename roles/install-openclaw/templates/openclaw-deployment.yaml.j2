@@ -22,6 +22,8 @@ spec:
     metadata:
       labels:
         app: openclaw
+      annotations:
+        openclaw-config/checksum: "{{ openclaw_model_primary | hash('sha1') }}-{{ openclaw_telegram_enabled | string | hash('sha1') }}"
     spec:
       serviceAccountName: openclaw
       # Cluster-specific: schedule on high-RAM RK1 node
@@ -35,42 +37,30 @@ spec:
         runAsGroup: 1000
         runAsNonRoot: true
         fsGroup: 1000
+      # Init container: ensure PVC-backed workspace has the canonical config file
+      # Copy operator/ConfigMap config into the writable PVC so the gateway finds
+      # a complete openclaw.json (some existing PVs contain a stale partial file).
       initContainers:
-        # Init: non-interactive first-run setup (creates openclaw.json, agent state)
-        - name: openclaw-init
-          image: {{ openclaw_image }}:{{ openclaw_version }}
-          imagePullPolicy: Always
-          # Run onboard non-interactively by piping a single 'y' to stdin
-          # Some upstream images do not support a --yes flag; use a shell pipeline
+        - name: init-config
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
             - |
-              # Remove any invalid or empty config before onboarding to ensure the
-              # onboarding command can run non-interactively. Some images lack a
-              # non-interactive flag, so we avoid prompts by deleting stale files.
-              rm -f /home/node/.openclaw/openclaw.json || true
-              printf 'y\n' | node dist/index.js onboard --mode local --no-install-daemon
-          env:
-            - name: HOME
-              value: /home/node
-            - name: OPENCLAW_CONFIG_DIR
-              value: /home/node/.openclaw
-            - name: OPENCLAW_WORKSPACE_DIR
-              value: /home/node/.openclaw/workspace
-            - name: OPENCLAW_GATEWAY_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: openclaw-secrets
-                  key: OPENCLAW_GATEWAY_TOKEN
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
+              set -eux
+              # Ensure destination dir exists
+              mkdir -p /home/node/.openclaw
+              # Replace any stale config on the PVC with the authoritative one from the ConfigMap
+              if [ -f /etc/openclaw/openclaw.json ]; then
+                cp /etc/openclaw/openclaw.json /home/node/.openclaw/openclaw.json
+                chown 1000:1000 /home/node/.openclaw/openclaw.json || true
+              fi
           volumeMounts:
             - name: openclaw-data
               mountPath: /home/node/.openclaw
+            - name: openclaw-config-json
+              mountPath: /etc/openclaw
             - name: tmp
               mountPath: /tmp
       containers:
@@ -87,7 +77,7 @@ spec:
             - name: HOME
               value: /home/node
             - name: OPENCLAW_CONFIG_DIR
-              value: /home/node/.openclaw
+              value: /etc/openclaw
             - name: OPENCLAW_WORKSPACE_DIR
               value: /home/node/.openclaw/workspace
             - name: OPENCLAW_GATEWAY_TOKEN
@@ -154,10 +144,10 @@ spec:
             - name: openclaw-data
               mountPath: /home/node/.openclaw
             - name: openclaw-config-json
-              mountPath: /home/node/.openclaw/openclaw.json
+              mountPath: /etc/openclaw/openclaw.json
               subPath: openclaw.json
             - name: openclaw-agents-md
-              mountPath: /home/node/.openclaw/AGENTS.md
+              mountPath: /etc/openclaw/AGENTS.md
               subPath: AGENTS.md
             - name: tmp
               mountPath: /tmp

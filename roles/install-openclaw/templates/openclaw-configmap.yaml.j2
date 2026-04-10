@@ -14,6 +14,18 @@ data:
           "mode": "{{ openclaw_gateway_auth_mode }}"
         }
       },
+      "models": {
+        "providers": {
+          "litellm": {
+            "baseUrl": "{{ openclaw_litellm_url }}",
+            "apiKey": "{{ openclaw_litellm_master_key }}",
+            "models": [
+              { "id": "gpt-4o", "name": "GPT-4o (via LiteLLM)" },
+              { "id": "gpt-4o-mini", "name": "GPT-4o Mini (via LiteLLM)" }
+            ]
+          }
+        }
+      },
       "agents": {
         "defaults": {
           "sandbox": {
