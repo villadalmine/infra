@@ -49,6 +49,48 @@
     kps_deployed: false
   when: kps_helm_list.stdout | default('') | length == 0
 
+- name: Build AlertManager config (base — Watchdog silenced)
+  ansible.builtin.set_fact:
+    kps_alertmanager_config:
+      global:
+        resolve_timeout: 5m
+      route:
+        group_by: ["namespace", "alertname"]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h
+        receiver: "null"
+        routes:
+          - matchers:
+              - alertname = "Watchdog"
+            receiver: "null"
+      receivers:
+        - name: "null"
+
+- name: Merge Telegram receiver into AlertManager config
+  ansible.builtin.set_fact:
+    kps_alertmanager_config: >-
+      {{
+        kps_alertmanager_config | combine({
+          'route': kps_alertmanager_config.route | combine({
+            'routes': kps_alertmanager_config.route.routes + [{
+              'matchers': ['severity =~ "critical|warning"'],
+              'receiver': 'telegram-openclaw'
+            }]
+          }),
+          'receivers': kps_alertmanager_config.receivers + [{
+            'name': 'telegram-openclaw',
+            'telegram_configs': [{
+              'bot_token': kube_prometheus_stack_alertmanager_telegram_token,
+              'chat_id': kube_prometheus_stack_alertmanager_telegram_chat_id | int,
+              'parse_mode': 'HTML',
+              'send_resolved': true
+            }]
+          }]
+        }, recursive=true)
+      }}
+  when: kube_prometheus_stack_alertmanager_telegram_enabled | bool
+
 - name: Install or upgrade kube-prometheus-stack
   kubernetes.core.helm:
     name: kube-prometheus-stack
@@ -119,44 +161,8 @@
       # ── AlertManager ─────────────────────────────────────────────────────────
       alertmanager:
         alertmanagerSpec:
-          # Merge custom receivers with the chart default (which handles Watchdog silencing)
           useExistingSecret: false
-        config:
-          global:
-            resolve_timeout: 5m
-          route:
-            group_by: ["namespace", "alertname"]
-            group_wait: 30s
-            group_interval: 5m
-            repeat_interval: 4h
-            receiver: "null"
-            routes:
-              - matchers:
-                  - alertname = "Watchdog"
-                receiver: "null"
-{% if kube_prometheus_stack_alertmanager_telegram_enabled %}
-              - matchers:
-                  - severity =~ "critical|warning"
-                receiver: "telegram-openclaw"
-{% endif %}
-          receivers:
-            - name: "null"
-{% if kube_prometheus_stack_alertmanager_telegram_enabled %}
-            - name: "telegram-openclaw"
-              telegram_configs:
-                - bot_token: "{{ kube_prometheus_stack_alertmanager_telegram_token }}"
-                  chat_id: {{ kube_prometheus_stack_alertmanager_telegram_chat_id }}
-                  parse_mode: "HTML"
-                  message: |
-                    🚨 <b>{{ "{{" }} .GroupLabels.alertname {{ "}}" }}</b> [{{ "{{" }} .Status | toUpper {{ "}}" }}]
-                    {{ "{{" }} range .Alerts {{ "}}" }}
-                    • <b>Namespace:</b> {{ "{{" }} .Labels.namespace {{ "}}" }}{{ "{{" }} if .Labels.pod {{ "}}" }} / {{ "{{" }} .Labels.pod {{ "}}" }}{{ "{{" }} end {{ "}}" }}
-                    • <b>Severidad:</b> {{ "{{" }} .Labels.severity {{ "}}" }}
-                    • <b>Mensaje:</b> {{ "{{" }} .Annotations.summary {{ "}}" }}
-                    {{ "{{" }} end {{ "}}" }}
-                    Investiga con: <code>pregunta al agente sobre este alert</code>
-                  send_resolved: true
-{% endif %}
+        config: "{{ kps_alertmanager_config }}"
 - name: Wait for Grafana rollout
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/kube-prometheus-stack-grafana -n {{ kube_prometheus_stack_namespace }} --timeout=180s
