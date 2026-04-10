@@ -1,424 +1,373 @@
 ---
 name: openclaw
 description: >
-  OpenClaw personal AI gateway deployed on K8s. Multi-channel (Telegram first),
-  backed by the shared LiteLLM proxy (Gemini-free → qwen-free → qwen-free2 chain).
-  Modular Kubernetes RBAC with 4 permission levels, all Ansible-controlled.
-  No Helm chart exists — upstream uses Kustomize; this role uses Jinja2 templates.
+  OpenClaw personal AI gateway — orquestador principal que habla con Holmes, Kagent y Hermes
+  como subagentes. Todo el tráfico LLM pasa por LiteLLM (nunca directo a OpenRouter).
+  RBAC readonly sin acceso a Secrets. kubernetes-mcp sidecar para visibilidad del cluster.
 license: MIT
 compatibility:
   - opencode
+  - claude-code
 metadata:
   author: dotfiles
-  tags: [kubernetes, ai, openclaw, telegram, litellm, openrouter, rbac, arm64]
+  tags: [kubernetes, ai, openclaw, telegram, litellm, openrouter, rbac, arm64, orchestrator]
 ---
 
 # OpenClaw Skill
 
-## What is OpenClaw?
+## ¿Qué es OpenClaw?
 
-`openclaw/openclaw` (~352k ⭐, TypeScript) — personal AI assistant gateway.
-Runs a WebSocket control plane (port 18789) that connects to messaging channels
-and routes to any LLM backend. Official Docker image is multi-arch (arm64 ✅).
+`openclaw/openclaw` — gateway de IA personal (TypeScript). Servidor en puerto 18789,
+conecta canales (Telegram) y rutea a cualquier backend LLM. Imagen oficial multi-arch (arm64 ✅).
 
-- Website: https://openclaw.ai
-- Docs: https://docs.openclaw.ai
-- K8s docs: https://docs.openclaw.ai/install/kubernetes
-
-> **No Helm chart exists.** Upstream uses Kustomize (`scripts/k8s/`).
-> This role wraps Jinja2 templates directly — consistent with every other role in this repo.
+- Docs: https://docs.openclaw.ai / K8s: https://docs.openclaw.ai/install/kubernetes
+- **Sin Helm chart.** Upstream usa Kustomize. Este rol usa Jinja2, consistente con el repo.
 
 ---
 
-## Stack
-
-| Component | Image | Namespace | URL |
-|-----------|-------|-----------|-----|
-| OpenClaw Gateway | `ghcr.io/openclaw/openclaw:latest` | `openclaw` | `openclaw.cluster.home` |
-| LiteLLM proxy | shared — `ai` namespace | `ai` | internal only |
-
----
-
-## Architecture
+## Arquitectura (estado actual)
 
 ```
-Telegram (bot)
-    │ polling
-    ▼
-┌────────────────────────────────────────┐
-│  Namespace: openclaw                   │
-│                                        │
-│  Deployment/openclaw                   │
-│  ├─ initContainer: openclaw-init       │
-│  └─ container: openclaw-gateway :18789 │
-│     ├─ PVC: openclaw-data (10Gi smb)   │
-│     ├─ ConfigMap: openclaw-config      │
-│     │   ├─ openclaw.json               │
-│     │   └─ AGENTS.md (system prompt)   │
-│     └─ Secret: openclaw-secrets        │
-│         ├─ OPENCLAW_GATEWAY_TOKEN      │
-│         ├─ TELEGRAM_BOT_TOKEN          │
-│         └─ TELEGRAM_ALLOWED_USERS      │
-│                                        │
-│  Service/openclaw → ClusterIP :18789   │
-│  HTTPRoute → openclaw.cluster.home     │
-│  NetworkPolicy: egress-controlled      │
-│  ServiceAccount: openclaw              │
-│  ClusterRole: openclaw-<level>         │
-└────────────────────────────────────────┘
-    │ OPENAI_API_BASE
-    ▼
-┌─────────────────────────────────┐
-│  Namespace: ai                  │
-│  LiteLLM proxy :4000            │
-│  model chain:                   │
-│    gemini-free → gemini 2.5 pro │
-│    free        → qwen3-coder    │
-│    free2       → gemini 2.0     │
-└──────────────┬──────────────────┘
-               │ HTTPS:443
-               ▼
-          OpenRouter API
+Usuario (Telegram)
+      │
+      ▼
+┌─────────────────────────────────────────────────┐
+│  Namespace: openclaw                            │
+│                                                 │
+│  Deployment/openclaw                            │
+│  ├─ initContainer: init-config (busybox)        │
+│  │   copia ConfigMap → PVC en cada restart      │
+│  ├─ container: openclaw-gateway :18789          │
+│  │   OPENAI_API_BASE → litellm-proxy.ai:4000    │
+│  │   OPENAI_API_KEY  → sk-hermes-internal       │
+│  └─ container: kubernetes-mcp (sidecar :8080)   │
+│      kubernetes-mcp-server v0.0.60              │
+│      expone /mcp vía HTTP en localhost           │
+│                                                 │
+│  PVC: openclaw-data (10Gi smb-nas)              │
+│  ConfigMap: openclaw-config                     │
+│    ├─ openclaw.json  (gateway + model + mcp)    │
+│    └─ AGENTS.md      (system prompt completo)   │
+│  Secret: openclaw-secrets                       │
+│    ├─ OPENCLAW_GATEWAY_TOKEN                    │
+│    ├─ TELEGRAM_BOT_TOKEN (token propio)         │
+│    └─ TELEGRAM_ALLOWED_USERS                    │
+│                                                 │
+│  Service/openclaw  → ClusterIP :18789           │
+│  HTTPRoute         → openclaw.cluster.home      │
+│  NetworkPolicy     → egress controlado          │
+│  ServiceAccount    → openclaw (readonly+net)    │
+└──────┬──────────────────────┬───────────────────┘
+       │ OPENAI_API_BASE       │ localhost:8080/mcp
+       ▼                       ▼
+┌─────────────────┐   ┌──────────────────────┐
+│ ai/litellm-proxy│   │ kubernetes API (RBAC) │
+│ gpt-4o alias    │   │ readonly, sin Secrets │
+│ → gpt-oss-120b  │   └──────────────────────┘
+└────────┬────────┘
+         │ OPENCLAW_OPENROUTER_API_KEY (nunca expuesta al pod)
+         ▼
+    OpenRouter API
 ```
 
 ---
 
-## LiteLLM — Shared vs Dedicated
+## Routing LLM — cadena completa
 
-**Decision: use the shared LiteLLM proxy in namespace `ai`.**
+| Capa | Valor |
+|------|-------|
+| Config (`openclaw_model_primary`) | `litellm/gpt-4o` |
+| OpenClaw lo envía a LiteLLM como | `openai/gpt-4o` |
+| LiteLLM alias `openai/gpt-4o` | `openai/gpt-oss-120b:free` + `api_base: openrouter.ai` |
+| Fallback 1 | `openai/nvidia/nemotron-3-super-120b-a12b:free` |
+| Fallback 2 | `openai/qwen/qwen-turbo` (alias `openclaw-cheap`) |
+| Key en OpenRouter | `OPENCLAW_OPENROUTER_API_KEY` (solo en `ai/litellm-secrets`) |
 
-Reasons:
-- Already deployed, already has `OPENROUTER_API_KEY`
-- Prometheus metrics already scraped → visible in Grafana
-- Single place to add/change models for all agents
-- No operational overhead of a second proxy
+**OpenClaw nunca ve la API key de OpenRouter.** Solo conoce `sk-hermes-internal`.
 
-OpenClaw connects via `OPENAI_API_BASE=http://litellm-proxy.ai.svc.cluster.local:4000`
-with the shared master key `sk-hermes-internal`.
+### Bug fix: `openai/` prefix + `api_base` (no `openrouter/`)
 
-To add OpenClaw-specific virtual models to LiteLLM, edit
-`roles/install-litellm-proxy/tasks/main.yml` and add entries like:
+LiteLLM 1.82.x tiene un bug en `/v1/messages` (Anthropic passthrough): emite
+`message_start` dos veces → `Unexpected event order` en el stream parser de OpenClaw.
+
+**Fix**: usar `model: openai/<modelo>` + `api_base: https://openrouter.ai/api/v1`
+en vez de `model: openrouter/<modelo>`. Fuerza `/v1/chat/completions` (OpenAI-compat).
+
+Env var en el Deployment de LiteLLM:
 ```yaml
-- model_name: gemini-free
-  litellm_params:
-    model: openrouter/google/gemini-2.5-pro-exp-03-25:free
-- model_name: qwen-free
-  litellm_params:
-    model: openrouter/qwen/qwen3-coder:free
+LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES: "true"
 ```
-Then run `make ai-hermes-deploy` to reload LiteLLM.
+
+### Prefijo `openai/` automático
+
+OpenClaw añade `openai/` a cualquier modelo sin provider prefix. Si config tiene
+`gpt-5.4`, lo envía como `openai/gpt-5.4`. LiteLLM necesita alias con ese nombre exacto.
+Usar `litellm/gpt-4o` en config evita el warning `[model-selection] Falling back to openai/...`.
 
 ---
 
-## Modular RBAC
+## kubernetes-mcp sidecar
 
-### Levels
+Sidecar `kubernetes-mcp-server:v0.0.60` en el mismo pod. Mismo patrón que Hermes Agent.
 
-| Level | What it grants | Use case |
-|-------|---------------|----------|
-| `readonly` | get/list/watch — pods, svc, nodes, events, deploys | Default. Safe inspection |
-| `operator` | + exec/logs + create/patch/delete jobs & deployments | Active cluster management |
-| `admin` | Namespaced admin (openclaw ns) + cluster view | Full control in own ns |
-| `cluster-admin` | ClusterRoleBinding cluster-admin | Unrestricted — explicit opt-in |
+- Expone MCP en `http://127.0.0.1:8080/mcp`
+- Genera kubeconfig desde el ServiceAccount token al arrancar
+- RBAC: readonly sin Secrets (ver sección RBAC)
 
-### Change permission level
+En `openclaw.json`:
+```json
+"mcpServers": {
+  "kubernetes": {
+    "url": "http://127.0.0.1:8080/mcp",
+    "timeout": 120
+  }
+}
+```
 
+---
+
+## RBAC — readonly extendido (sin Secrets)
+
+**Regla de oro: ningún nivel permite leer `secrets` excepto `cluster-admin`.**
+
+### Nivel actual: `readonly`
+
+Recursos con `get/list/watch`:
+- Core: pods, pods/log, services, endpoints, namespaces, nodes, events, configmaps, PVCs, PVs
+- Apps: deployments, replicasets, statefulsets, daemonsets
+- Batch: jobs, cronjobs
+- Network: networkpolicies (networking.k8s.io)
+- Cilium: networkpolicies, clusterwidenetworkpolicies, endpoints, identities, LBIPPools, L2Policies
+- Gateway: httproutes, gateways, grpcroutes
+
+### Cambiar nivel
 ```bash
-# Drop to read-only (safest)
-make openclaw-rbac LEVEL=readonly
-
-# Promote to operator for active management
-make openclaw-rbac LEVEL=operator
-
-# Full cluster access (temporary — drop back when done)
-make openclaw-rbac LEVEL=cluster-admin
+# Operator (añade exec/logs + create/patch deployments/jobs)
 ansible-playbook playbooks/bootstrap.yml --tags openclaw \
-  -e "openclaw_rbac_level=readonly"
+  -e "openclaw_rbac_level=operator"
+
+# Volver a readonly
+ansible-playbook playbooks/bootstrap.yml --tags openclaw
 ```
 
-Extending the RBAC: edit `roles/install-openclaw/templates/openclaw-rbac.yaml.j2`.
-Each level is a separate `{% if %}` block — add new verbs/resources as needed.
-The `operator` block is the most commonly extended.
+### Verificar
+```bash
+kubectl auth can-i get secrets \
+  --as=system:serviceaccount:openclaw:openclaw -n ai
+# → no
+
+kubectl auth can-i list networkpolicies \
+  --as=system:serviceaccount:openclaw:openclaw
+# → yes
+```
 
 ---
 
-## Telegram Integration
+## NetworkPolicy — egress
 
-1. Create bot via `@BotFather` → `/newbot` → copy token
-2. Find your Telegram user ID via `@myidbot`
-3. Add to `roles/install-openclaw/defaults/secrets.yml`:
-   ```yaml
-   openclaw_telegram_token: "<your-bot-token>"
-   openclaw_telegram_allowed_users: "<your-user-id>"
-   ```
-4. `make openclaw`
+| Destino | Puerto | Propósito |
+|---------|--------|-----------|
+| DNS | 53 UDP/TCP | Resolución de nombres |
+| `ai/litellm-proxy` | 4000 TCP | Todo el tráfico LLM |
+| `ai/holmesgpt-holmes` | 80 TCP | Subagente Holmes |
+| `kagent/*` | 8080 TCP | Subagente Kagent |
+| `ai/hermes-agent-mcp` | 7860 TCP | Subagente Hermes (cuando vuelva) |
+| `monitoring/*` | 9090 TCP | Prometheus queries |
+| External HTTPS | 443 TCP | Telegram API |
+| K8s API server | 6443 TCP | RBAC / kubectl via SA |
+| `192.168.178.0/24` | 80,443,8080,554 TCP | Red home (análisis read-only) |
 
-**Security model:**
-- `dmPolicy: "pairing"` — unknown users get a pairing code, bot ignores them until approved
-- `openclaw_telegram_allowed_users` — hardcoded allow-list (your user ID)
-- Both controls are active simultaneously for defense in depth
-
-**Note:** The bot token is currently shared with Hermes Agent. Both bots use the
-same Telegram account. You can create a separate bot anytime via `@BotFather`.
+NetworkPolicy también tiene **ingress** desde `monitoring` en port 18789 para
+recibir webhooks de AlertManager.
 
 ---
 
-## Installation
+## Telegram
 
-### Prerequisites
+### Token propio (separado de Hermes)
+OpenClaw debe tener su propio bot token. Solo un proceso puede hacer polling por token.
+Hermes está a 0 réplicas mientras OpenClaw usa el token compartido temporal.
+**Próximo paso:** crear bot nuevo en `@BotFather` y actualizar `secrets.yml`.
+
+### health-monitor 120s
+Si Telegram no conecta en 120s, el health-monitor mata el proceso → CrashLoopBackOff.
+Para debug sin Telegram: `openclaw_telegram_enabled: false` en defaults antes del deploy.
+
+---
+
+## Init container (versión actual — busybox copy)
+
+```yaml
+initContainers:
+  - name: init-config
+    image: busybox:1.36
+    command: [sh, -c, |
+      mkdir -p /home/node/.openclaw
+      cp /etc/openclaw/openclaw.json /home/node/.openclaw/openclaw.json
+      chown 1000:1000 /home/node/.openclaw/openclaw.json || true
+    ]
+```
+
+**No usar** el patrón anterior con `onboard` — regeneraba el config ignorando el ConfigMap.
+
+---
+
+## Gotchas conocidos
+
+| Problema | Causa | Fix |
+|----------|-------|-----|
+| CrashLoop a los 120s exactos | Telegram no conecta → health-monitor mata el proceso | Token válido o `telegram_enabled: false` |
+| `Unknown model: openai/X` | LiteLLM no tiene alias `openai/X` | Añadir entry con ese nombre en litellm tasks |
+| ConfigMap no recarga en caliente | subPath mount no propaga updates | Rollout restart (el checksum annotation lo fuerza) |
+| `ai-hermes-deploy` levanta Hermes | Tag cubre litellm + hermes | Usar `--skip-tags ai-hermes-agent` |
+| 429 en todos los modelos :free | Rate limit OpenRouter por key | Fallback a nemotron (más estable) |
+| `message_start` error en stream | Bug LiteLLM `/v1/messages` doble emit | `openai/` prefix + `api_base` + env var |
+
+---
+
+## Deploy
 
 ```bash
-# Secrets file must exist
-ls roles/install-openclaw/defaults/secrets.yml
-# If missing:
+# Prerequisitos
 cp roles/install-openclaw/defaults/secrets.yml.example \
    roles/install-openclaw/defaults/secrets.yml
-vim roles/install-openclaw/defaults/secrets.yml
+vim roles/install-openclaw/defaults/secrets.yml  # token Telegram + gateway token
 
-# Generate gateway token
-openssl rand -hex 32
-```
-
-### Deploy
-
-```bash
+# Deploy
 make openclaw
-```
 
-### Override defaults
-
-```bash
-# Different node
-ansible-playbook playbooks/bootstrap.yml --tags openclaw \
-  -e "openclaw_node_hostname=srv-rk1-nvme-03"
-
-# Local storage (no NAS)
-ansible-playbook playbooks/bootstrap.yml --tags openclaw \
-  -e "openclaw_storage_class=local-path"
-
-# Different RBAC level
-make openclaw-rbac LEVEL=operator
+# Solo litellm sin tocar Hermes
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini \
+  --tags ai-hermes-deploy --skip-tags ai-hermes-agent
 ```
 
 ---
 
-## Access
+## Verificación post-deploy
 
 ```bash
-# Web UI (Control UI + WebChat)
+# 1. Pod tiene 2 containers (gateway + kubernetes-mcp sidecar)
+kubectl get pod -n openclaw -l app=openclaw \
+  -o jsonpath='{.items[0].spec.containers[*].name}'
+# → openclaw-gateway kubernetes-mcp
+
+# 2. No hay OPENROUTER_API_KEY expuesta al pod
+kubectl exec -n openclaw <pod> -- env | grep -E "OPENAI|OPENROUTER"
+# → OPENAI_API_BASE=http://litellm-proxy... OPENAI_API_KEY=sk-hermes-internal
+
+# 3. LiteLLM responde para openclaw
+kubectl exec -n openclaw <pod> -- sh -c \
+  'curl -s -X POST http://litellm-proxy.ai.svc.cluster.local:4000/v1/chat/completions \
+   -H "Authorization: Bearer sk-hermes-internal" \
+   -H "Content-Type: application/json" \
+   -d "{\"model\":\"openai/gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":5}" \
+   | grep -o "\"model\":\"[^\"]*\""'
+# → "model":"nvidia/..." o "model":"gpt-oss-..."
+
+# 4. kubernetes-mcp sidecar responde
+kubectl exec -n openclaw <pod> -c kubernetes-mcp -- \
+  wget -qO- http://localhost:8080/mcp | head -c 100
+
+# 5. RBAC: NO puede leer secrets
+kubectl auth can-i get secrets \
+  --as=system:serviceaccount:openclaw:openclaw -n ai
+# → no
+```
+
+---
+
+## Acceso
+
+```bash
+# Web UI
 https://openclaw.cluster.home
 
-# Port-forward (no DNS needed)
-kubectl port-forward -n openclaw svc/openclaw 18789:18789
-open http://localhost:18789
-
-# Get gateway token
+# Gateway token
 kubectl get secret openclaw-secrets -n openclaw \
   -o jsonpath='{.data.OPENCLAW_GATEWAY_TOKEN}' | base64 -d
 
-# Pod status
-kubectl get pods -n openclaw
-kubectl logs -n openclaw -l app=openclaw --tail=50
-
-# Health check
-curl http://localhost:18789/healthz
-curl http://localhost:18789/readyz
+# Port-forward
+kubectl port-forward -n openclaw svc/openclaw 18789:18789
 ```
 
 ---
 
-## Grafana — Tracking LLM Traffic
-
-All OpenClaw requests go through LiteLLM → Prometheus → Grafana.
+## Grafana
 
 ```bash
-# See requests per model in Grafana:
-# Dashboard: LiteLLM → "Requests by model"
-# Filter: model=~"gemini-free|free|free2"
+# Tráfico OpenClaw en LiteLLM dashboard
+# Dashboard: "LiteLLM AI Traffic" → filter model=~"openai/gpt-4o|openclaw-.*"
 
-# Direct LiteLLM usage check
 kubectl port-forward -n ai svc/litellm-proxy 4000:4000 &
 curl http://localhost:4000/spend/logs \
-  -H "Authorization: Bearer sk-hermes-internal" | jq '.[-10:]'
+  -H "Authorization: Bearer sk-hermes-internal" | jq '.[-5:]'
 ```
 
 ---
 
-## Troubleshooting
+## Arquitectura multi-agente (roadmap activo)
 
-### Pod stuck in Init
+OpenClaw es el orquestador. Los otros bots son sus minions internos:
 
-```bash
-kubectl describe pod -n openclaw -l app=openclaw
-kubectl logs -n openclaw -l app=openclaw -c openclaw-init
 ```
-Usually caused by missing/wrong `OPENCLAW_GATEWAY_TOKEN` or wrong image tag.
-
-### Telegram not responding
-
-```bash
-kubectl logs -n openclaw -l app=openclaw --tail=100 | grep -i telegram
-```
-Check: token set in secret, user ID in allowed list, bot started via @BotFather.
-
-### LiteLLM errors / model not found
-
-```bash
-kubectl port-forward -n ai svc/litellm-proxy 4000:4000 &
-curl http://localhost:4000/v1/models \
-  -H "Authorization: Bearer sk-hermes-internal" | jq '.data[].id'
-```
-If `gemini-free` not listed → add it to `roles/install-litellm-proxy/tasks/main.yml`
-and run `make ai-hermes-deploy`.
-
-### NetworkPolicy blocking egress
-
-```bash
-kubectl get networkpolicy -n openclaw
-# Temporarily disable for debugging:
-kubectl delete networkpolicy openclaw-egress -n openclaw
+Usuario (Telegram)
+    │
+    ▼
+OpenClaw (orquestador)
+    ├── kubernetes MCP (sidecar)  → cluster inspection
+    ├── Holmes  MCP               → investiga alertas/incidentes
+    ├── Kagent  MCP               → ejecuta agentes K8s
+    └── Hermes  MCP (offline)     → código y ops (cuando tenga token propio)
 ```
 
----
-
-## Storage Dependency
-
-Follows the project-wide pattern (`install-cifs-nas` idempotent guard):
-
+### AlertManager → OpenClaw (pendiente)
 ```yaml
-# In tasks/main.yml:
-- include_role:
-    name: "{{ openclaw_storage_role }}"
-  when: openclaw_storage_class != 'local-path' and openclaw_storage_role is defined
+# kube-prometheus-stack values
+alertmanager:
+  config:
+    receivers:
+      - name: openclaw-webhook
+        webhook_configs:
+          - url: "http://openclaw.openclaw.svc.cluster.local:18789/webhook/alertmanager"
+            send_resolved: true
 ```
+
+Flujo: AlertManager → OpenClaw → llama a Holmes (investiga) → resume → Telegram.
+
+### Red home y análisis de seguridad (read-only)
+NetworkPolicy permite egress a `192.168.178.0/24`. OpenClaw puede:
+- Consultar dispositivos (Hue, cámaras ONVIF, NAS)
+- Analizar tráfico vía Prometheus/Cilium metrics
+- **No puede escribir ni actuar** en esta fase (todo read-only)
+
+---
+
+## Storage
 
 | Var | Default | Override |
 |-----|---------|----------|
 | `openclaw_storage_class` | `smb-nas` | `local-path` |
-| `openclaw_storage_role` | `install-cifs-nas` | — |
 | `openclaw_storage_size` | `10Gi` | any |
-
-See `skills/storage/SKILL.md` for full pattern documentation.
-
----
-
-## Future: kgateway / solo.io
-
-When you want to route through [kgateway](https://kgateway.dev/) (solo.io) instead of
-or in addition to LiteLLM, change:
-
-```yaml
-# roles/install-openclaw/defaults/main.yml
-openclaw_llm_backend: "openrouter"     # or "kgateway"
-openclaw_litellm_url: "http://kgateway.kgateway.svc.cluster.local:8080"
-```
-
-No other changes needed — the Deployment template conditionally sets `OPENAI_API_BASE`
-based on `openclaw_llm_backend`.
 
 ---
 
 ## Repo Paths
 
-- Role: `roles/install-openclaw/`
-- Secrets: `roles/install-openclaw/defaults/secrets.yml` (gitignored)
-- Example: `roles/install-openclaw/defaults/secrets.yml.example`
-- Playbook tag: `openclaw`
-- Makefile: `make openclaw`, `make openclaw-rbac LEVEL=<level>`
+```
+roles/install-openclaw/
+├── defaults/main.yml              # vars (modelo, RBAC, Telegram, LiteLLM, MCP)
+├── defaults/secrets.yml           # gitignored
+├── defaults/secrets.yml.example
+└── templates/
+    ├── openclaw-deployment.yaml.j2  # Deployment + init + kubernetes-mcp sidecar
+    ├── openclaw-configmap.yaml.j2   # openclaw.json (mcpServers) + AGENTS.md
+    ├── openclaw-rbac.yaml.j2        # SA + ClusterRole (readonly+net, sin Secrets)
+    ├── openclaw-network.yaml.j2     # Service + HTTPRoute + NetworkPolicy expandida
+    ├── openclaw-pvc.yaml.j2
+    └── openclaw-secret.yaml.j2
 
----
-
-## Plan: Expandir capacidades autónomas de OpenClaw
-
-### Objetivo
-
-Convertir OpenClaw en un agente más autónomo capaz de investigar, interactuar
-y manipular dispositivos de la red doméstica (Hue, cámaras, timbres, etc.),
-y ejecutar tareas tipo hacking ético controlado desde Telegram.
-
----
-
-### Fase 1: Conocimiento de dispositivos (TOOLS.md)
-
-Crear `TOOLS.md` en la raíz del repo con:
-- IPs, credenciales y tokens de dispositivos de la red (Philips Hue, cámaras, NAS, etc.)
-- Rangos de red, protocolos soportados (REST, MQTT, ONVIF, etc.)
-- Ejemplos de comandos cURL/scripts para cada dispositivo
-
-**Formato sugerido:**
-```markdown
-## Philips Hue
-- Bridge IP: 192.168.178.XXX
-- API token: <en secrets.yml o vault>
-- Ejemplo: curl http://<IP>/api/<token>/lights
-
-## Cámara ONVIF
-- IP: 192.168.178.XXX
-- RTSP: rtsp://<IP>:554/stream
-
-## Timbre / NVR
-- IP: 192.168.178.XXX
-- Protocolo: HTTP REST
+roles/install-litellm-proxy/tasks/main.yml  # aliases openai/gpt-4o, openclaw-*
+skills/openclaw/SKILL.md                    # este archivo
 ```
 
-Los secretos reales van en `roles/install-openclaw/defaults/secrets.yml` (gitignored).
-`TOOLS.md` documenta solo estructura y ejemplos sin credenciales reales.
-
----
-
-### Fase 2: Módulos / tools de integración
-
-Añadir al container de OpenClaw (o como scripts en `/data/tools/`) las siguientes capacidades,
-cada una expuesta como "tool callable" por el LLM via function calling:
-
-| Capacidad | Implementación sugerida |
-|-----------|------------------------|
-| Control Philips Hue | Script Python `hue.py` → `/api/<token>/lights` REST |
-| Scan de red | `nmap` / `python-nmap` — Job K8s o exec en pod |
-| Cámaras ONVIF | `onvif-zeep` lib — discovery + snapshot |
-| SSH a nodos | SSH key en Secret → `paramiko` / `fabric` |
-| Consultar Prometheus | `GET http://prometheus.monitoring.svc:9090/api/v1/query` |
-| Leer logs Loki | `GET http://loki-gateway.monitoring.svc/loki/api/v1/query` |
-| Interactuar con K8s | `kubernetes` Python client + SA con RBAC limitado |
-
----
-
-### Fase 3: Inyección de conocimiento en runtime
-
-Para que OpenClaw "sepa" cosas sin redeployar:
-
-1. **ConfigMap extendido**: montar `/data/knowledge/` con archivos Markdown de contexto
-   (TOOLS.md, runbooks, inventario de red). Ansible gestiona el contenido.
-2. **Telegram como canal de aprendizaje**: `!learn <topic>: <content>` → OpenClaw lo guarda
-   en su base de datos interna (SQLite en PVC).
-3. **Init-container de knowledge**: descarga/actualiza `TOOLS.md` y archivos de contexto
-   desde el repo antes de arrancar.
-
----
-
-### Fase 4: Autonomía y workflows
-
-- **CronJob K8s**: dispara OpenClaw con prompt periódico
-  ("revisa si todos los nodos están sanos y notifícame por Telegram")
-- **Webhook AlertManager → OpenClaw**: recibe alertas, las procesa/resume/notifica via Telegram
-- **Auto-investigación**: al recibir alerta, OpenClaw consulta Prometheus + Loki + kubectl
-  y construye diagnóstico automático
-
----
-
-### Fase 5: Seguridad / RBAC
-
-- SA dedicado con RBAC mínimo (solo `get`, `list`, `watch` en namespaces específicos)
-- Secrets de dispositivos en Kubernetes Secret (no en PVC ni ConfigMap)
-- Limitar tools por usuario Telegram via `dmPolicy` + roles internos de OpenClaw
-- Auditoría: loggear cada tool call con usuario, timestamp y parámetros
-
----
-
-### Próximos pasos inmediatos
-
-1. Crear `TOOLS.md` en el repo con estructura de dispositivos (sin secretos reales)
-2. Añadir `TOOLS.md` al ConfigMap de OpenClaw para que el container lo lea como contexto
-3. Implementar primer módulo: control Philips Hue via HTTP REST
-4. Exponer módulo como tool callable desde el agente
-5. Probar end-to-end desde Telegram: "enciende la luz del salon"
+Makefile: `make openclaw` | `make openclaw-rbac LEVEL=<level>`

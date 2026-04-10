@@ -32,6 +32,9 @@ spec:
       # Required: project-wide toleration for transient NoExecute taints
       tolerations:
         - operator: Exists
+      # kubernetes-mcp sidecar shares the pod network namespace so OpenClaw
+      # can reach it at http://127.0.0.1:8080/mcp without any Service.
+      # Pattern mirrors hermes-agent-mcp (roles/install-hermes-agent).
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
@@ -153,6 +156,59 @@ spec:
               subPath: AGENTS.md
             - name: tmp
               mountPath: /tmp
+        # ── kubernetes-mcp sidecar ────────────────────────────────────────────
+        # Exposes Kubernetes MCP at http://127.0.0.1:8080/mcp (localhost only).
+        # Uses the pod's ServiceAccount token — no extra credentials needed.
+        - name: kubernetes-mcp
+          image: {{ openclaw_mcp_k8s_image | default('registry.registry:5000/ai/kubernetes-mcp-server') }}:{{ openclaw_mcp_k8s_tag | default('v0.0.60') }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /tmp/.kube
+              CA=$(base64 /var/run/secrets/kubernetes.io/serviceaccount/ca.crt | tr -d '\n')
+              TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              cat > /tmp/.kube/config <<EOF
+              apiVersion: v1
+              kind: Config
+              clusters:
+              - cluster:
+                  certificate-authority-data: ${CA}
+                  server: https://kubernetes.default.svc
+                name: cluster
+              contexts:
+              - context:
+                  cluster: cluster
+                  user: default
+                name: default
+              current-context: default
+              users:
+              - name: default
+                user:
+                  token: ${TOKEN}
+              EOF
+              export KUBECONFIG=/tmp/.kube/config
+              exec /usr/local/bin/kubernetes-mcp-server --port 8080
+          env:
+            - name: HOME
+              value: /tmp
+          ports:
+            - name: mcp
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
       volumes:
         - name: openclaw-data
           persistentVolumeClaim:
