@@ -23,7 +23,7 @@ spec:
       labels:
         app: openclaw
       annotations:
-        openclaw-config/checksum: "{{ openclaw_model_primary | hash('sha1') }}-{{ openclaw_telegram_enabled | string | hash('sha1') }}"
+        openclaw-config/checksum: "{{ openclaw_model_primary | hash('sha1') }}-{{ openclaw_telegram_enabled | string | hash('sha1') }}-{{ openclaw_agent_instructions | hash('sha1') }}"
     spec:
       serviceAccountName: openclaw
       # Cluster-specific: schedule on high-RAM RK1 node
