@@ -47,7 +47,8 @@ data:
           "sandbox": {
             "mode": "{{ 'docker' if openclaw_sandbox_enabled else 'off' }}"
           },
-          "model": "{{ openclaw_model_primary }}"
+          "model": "{{ openclaw_model_primary }}",
+          "systemPromptOverride": {{ openclaw_agent_instructions | to_json }}
         }
       },
       "channels": {

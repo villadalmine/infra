@@ -7,6 +7,11 @@
 #
 # wait:false + kubectl rollout status — avoids Helm timeout on ARM64 slow pulls.
 
+- name: Load kube-prometheus-stack secrets (AlertManager tokens)
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+  failed_when: false   # secrets.yml is optional; defaults in main.yml are safe fallbacks
+
 - name: Ensure custom Storage backend is installed before deploying kube-prometheus-stack
   ansible.builtin.include_role:
     name: "{{ kube_prometheus_stack_storage_role }}"
@@ -110,6 +115,48 @@
                 resources:
                   requests:
                     storage: "{{ kube_prometheus_stack_storage_size }}"
+
+      # ── AlertManager ─────────────────────────────────────────────────────────
+      alertmanager:
+        alertmanagerSpec:
+          # Merge custom receivers with the chart default (which handles Watchdog silencing)
+          useExistingSecret: false
+        config:
+          global:
+            resolve_timeout: 5m
+          route:
+            group_by: ["namespace", "alertname"]
+            group_wait: 30s
+            group_interval: 5m
+            repeat_interval: 4h
+            receiver: "null"
+            routes:
+              - matchers:
+                  - alertname = "Watchdog"
+                receiver: "null"
+{% if kube_prometheus_stack_alertmanager_telegram_enabled %}
+              - matchers:
+                  - severity =~ "critical|warning"
+                receiver: "telegram-openclaw"
+{% endif %}
+          receivers:
+            - name: "null"
+{% if kube_prometheus_stack_alertmanager_telegram_enabled %}
+            - name: "telegram-openclaw"
+              telegram_configs:
+                - bot_token: "{{ kube_prometheus_stack_alertmanager_telegram_token }}"
+                  chat_id: {{ kube_prometheus_stack_alertmanager_telegram_chat_id }}
+                  parse_mode: "HTML"
+                  message: |
+                    🚨 <b>{{ "{{" }} .GroupLabels.alertname {{ "}}" }}</b> [{{ "{{" }} .Status | toUpper {{ "}}" }}]
+                    {{ "{{" }} range .Alerts {{ "}}" }}
+                    • <b>Namespace:</b> {{ "{{" }} .Labels.namespace {{ "}}" }}{{ "{{" }} if .Labels.pod {{ "}}" }} / {{ "{{" }} .Labels.pod {{ "}}" }}{{ "{{" }} end {{ "}}" }}
+                    • <b>Severidad:</b> {{ "{{" }} .Labels.severity {{ "}}" }}
+                    • <b>Mensaje:</b> {{ "{{" }} .Annotations.summary {{ "}}" }}
+                    {{ "{{" }} end {{ "}}" }}
+                    Investiga con: <code>pregunta al agente sobre este alert</code>
+                  send_resolved: true
+{% endif %}
 - name: Wait for Grafana rollout
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/kube-prometheus-stack-grafana -n {{ kube_prometheus_stack_namespace }} --timeout=180s
