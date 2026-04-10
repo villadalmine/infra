@@ -77,13 +77,19 @@
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
 
             # ── OpenClaw routing ────────────────────────────────────────────
+            # Uses openai/ prefix + api_base (NOT openrouter/ prefix) to avoid
+            # LiteLLM's double-prefix bug in the /v1/messages Anthropic pass-through path.
+            # Primary: gpt-oss-120b (120B, 128k ctx, tools, reliable)
+            # Fallback: nemotron-super (120B, 262k ctx, tools)
             - model_name: openclaw-gemini
               litellm_params:
-                model: openrouter/google/gemma-4-31b-it:free
+                model: openai/gpt-oss-120b:free
+                api_base: https://openrouter.ai/api/v1
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: gemini-free2
               litellm_params:
-                model: openrouter/google/gemma-3-27b-it:free
+                model: openai/nvidia/nemotron-3-super-120b-a12b:free
+                api_base: https://openrouter.ai/api/v1
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
 
             # ── Kagent routing ──────────────────────────────────────────────
@@ -110,17 +116,34 @@
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: gemini-free
               litellm_params:
-                model: openrouter/google/gemma-4-31b-it:free
+                model: openai/gpt-oss-120b:free
+                api_base: https://openrouter.ai/api/v1
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             # Backwards-compat alias: OpenClaw prefixes provider (openai/gemini-free)
             - model_name: openai/gemini-free
               litellm_params:
-                model: openrouter/google/gemma-4-31b-it:free
+                model: openai/gpt-oss-120b:free
+                api_base: https://openrouter.ai/api/v1
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            # OpenClaw calls litellm/gpt-4o → LiteLLM receives model=gpt-4o
+            # Route through openclaw key → gpt-oss-120b:free → nemotron → cheap
+            # Uses openai/ prefix + api_base to avoid LiteLLM /v1/messages double-prefix bug
             - model_name: gpt-4o
               litellm_params:
-                model: openrouter/qwen/qwen-turbo
-                api_key: os.environ/OPENROUTER_API_KEY
+                model: openai/gpt-oss-120b:free
+                api_base: https://openrouter.ai/api/v1
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            - model_name: openai/gpt-4o
+              litellm_params:
+                model: openai/gpt-oss-120b:free
+                api_base: https://openrouter.ai/api/v1
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            # OpenClaw fallback using openai/ prefix to avoid /v1/messages double-prefix bug
+            - model_name: openclaw-cheap
+              litellm_params:
+                model: openai/qwen/qwen-turbo
+                api_base: https://openrouter.ai/api/v1
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
 
             # ── Premium models ──────────────────────────────────────────────
             - model_name: claude-sonnet
@@ -140,11 +163,13 @@
             fallbacks:
               - {"hermes-qwen": ["qwen-pro", "free2", "cheap"]}
               - {"holmes-llama": ["holmes-free2", "holmes-cheap"]}
-              - {"openclaw-gemini": ["gemini-free2", "cheap"]}
+              - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap"]}
+              - {"gpt-4o": ["gemini-free2", "openclaw-cheap"]}
+              - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap"]}
               - {"kagent-orchestrator": ["cheap"]}
               - {"free": ["free2", "cheap"]}
               - {"gpt-5.4": ["holmes-free2", "holmes-cheap"]}
-              - {"gemini-free": ["openclaw-gemini", "gemini-free2", "cheap"]}
+              - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap"]}
             request_timeout: 120
             num_retries: 1
             set_verbose: false
