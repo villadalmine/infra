@@ -34,12 +34,18 @@ openclaw_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000"
 openclaw_litellm_master_key: "sk-hermes-internal"
 
 # OpenClaw virtual model names (resolved by LiteLLM routing):
-#   gemini-free  → google/gemini-2.5-pro-exp:free  (primary)
-#   free         → qwen/qwen3-coder:free            (fallback 1)
-#   free2        → google/gemini-2.0-flash-exp:free (fallback 2)
-openclaw_model_primary: "gemini-free"
-openclaw_model_fallback1: "free"
-openclaw_model_fallback2: "free2"
+#   openai/gemini-free  → google/gemma-4-31b-it:free  (primary, OpenClaw adds openai/ prefix)
+#   openclaw-gemini     → google/gemma-4-31b-it:free  (same backend, different alias)
+#   gemini-free2        → google/gemma-3-27b-it:free  (fallback)
+# Use provider-prefixed model IDs to avoid client-side provider fallback.
+# Set primary to the OpenRouter model ID exposed via LiteLLM.
+# Default to the virtual model name resolved by LiteLLM so the client does not
+# include a provider prefix. This helps prevent OpenClaw from triggering the
+# provider routing logic that sends traffic to api.openai.com directly.
+openclaw_model_primary: "litellm/gpt-4o"
+# Fallbacks (optional) — keep as provider-prefixed where sensible.
+openclaw_model_fallback1: "openrouter/qwen/qwen3-coder:free"
+openclaw_model_fallback2: "openrouter/google/gemini-2.0-flash-exp:free"
 
 # ─── RBAC — Kubernetes permission level ──────────────────────────────────────
 # Controls what ClusterRole/RoleBinding the ServiceAccount gets.
