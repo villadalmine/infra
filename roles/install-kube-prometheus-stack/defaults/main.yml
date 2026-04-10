@@ -7,3 +7,11 @@ kube_prometheus_stack_admin_password: admin
 kube_prometheus_stack_storage_class: smb-nas
 kube_prometheus_stack_storage_size: "20Gi"
 kube_prometheus_stack_storage_role: "install-cifs-nas"
+
+# ─── AlertManager → Telegram notifications ───────────────────────────────────
+# Uses the same bot as OpenClaw (Telegram built-in receiver, AlertManager 0.24+).
+# Override in secrets.yml: kube_prometheus_stack_alertmanager_telegram_token
+# and kube_prometheus_stack_alertmanager_telegram_chat_id
+kube_prometheus_stack_alertmanager_telegram_enabled: false
+kube_prometheus_stack_alertmanager_telegram_token: ""      # set in secrets.yml
+kube_prometheus_stack_alertmanager_telegram_chat_id: 0     # set in secrets.yml (numeric)
