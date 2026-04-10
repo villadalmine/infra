@@ -37,6 +37,7 @@ make gitops                     # ArgoCD
 make storage                    # SMB/CIFS CSI (MUST come before observability/ai/security)
 make observability              # Prometheus + Grafana + Tempo + Loki + Alloy
 make ai && make ai-holmes && make kagent   # Full AI stack
+make openclaw              # Personal AI gateway (Telegram + LiteLLM)
 make security                   # NeuVector runtime security
 
 # Or everything at once
@@ -61,6 +62,7 @@ See `cluster-report.html` for a visual report of cluster status, stacks, and pro
 | Holmes UI | https://holmes-ui.cluster.home | Chat UI for HolmesGPT | — |
 | Hermes Agent | https://hermes.cluster.home | AI assistant (Telegram + web) | — |
 | kagent | https://kagent.cluster.home | AI agent platform (CRDs + MCP) | — |
+| OpenClaw | https://openclaw.cluster.home | Personal AI gateway (Telegram + LiteLLM) | — |
 
 ### Security (dedicated LoadBalancer — Cilium doesn't support TLS passthrough)
 
@@ -90,6 +92,7 @@ make ai-hermes-build   # kaniko ARM64 build (~60 min on CM4)
 make ai-hermes-deploy  # litellm-proxy + hermes-agent
 make ai-holmes         # HolmesGPT + Holmes UI
 make kagent            # multi-tenant agent platform + kmcp
+make openclaw          # personal AI gateway (Telegram + LiteLLM)
 make ai                # all in sequence
 ```
 
@@ -200,6 +203,7 @@ python3 mcp/cluster-advisor/server.py
 | `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
 | `ai-holmes` | HolmesGPT + Holmes UI | `ai-hermes-deploy` |
 | `kagent` | kagent + kmcp | `networking` + LiteLLM |
+| `openclaw` | OpenClaw personal AI gateway (Telegram + LiteLLM + RBAC) | `networking` + LiteLLM |
 
 ⚠ `make core` alone = broken cluster (K3s installed with `--flannel-backend=none`). Always pair with `make networking`.
 

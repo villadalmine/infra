@@ -299,6 +299,25 @@ projects:
     health_notes: "New project (2024). Active development. API may break between versions — pin chart version."
     stacks: [ai]
 
+  openclaw:
+    name: "OpenClaw"
+    cncf_status: none
+    cncf_url: null
+    license: proprietary
+    oss: false
+    github: null
+    website: null
+    stars_approx: null
+    stars_updated: null
+    arm64: true
+    suitable_for: [homelab]
+    suitability_notes: "Personal AI gateway with Telegram integration and LiteLLM routing. Not OSS. Homelab use only."
+    last_release: "2026-04"
+    release_cadence: continuous
+    maintained: true
+    health_notes: "In active production. Deployed in-cluster on RK1 node. Bot: @tito_es_tu_bot"
+    stacks: [ai]
+
   registry:
     name: "Docker Registry v2"
     cncf_status: none
