@@ -56,16 +56,16 @@
               litellm_params:
                 model: openrouter/qwen/qwen-turbo
                 api_key: os.environ/OPENROUTER_API_KEY
-            # Recommended higher-quality Qwen model (pro). Use this for heavier workloads.
+            # Recommended higher-quality Qwen model. Use this for heavier workloads.
             - model_name: qwen-pro
               litellm_params:
-                model: openrouter/qwen/qwen-pro
+                model: openrouter/qwen/qwen3.6-plus
                 api_key: os.environ/OPENROUTER_API_KEY
 
             # ── Holmes routing ──────────────────────────────────────────────
             - model_name: holmes-llama
               litellm_params:
-                model: openrouter/meta-llama/llama-3.1-8b-instruct:free
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: holmes-free2
               litellm_params:
@@ -79,11 +79,11 @@
             # ── OpenClaw routing ────────────────────────────────────────────
             - model_name: openclaw-gemini
               litellm_params:
-                model: openrouter/google/gemini-2.5-pro-exp-03-25:free
+                model: openrouter/google/gemma-4-31b-it:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: gemini-free2
               litellm_params:
-                model: openrouter/google/gemini-2.0-flash-exp:free
+                model: openrouter/google/gemma-3-27b-it:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
 
             # ── Kagent routing ──────────────────────────────────────────────
@@ -99,18 +99,23 @@
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: gpt-5.4
               litellm_params:
-                model: openrouter/meta-llama/llama-3.1-8b-instruct:free
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+            # Backwards-compat alias: some clients may prefix provider (eg. openai/gpt-5.4).
+            # Provide a passthrough alias so those IDs resolve to the same backend and avoid
+            # Unknown model or provider routing to api.openai.com.
+            - model_name: openai/gpt-5.4
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: gemini-free
               litellm_params:
-                model: openrouter/google/gemini-2.5-pro-exp-03-25:free
+                model: openrouter/google/gemma-4-31b-it:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-            # Backwards-compat alias: some clients (OpenClaw) may prefix provider
-            # (eg. openai/gemini-free). Provide a passthrough alias so those IDs
-            # resolve to the same backend and avoid Unknown model errors.
+            # Backwards-compat alias: OpenClaw prefixes provider (openai/gemini-free)
             - model_name: openai/gemini-free
               litellm_params:
-                model: openrouter/google/gemini-2.5-pro-exp-03-25:free
+                model: openrouter/google/gemma-4-31b-it:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: gpt-4o
               litellm_params:
@@ -135,11 +140,11 @@
             fallbacks:
               - {"hermes-qwen": ["qwen-pro", "free2", "cheap"]}
               - {"holmes-llama": ["holmes-free2", "holmes-cheap"]}
-              - {"openclaw-gemini": ["hermes-qwen", "gemini-free2", "cheap"]}
+              - {"openclaw-gemini": ["gemini-free2", "cheap"]}
               - {"kagent-orchestrator": ["cheap"]}
               - {"free": ["free2", "cheap"]}
               - {"gpt-5.4": ["holmes-free2", "holmes-cheap"]}
-              - {"gemini-free": ["openclaw-gemini", "free2", "cheap"]}
+              - {"gemini-free": ["openclaw-gemini", "gemini-free2", "cheap"]}
             request_timeout: 120
             num_retries: 1
             set_verbose: false
