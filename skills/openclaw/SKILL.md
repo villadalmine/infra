@@ -325,3 +325,100 @@ based on `openclaw_llm_backend`.
 - Example: `roles/install-openclaw/defaults/secrets.yml.example`
 - Playbook tag: `openclaw`
 - Makefile: `make openclaw`, `make openclaw-rbac LEVEL=<level>`
+
+---
+
+## Plan: Expandir capacidades autónomas de OpenClaw
+
+### Objetivo
+
+Convertir OpenClaw en un agente más autónomo capaz de investigar, interactuar
+y manipular dispositivos de la red doméstica (Hue, cámaras, timbres, etc.),
+y ejecutar tareas tipo hacking ético controlado desde Telegram.
+
+---
+
+### Fase 1: Conocimiento de dispositivos (TOOLS.md)
+
+Crear `TOOLS.md` en la raíz del repo con:
+- IPs, credenciales y tokens de dispositivos de la red (Philips Hue, cámaras, NAS, etc.)
+- Rangos de red, protocolos soportados (REST, MQTT, ONVIF, etc.)
+- Ejemplos de comandos cURL/scripts para cada dispositivo
+
+**Formato sugerido:**
+```markdown
+## Philips Hue
+- Bridge IP: 192.168.178.XXX
+- API token: <en secrets.yml o vault>
+- Ejemplo: curl http://<IP>/api/<token>/lights
+
+## Cámara ONVIF
+- IP: 192.168.178.XXX
+- RTSP: rtsp://<IP>:554/stream
+
+## Timbre / NVR
+- IP: 192.168.178.XXX
+- Protocolo: HTTP REST
+```
+
+Los secretos reales van en `roles/install-openclaw/defaults/secrets.yml` (gitignored).
+`TOOLS.md` documenta solo estructura y ejemplos sin credenciales reales.
+
+---
+
+### Fase 2: Módulos / tools de integración
+
+Añadir al container de OpenClaw (o como scripts en `/data/tools/`) las siguientes capacidades,
+cada una expuesta como "tool callable" por el LLM via function calling:
+
+| Capacidad | Implementación sugerida |
+|-----------|------------------------|
+| Control Philips Hue | Script Python `hue.py` → `/api/<token>/lights` REST |
+| Scan de red | `nmap` / `python-nmap` — Job K8s o exec en pod |
+| Cámaras ONVIF | `onvif-zeep` lib — discovery + snapshot |
+| SSH a nodos | SSH key en Secret → `paramiko` / `fabric` |
+| Consultar Prometheus | `GET http://prometheus.monitoring.svc:9090/api/v1/query` |
+| Leer logs Loki | `GET http://loki-gateway.monitoring.svc/loki/api/v1/query` |
+| Interactuar con K8s | `kubernetes` Python client + SA con RBAC limitado |
+
+---
+
+### Fase 3: Inyección de conocimiento en runtime
+
+Para que OpenClaw "sepa" cosas sin redeployar:
+
+1. **ConfigMap extendido**: montar `/data/knowledge/` con archivos Markdown de contexto
+   (TOOLS.md, runbooks, inventario de red). Ansible gestiona el contenido.
+2. **Telegram como canal de aprendizaje**: `!learn <topic>: <content>` → OpenClaw lo guarda
+   en su base de datos interna (SQLite en PVC).
+3. **Init-container de knowledge**: descarga/actualiza `TOOLS.md` y archivos de contexto
+   desde el repo antes de arrancar.
+
+---
+
+### Fase 4: Autonomía y workflows
+
+- **CronJob K8s**: dispara OpenClaw con prompt periódico
+  ("revisa si todos los nodos están sanos y notifícame por Telegram")
+- **Webhook AlertManager → OpenClaw**: recibe alertas, las procesa/resume/notifica via Telegram
+- **Auto-investigación**: al recibir alerta, OpenClaw consulta Prometheus + Loki + kubectl
+  y construye diagnóstico automático
+
+---
+
+### Fase 5: Seguridad / RBAC
+
+- SA dedicado con RBAC mínimo (solo `get`, `list`, `watch` en namespaces específicos)
+- Secrets de dispositivos en Kubernetes Secret (no en PVC ni ConfigMap)
+- Limitar tools por usuario Telegram via `dmPolicy` + roles internos de OpenClaw
+- Auditoría: loggear cada tool call con usuario, timestamp y parámetros
+
+---
+
+### Próximos pasos inmediatos
+
+1. Crear `TOOLS.md` en el repo con estructura de dispositivos (sin secretos reales)
+2. Añadir `TOOLS.md` al ConfigMap de OpenClaw para que el container lo lea como contexto
+3. Implementar primer módulo: control Philips Hue via HTTP REST
+4. Exponer módulo como tool callable desde el agente
+5. Probar end-to-end desde Telegram: "enciende la luz del salon"
