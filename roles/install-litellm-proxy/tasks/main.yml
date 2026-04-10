@@ -230,6 +230,13 @@
                         key: OPENCLAW_OPENROUTER_API_KEY
                   - name: LITELLM_MASTER_KEY
                     value: "{{ litellm_master_key }}"
+                  # Route openai/ prefix models through chat/completions instead of
+                  # the Responses API path, which has a bug in LiteLLM 1.82.6 where
+                  # AnthropicResponsesStreamWrapper emits message_start twice
+                  # (once as eager fallback in __anext__, once via response.created event).
+                  # This fixes the "Unexpected event order" error in OpenClaw's stream parser.
+                  - name: LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES
+                    value: "true"
                 volumeMounts:
                   - name: config-volume
                     mountPath: /app/config.yaml
