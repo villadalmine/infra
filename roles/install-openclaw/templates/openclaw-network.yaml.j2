@@ -120,7 +120,9 @@ spec:
         - port: 554
           protocol: TCP
 ---
-# Ingress rule on the kagent side: allow openclaw to reach kagent-tools MCP (port 8084)
+# Ingress rule on the kagent side: allow kagent-controller + openclaw to reach kagent-tools MCP
+# NOTE: adding ANY NetworkPolicy to a pod enables ingress enforcement — must explicitly allow
+# all legitimate sources or kagent-controller will be blocked (i/o timeout on /mcp).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -133,6 +135,15 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # kagent-controller and internal kagent services (same namespace)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+      ports:
+        - port: 8084
+          protocol: TCP
+    # openclaw gateway
     - from:
         - namespaceSelector:
             matchLabels:
