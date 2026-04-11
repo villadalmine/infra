@@ -79,26 +79,15 @@ spec:
     - ports:
         - port: 6443
           protocol: TCP
-    # Holmes — subagente para análisis de incidentes K8s
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ai
-          podSelector:
-            matchLabels:
-              app: holmes
-      ports:
-        - port: 80
-          protocol: TCP
-    # Kagent — subagente para tareas K8s estructuradas
+    # Kagent — kagent-tools MCP server (port 8084, targetPort 8084)
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kagent
       ports:
-        - port: 8080
+        - port: 8084
           protocol: TCP
-    # Hermes — subagente (offline hasta token propio; regla pre-configurada)
+    # Hermes — subagente (port 8644 = service + targetPort)
     - to:
         - namespaceSelector:
             matchLabels:
@@ -107,7 +96,7 @@ spec:
             matchLabels:
               app: hermes-agent-mcp
       ports:
-        - port: 7860
+        - port: 8644
           protocol: TCP
     # Prometheus — queries de métricas read-only
     - to:

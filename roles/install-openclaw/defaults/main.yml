@@ -55,8 +55,10 @@ openclaw_mcp_k8s_tag: "v0.0.60"
 
 # ─── Subagent endpoints (for NetworkPolicy + AGENTS.md) ──────────────────────
 openclaw_holmes_url: "http://holmesgpt-holmes.ai.svc.cluster.local"
-openclaw_kagent_url: "http://kagent-app.kagent.svc.cluster.local:8080"
-openclaw_hermes_url: "http://hermes-agent-mcp.ai.svc.cluster.local:7860"
+openclaw_kagent_url: "http://k8s-agent.kagent.svc.cluster.local:8080"
+openclaw_hermes_url: "http://hermes-agent-mcp.ai.svc.cluster.local:8000"
+
+
 openclaw_prometheus_url: "http://prometheus-operated.monitoring.svc.cluster.local:9090"
 
 # ─── RBAC — Kubernetes permission level ──────────────────────────────────────
@@ -105,11 +107,8 @@ openclaw_agent_instructions: |
   - `resources_get` (apiVersion, kind, name, namespace?) — obtiene un recurso
   - `events_list` (namespace?) — eventos del cluster
 
-  ### Tools del servidor MCP "holmes":
-  - Llama a holmes para analizar incidentes, crashloops, alertas Prometheus.
-
   ### Tools del servidor MCP "kagent":
-  - Llama a kagent para operaciones K8s estructuradas.
+  - Llama a kagent para ejecutar kubectl, helm y operaciones K8s estructuradas.
 
   ## Cluster — K3s ARM64, 10 nodos
   Servers: srv-super6c-01-nvme (.85), -02 (.86), -03 (.87), -05-emmc (.104), -06-emmc (.105)
@@ -126,5 +125,5 @@ openclaw_agent_instructions: |
   - NUNCA leas Secrets — no tienes permiso, y está bien así
   - Toda operación es read-only en esta fase
   - Ante preguntas del cluster → llama tool calls de kubernetes MCP
-  - Ante crashloops o alertas → llama a holmes MCP
+  - Ante crashloops o alertas → usa kubernetes MCP para inspeccionar pods/eventos
   - Nunca pidas al usuario kubectl — tú tienes acceso directo via tool calls
