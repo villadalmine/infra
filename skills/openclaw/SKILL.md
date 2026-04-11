@@ -163,22 +163,77 @@ kubectl auth can-i list networkpolicies \
 
 ---
 
-## NetworkPolicy — egress
+## MCP Servers (subagentes activos)
+
+| Nombre | URL | Transport | Propósito |
+|--------|-----|-----------|-----------|
+| `kubernetes` | `http://127.0.0.1:8080/mcp` | `streamable-http` | Cluster inspection (sidecar local) |
+| `kagent` | `http://kagent-tools.kagent.svc.cluster.local:8084/mcp` | `streamable-http` | kubectl/helm via kagent-tools |
+
+**holmes fue eliminado** — holmesgpt solo expone REST (`/api/chat`, `/api/model`), no MCP.
+**hermes** — offline (pendiente token propio). Cuando esté listo: puerto 8644.
+
+Transport confirmado:
+- `kubernetes-mcp-server`: responde a POST `/mcp` con `Content-Type: application/json` → **streamable-http**
+- `kagent-tools`: kagent-controller usa `Post http://kagent-tools.kagent:8084/mcp` → **streamable-http**
+- SSE (`/sse`) funciona para kubectl manual pero OpenClaw necesita streamable-http para cargar tools
+
+---
+
+## NetworkPolicy — egress (openclaw namespace)
 
 | Destino | Puerto | Propósito |
 |---------|--------|-----------|
 | DNS | 53 UDP/TCP | Resolución de nombres |
 | `ai/litellm-proxy` | 4000 TCP | Todo el tráfico LLM |
-| `ai/holmesgpt-holmes` | 80 TCP | Subagente Holmes |
-| `kagent/*` | 8080 TCP | Subagente Kagent |
-| `ai/hermes-agent-mcp` | 7860 TCP | Subagente Hermes (cuando vuelva) |
+| `kagent/*` | 8084 TCP | kagent-tools MCP (targetPort real) |
+| `ai/hermes-agent-mcp` | 8644 TCP | Hermes MCP cuando vuelva (targetPort real) |
 | `monitoring/*` | 9090 TCP | Prometheus queries |
 | External HTTPS | 443 TCP | Telegram API |
 | K8s API server | 6443 TCP | RBAC / kubectl via SA |
 | `192.168.178.0/24` | 80,443,8080,554 TCP | Red home (análisis read-only) |
 
+**Cilium DNAT — regla crítica:** Cilium evalúa NetworkPolicy DESPUÉS del DNAT.
+Usar siempre el **targetPort** del pod, no el port del Service.
+Ejemplo: `holmesgpt-holmes` Service port 80 → targetPort 5050 → NetworkPolicy necesita 5050.
+
 NetworkPolicy también tiene **ingress** desde `monitoring` en port 18789 para
 recibir webhooks de AlertManager.
+
+### NetworkPolicy cross-namespace (kagent)
+
+`kagent-tools` vive en el namespace `kagent`. Se necesita una NetworkPolicy de **ingress** en ese namespace:
+
+```yaml
+# Desplegada por install-openclaw (openclaw-network.yaml.j2)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-openclaw-to-kagent-tools
+  namespace: kagent          # ← namespace destino, no openclaw
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kagent-tools
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:                  # kagent-controller (mismo namespace)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+      ports:
+        - port: 8084
+    - from:                  # openclaw gateway
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openclaw
+      ports:
+        - port: 8084
+```
+
+**Trampa:** añadir una NetworkPolicy con podSelector activa enforcement en ese pod.
+Si solo permites openclaw, el `kagent-controller` queda bloqueado → falla reconciliación de MCPServer CRDs cada 2 min.
 
 ---
 
@@ -212,6 +267,93 @@ initContainers:
 
 ---
 
+## Troubleshooting — MCP connectivity
+
+### ¿Está cargando tools del MCP?
+
+```bash
+# Ver si [bundle-mcp] logró conectar en startup
+kubectl exec -n openclaw <pod> -c openclaw-gateway -- \
+  sh -c "grep 'bundle-mcp' /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log"
+# Sin output = conectó silenciosamente (kubernetes con streamable-http no loguea éxito)
+# Con "failed to start server X" = falló
+
+# Ver qué tool calls hace el agente en tiempo real
+kubectl logs -n openclaw -l app=openclaw -c openclaw-gateway --follow \
+  | grep -E 'tool|mcp|bundle'
+
+# Verificar config MCP que tiene el pod en este momento
+kubectl exec -n openclaw <pod> -c openclaw-gateway -- \
+  sh -c "cat /home/node/.openclaw/openclaw.json" | python3 -m json.tool | grep -A5 '"mcp"'
+```
+
+### MCP kubernetes no carga tools (tools: [])
+
+```bash
+# 1. Verificar que el sidecar responde streamable-http
+kubectl exec -n openclaw <pod> -c openclaw-gateway -- \
+  sh -c 'curl -s -X POST http://127.0.0.1:8080/mcp \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}" \
+    | head -c 200'
+# Debe devolver: event: message\ndata: {"jsonrpc":"2.0","id":1,"result":...}
+
+# 2. Verificar que openclaw.json tiene transport correcto
+# Debe tener: "url": "http://127.0.0.1:8080/mcp", "transport": "streamable-http"
+# NO "url": ".../sse" (SSE da 400 en /mcp con GET)
+```
+
+### MCP kagent falla con "Connect Timeout Error"
+
+```bash
+# 1. Verificar NetworkPolicy en kagent namespace
+kubectl get networkpolicy -n kagent
+
+# 2. Si existe allow-openclaw-to-kagent-tools, verificar que permite kagent interno también
+kubectl get networkpolicy allow-openclaw-to-kagent-tools -n kagent -o yaml | grep -A5 'ingress'
+# Debe haber DOS reglas: una para namespace kagent, otra para namespace openclaw
+
+# 3. Ver si kagent-controller también falla (confirma que la NP bloqueó el tráfico interno)
+kubectl logs -n kagent deploy/kagent-controller --tail=10 | grep error
+
+# 4. Confirmar egress de openclaw hacia puerto 8084
+kubectl get networkpolicy openclaw-egress -n openclaw -o yaml | grep 8084
+```
+
+### Trampa NetworkPolicy cross-namespace
+
+Al crear una NetworkPolicy con `podSelector` en un namespace ajeno, **se activa enforcement**
+y se bloquea todo el tráfico no explícitamente permitido — incluido el del controlador interno.
+
+**Síntoma:** `kagent-controller` loguea cada 2min:
+```
+"error":"Post http://kagent-tools.kagent:8084/mcp: i/o timeout"
+```
+**Fix:** añadir en la misma NetworkPolicy un `from: namespaceSelector: kagent`.
+
+### ¿Qué MCP está usando el bot al responder?
+
+```bash
+# Seguir el log file en tiempo real mientras hablas por Telegram
+kubectl exec -n openclaw $(kubectl get pod -n openclaw -l app=openclaw -o name | head -1) \
+  -c openclaw-gateway -- \
+  sh -c "tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log" \
+  | python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        d = json.loads(line)
+        msg = d.get('1', '')
+        if any(k in str(msg).lower() for k in ['tool', 'mcp', 'kagent', 'kubernetes', 'call']):
+            print(msg)
+    except: pass
+"
+```
+
+Si ves `kubernetes_*` tool calls → usa el sidecar kubernetes-mcp.
+Si ves `kagent_*` o herramientas de helm/kubectl → usa kagent-tools MCP.
+
 ## Gotchas conocidos
 
 | Problema | Causa | Fix |
@@ -222,6 +364,8 @@ initContainers:
 | `ai-hermes-deploy` levanta Hermes | Tag cubre litellm + hermes | Usar `--skip-tags ai-hermes-agent` |
 | 429 en todos los modelos :free | Rate limit OpenRouter por key | Fallback a nemotron (más estable) |
 | `message_start` error en stream | Bug LiteLLM `/v1/messages` doble emit | `openai/` prefix + `api_base` + env var |
+| MCP tools no cargan, `tools: []` | Transport SSE en vez de streamable-http | `"transport": "streamable-http"` + URL `/mcp` |
+| kagent-controller falla con i/o timeout | NetworkPolicy de ingress solo permite openclaw | Añadir regla `from: namespace kagent` en la misma NP |
 
 ---
 
