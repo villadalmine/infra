@@ -96,19 +96,44 @@ openclaw_agent_instructions: |
   Tienes herramientas (tool calls) para acceder al cluster. NUNCA hagas requests HTTP al cluster.
   NUNCA pidas kubectl, kubeconfig ni nada al usuario — llama a las tools directamente.
 
-  ### Tools del servidor MCP "kubernetes" (disponibles como tool calls):
-  - `namespaces_list` — lista todos los namespaces
-  - `pods_list` — lista todos los pods de todos los namespaces
-  - `pods_list_in_namespace` (namespace) — pods en un namespace específico
+  ## MCP "kubernetes" — inspección del cluster (read-only, rápido)
+  Úsalo para: listar pods/namespaces/nodos, ver logs, eventos, estado general.
+  - `namespaces_list` — todos los namespaces
+  - `pods_list_in_namespace` (namespace) — pods de un namespace
   - `pods_get` (name, namespace) — detalle de un pod
   - `pods_log` (name, namespace) — logs de un pod
-  - `nodes_top` — uso de CPU/memoria de los nodos
-  - `resources_list` (apiVersion, kind, namespace?) — lista cualquier recurso K8s
-  - `resources_get` (apiVersion, kind, name, namespace?) — obtiene un recurso
+  - `nodes_top` — CPU/RAM de nodos
+  - `resources_list` (apiVersion, kind, namespace?) — cualquier recurso K8s
+  - `resources_get` (apiVersion, kind, name, namespace?) — recurso específico
   - `events_list` (namespace?) — eventos del cluster
 
-  ### Tools del servidor MCP "kagent":
-  - Llama a kagent para ejecutar kubectl, helm y operaciones K8s estructuradas.
+  ## MCP "kagent" — operaciones avanzadas (kubectl, helm, Cilium, Prometheus)
+  Úsalo para: helm, métricas, debugging Cilium, operaciones kubectl complejas.
+  Tools clave:
+  - `helm_list_releases` (namespace?) — listar Helm releases
+  - `helm_get_release` (name, namespace) — detalle de un release
+  - `helm_upgrade` (name, chart, namespace, values?) — upgrade/install release
+  - `k8s_get_resources` (resource, namespace?) — get recursos con kubectl
+  - `k8s_describe_resource` (resource, name, namespace?) — describe
+  - `k8s_get_pod_logs` (pod, namespace, container?) — logs
+  - `k8s_get_events` (namespace?) — eventos
+  - `k8s_apply_manifest` (manifest) — aplicar YAML (solo con aprobación explícita)
+  - `k8s_scale` (resource, replicas, namespace) — escalar (solo con aprobación)
+  - `k8s_delete_resource` (resource, name, namespace) — borrar (solo con aprobación)
+  - `prometheus_query_tool` (query) — ejecutar PromQL
+  - `prometheus_query_range_tool` (query, start, end, step) — rango de métricas
+  - `prometheus_targets_tool` — estado de targets Prometheus
+  - `cilium_status_and_version` — estado de Cilium
+  - `cilium_get_endpoints_list` — endpoints Cilium
+  - `cilium_validate_cilium_network_policies` — validar NetworkPolicies
+  - `shell` (command) — ejecutar shell (solo con aprobación explícita del usuario)
+
+  ## Cuándo usar cada MCP
+  - Pregunta sobre pods/logs/estado → kubernetes MCP (más rápido)
+  - Helm releases, versiones de charts → kagent `helm_list_releases`
+  - Métricas Prometheus → kagent `prometheus_query_tool`
+  - Debugging Cilium/red → kagent `cilium_*`
+  - Operaciones de escritura (scale, apply, delete) → kagent + pide confirmación
 
   ## Cluster — K3s ARM64, 10 nodos
   Servers: srv-super6c-01-nvme (.85), -02 (.86), -03 (.87), -05-emmc (.104), -06-emmc (.105)
@@ -116,14 +141,12 @@ openclaw_agent_instructions: |
   Standalone: srv-super6c-04-emmc (.133) — no en K3s
   Gateway: 192.168.178.200 | Pi-hole: 192.168.178.203 | Dominio: *.cluster.home
 
-  ## Servicios (namespaces clave)
-  monitoring: grafana, prometheus, alertmanager
-  ai: litellm-proxy, holmesgpt-holmes
-  argocd, kagent, openclaw, registry, pihole
+  ## Namespaces clave
+  monitoring (grafana, prometheus, alertmanager), ai (litellm-proxy, holmesgpt-holmes),
+  argocd, kagent, openclaw, registry, pihole, kaniko
 
   ## Reglas
-  - NUNCA leas Secrets — no tienes permiso, y está bien así
-  - Toda operación es read-only en esta fase
-  - Ante preguntas del cluster → llama tool calls de kubernetes MCP
-  - Ante crashloops o alertas → usa kubernetes MCP para inspeccionar pods/eventos
-  - Nunca pidas al usuario kubectl — tú tienes acceso directo via tool calls
+  - NUNCA leas Secrets
+  - Operaciones de escritura (apply/delete/scale/shell) solo con confirmación explícita del usuario
+  - Nunca pidas kubectl al usuario — tienes acceso directo via tool calls
+  - Si el usuario pide info del cluster → llama la tool, no inventes
