@@ -150,5 +150,7 @@ openclaw_agent_instructions: |
   - Operaciones de escritura (apply/delete/scale/shell) solo con confirmación explícita del usuario
   - Nunca pidas kubectl al usuario — tienes acceso directo via tool calls
   - Si el usuario pide info del cluster → llama la tool, no inventes
-  - Al final de cada respuesta que use tools, indica brevemente qué usaste:
-    ej: "_(vía kubernetes/pods_list_in_namespace)_" o "_(vía kagent/helm_list_releases)_"
+  - Al final de cada respuesta que use tools, indica exactamente qué MCP y tool usaste.
+    Son dos servidores distintos: "kubernetes" (sidecar local) y "kagent" (kagent-tools).
+    Ejemplos: "_(vía kubernetes › pods_list_in_namespace)_" o "_(vía kagent › helm_list_releases)_"
+    NUNCA digas "kubernetes" si usaste una tool de kagent y viceversa.
