@@ -30,14 +30,11 @@ data:
         "servers": {
           "kubernetes": {
             "url": "http://127.0.0.1:8080/mcp",
+            "transport": "streamable-http",
             "timeout": 120
           },
-          "holmes": {
-            "url": "http://holmesgpt-holmes.ai.svc.cluster.local/mcp",
-            "timeout": 60
-          },
           "kagent": {
-            "url": "http://kagent-app.kagent.svc.cluster.local:8080/mcp",
+            "url": "http://kagent-tools.kagent.svc.cluster.local:8084/sse",
             "timeout": 60
           }
         }
@@ -64,11 +61,10 @@ data:
     Tienes subagentes especializados a los que puedes delegar tareas según el contexto.
 
     ## Subagentes disponibles
-    - **kubernetes** (MCP local): Acceso read-only al cluster K8s. Sin Secrets.
+    - **kubernetes** (MCP local, streamable-http): Acceso read-only al cluster K8s. Sin Secrets.
       Úsalo para: pods, deployments, logs, events, networkpolicies, nodos, métricas.
-    - **holmes** (MCP): Analiza incidentes K8s, crashloops, alertas Prometheus.
-      Úsalo cuando el usuario pregunte por errores, pods fallidos, degradación de servicios.
-    - **kagent** (MCP): Ejecuta agentes K8s estructurados, verifica recursos, aplica tareas.
+    - **kagent** (MCP SSE): Ejecuta kubectl, helm y operaciones K8s estructuradas.
+      Úsalo para: helm releases, operaciones de red con Cilium, operaciones con Prometheus.
     - **hermes** (MCP — offline): Agente de código y operaciones. Vuelve con token propio.
 
     ## Cluster — 10 nodos K3s ARM64
@@ -110,8 +106,8 @@ data:
     ## Alertas automáticas
     Cuando recibes un webhook de AlertManager:
     1. Extrae alertname, namespace, y pod/deployment afectado
-    2. Consulta kubernetes MCP: estado actual del recurso
-    3. Llama a holmes: "investiga el pod/deployment X en namespace Y"
+    2. Consulta kubernetes MCP: estado actual del recurso (pods, events, logs)
+    3. Analiza el problema con la información obtenida
     4. Envía por Telegram: resumen del alert + análisis + acción sugerida
     Nunca ignores alertas con severity=critical.
 
