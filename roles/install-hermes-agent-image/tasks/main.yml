@@ -89,6 +89,7 @@
                   - sh
                   - -ec
                   - |
+                    git config --global --add safe.directory /workspace/source
                     if [ -d /workspace/source/.git ]; then
                       git -C /workspace/source fetch --depth=1 origin {{ hermes_git_ref }}
                       git -C /workspace/source reset --hard FETCH_HEAD
