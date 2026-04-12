@@ -321,6 +321,60 @@ Built-in agents need `tolerations: [{operator: Exists}]` patched onto Agent CRDs
 
 ---
 
+## Cilium — Critical Knowledge
+
+### rollOutPods flags (REQUIRED)
+
+```yaml
+rollOutCiliumPods: true
+operator.rollOutPods: true
+envoy.rollOutPods: true
+```
+
+Without these, `helm upgrade` updates the ConfigMap but pods keep running with
+stale in-memory config — silent deadlock.
+
+### externalTrafficPolicy — MUST be Cluster with L2 Announcements
+
+`externalTrafficPolicy: Local` is incompatible with Cilium L2 Announcements.
+Always use `Cluster`.
+
+### GatewayClass status
+
+- `Unknown` — operator/agent not yet running with new config
+- `True` — fully operational
+
+### Requesting a specific IP
+
+```yaml
+annotations:
+  lbipam.cilium.io/ips: "192.168.178.203"
+  lbipam.cilium.io/sharing-key: "pihole-dns"  # share TCP+UDP on same IP
+```
+
+### Hubble Metrics
+
+Cilium 1.19.2 includes comprehensive network observability via Hubble metrics:
+
+**Configured metrics**: `httpV2` (with exemplars), `drop`, `tcp`, `flow`, `icmp`, `policy`, `port-distribution`
+**ServiceMonitor**: Created by `install-cilium-hubble-monitoring` role (tag: `networking-observability`)
+**Prometheus Integration**: 4 targets discovered (one per node), all UP status
+**Port**: `9965/metrics` with OpenMetrics format for trace correlation
+
+⚠️ **Critical**: Never enable both `http` and `httpV2` metrics — causes CrashLoopBackOff
+✅ **Idempotency**: ServiceMonitor managed separately, `networking` tag won't disable monitoring
+
+```bash
+# Deploy Hubble monitoring
+make networking-observability
+
+# Verify metrics
+kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965 &
+curl -s localhost:9965/metrics | grep hubble_
+```
+
+---
+
 ## Pi-hole — Critical Knowledge
 
 - Use `extraEnvVars: {FTLCONF_dns_listeningMode: "ALL"}` (map format, not list)

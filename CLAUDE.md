@@ -57,6 +57,7 @@ all tags up to the layer you need.
 |-----|-------|----------|
 | `core` | k3s + kubeconfig | — |
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
+| `networking-observability` | cilium-hubble-monitoring (ServiceMonitor) | `networking` + `observability` |
 | `ingress` | cert-manager + gateway | `networking` |
 | `services` | pihole + argocd + helm-dashboard | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy | `networking` |
@@ -171,7 +172,7 @@ Read the relevant skill before working on a component.
 | `survey` | gather-node-info role: what it collects, JSON output, node profiles |
 | `infra-ops` | 10-node topology, all make targets, RK1 MAC fix, health checks |
 | `k3s` | Server flags, kubeconfig, upgrades |
-| `cilium` | CNI, LB-IPAM, L2, Gateway API, BPF |
+| `cilium` | CNI, LB-IPAM, L2, Gateway API, BPF, **Hubble metrics** |
 | `gateway` | Shared Gateway, HTTPRoutes, DNS setup |
 | `cert-manager` | Internal CA, wildcard cert, workstation trust |
 | `argocd` | GitOps, ApplicationSets, sync waves |
