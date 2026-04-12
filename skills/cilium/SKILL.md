@@ -30,7 +30,7 @@ Chart version pinned in: `roles/install-cilium/defaults/main.yml`.
 
 ```yaml
 kubeProxyReplacement: "true"
-k8sServiceHost: "192.168.178.133"
+k8sServiceHost: \"192.168.178.30\"
 k8sServicePort: "6443"
 rollOutCiliumPods: true          # hash ConfigMap into pod template → auto rollout
 operator.replicas: 1
@@ -355,6 +355,89 @@ Never install ztunnel alongside Cilium.
    kubectl rollout status deploy/cilium-operator -n kube-system
    kubectl get gatewayclass
    ```
+
+---
+
+## Hubble Metrics & Observability
+
+Cilium 1.19.2 includes comprehensive Hubble metrics for network observability.
+
+### Configuration
+
+Hubble metrics are configured in the `install-cilium` role with:
+
+```yaml
+hubble.enabled: true
+hubble.metrics.enabled: ["httpV2:exemplars=true;sourceContext=identity;destinationContext=identity", 
+                        "drop:sourceContext=identity;destinationContext=identity",
+                        "tcp:sourceContext=identity;destinationContext=identity", 
+                        "flow:sourceContext=identity;destinationContext=identity",
+                        "icmp:sourceContext=identity;destinationContext=identity",
+                        "policy:sourceContext=identity;destinationContext=identity",
+                        "port-distribution:sourceContext=identity;destinationContext=identity"]
+hubble.metrics.enableOpenMetrics: true
+hubble.metrics.port: 9965
+```
+
+### ServiceMonitor (Prometheus Integration)
+
+The `install-cilium-hubble-monitoring` role creates a ServiceMonitor for Prometheus discovery:
+
+- **Tag**: `networking-observability` 
+- **Namespace**: `kube-system`
+- **Port**: `9965/metrics`
+- **Labels**: Must include `release: kube-prometheus-stack` for discovery
+- **OpenMetrics**: Enabled for exemplars and trace correlation
+
+```bash
+# Deploy Hubble monitoring
+make networking-observability
+
+# Verify Prometheus targets
+kubectl exec -n monitoring prometheus-kube-prometheus-stack-prometheus-0 -- \
+  wget -qO- http://localhost:9090/api/v1/targets | grep hubble
+```
+
+### Available Metrics
+
+| Metric | Description | Labels |
+|--------|-------------|--------|
+| `hubble_drop_total` | Network drops by reason | `reason`, `protocol`, `source`, `destination` |
+| `hubble_flows_processed_total` | Flow processing stats | `type`, `subtype`, `verdict`, `protocol` |
+| `hubble_http_request_duration_seconds` | HTTP request histograms | `method`, `reporter`, `source`, `destination` |
+| `hubble_tcp_flags_total` | TCP flag combinations | `flag`, `family` |
+| `hubble_icmp_total` | ICMP message stats | `family`, `type` |
+| `hubble_policy_verdict_total` | Network policy decisions | `verdict`, `direction` |
+| `hubble_port_distribution_total` | Port usage distribution | `protocol`, `port` |
+
+### Critical Notes
+
+⚠️ **Never enable both `http` and `httpV2` metrics simultaneously** - causes CrashLoopBackOff.
+✅ Use only `httpV2` with exemplars for trace correlation.
+
+⚠️ **Idempotency**: The ServiceMonitor is managed by a separate role with tag `networking-observability`.
+Running `networking` tag alone won't disable Hubble monitoring.
+
+### Verification Commands
+
+```bash
+# Check metrics endpoint directly
+kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965 &
+curl -s localhost:9965/metrics | grep hubble_
+
+# Check ServiceMonitor labels
+kubectl get servicemonitor cilium-hubble -n kube-system --show-labels
+
+# Verify Prometheus discovery (should show 4 targets UP)
+kubectl exec -n monitoring prometheus-kube-prometheus-stack-prometheus-0 -- \
+  wget -qO- http://localhost:9090/api/v1/targets | python3 -c \
+  "import json,sys; [print(f'{t[\"scrapeUrl\"]} [{t[\"health\"]}]') for t in json.load(sys.stdin)['data']['activeTargets'] if 'hubble' in str(t)]"
+```
+
+### Exemplars for Trace Correlation
+
+When `exemplars=true` is enabled on httpV2 metrics, Hubble can correlate HTTP metrics 
+with distributed traces from Tempo, providing end-to-end observability.
 
 ---
 
