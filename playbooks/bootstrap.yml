@@ -7,23 +7,24 @@
 #          gateway before pihole (HTTPRoute needs gateway to exist).
 #
 # Tags (cumulative — include all tags up to the layer you need):
-#   core           → k3s + kubeconfig + node sysctls
-#   networking     → gateway-api-crds + cilium + cilium-pools  (requires core)
-#   ingress        → cert-manager + gateway                    (requires networking)
-#   dns-metrics    → pihole                                    (requires ingress + storage for Pi-hole)
-#   services       → argocd + helm-dashboard                   (requires ingress)
-#   observability  → prometheus + tempo + loki + alloy         (requires networking + storage for Prometheus/Loki)
-#   storage        → storage backends / PVC backends             (requires networking)
-#   ai             → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
-#   openclaw       → OpenClaw personal AI gateway (Telegram + LiteLLM + modular RBAC)
-#   ai-registry    → registry only (requires storage)
-#   security       → neuvector                                   (requires networking + storage)
-#   ai-hermes-build  → kaniko ARM64 image build only
-#   ai-hermes-deploy → LiteLLM proxy + Hermes Agent deploy
-#   ai-hermes-agent  → Hermes Agent only
-#   ai-holmes        → HolmesGPT HTTP API + Gateway route
-#   kagent           → kagent + kmcp operator (multi-tenant AI agent platform)
-#   ai-platform      → alias for kagent
+#   core               → k3s + kubeconfig + node sysctls
+#   networking         → gateway-api-crds + cilium + cilium-pools  (requires core)
+#   networking-observability → cilium-hubble-monitoring ServiceMonitor (requires networking + observability)
+#   ingress            → cert-manager + gateway                    (requires networking)
+#   dns-metrics        → pihole                                    (requires ingress + storage for Pi-hole)
+#   services           → argocd + helm-dashboard                   (requires ingress)
+#   observability      → prometheus + tempo + loki + alloy         (requires networking + storage for Prometheus/Loki)
+#   storage            → storage backends / PVC backends             (requires networking)
+#   ai                 → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
+#   openclaw           → OpenClaw personal AI gateway (Telegram + LiteLLM + modular RBAC)
+#   ai-registry        → registry only (requires storage)
+#   security           → neuvector                                   (requires networking + storage)
+#   ai-hermes-build    → kaniko ARM64 image build only
+#   ai-hermes-deploy   → LiteLLM proxy + Hermes Agent deploy
+#   ai-hermes-agent    → Hermes Agent only
+#   ai-holmes          → HolmesGPT HTTP API + Gateway route
+#   kagent             → kagent + kmcp operator (multi-tenant AI agent platform)
+#   ai-platform        → alias for kagent
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -52,6 +53,8 @@
       tags: [networking]
     - role: install-cilium-pools
       tags: [networking]
+    - role: install-cilium-hubble-monitoring
+      tags: [networking-observability]
     - role: install-cert-manager
       tags: [ingress]
     - role: install-gateway

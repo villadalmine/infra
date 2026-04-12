@@ -1,0 +1,59 @@
+# Install Cilium Hubble metrics ServiceMonitor for Prometheus
+# This role is separate from install-cilium to maintain idempotency.
+# Running networking tag won't disable ServiceMonitor created by networking-observability tag.
+
+- name: Check if kube-prometheus-stack is installed
+  ansible.builtin.command:
+    cmd: kubectl get crd servicemonitors.monitoring.coreos.com
+  register: servicemonitor_crd_check
+  failed_when: false
+  changed_when: false
+
+- name: Create Cilium Hubble ServiceMonitor
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: cilium-hubble
+        namespace: "{{ cilium_hubble_servicemonitor_namespace }}"
+        labels:
+          app.kubernetes.io/name: hubble
+          app.kubernetes.io/part-of: cilium
+          app.kubernetes.io/component: metrics
+      spec:
+        selector:
+          matchLabels:
+            k8s-app: hubble
+        endpoints:
+          - port: hubble-metrics
+            interval: "{{ cilium_hubble_metrics_interval }}"
+            timeout: "{{ cilium_hubble_metrics_timeout }}"
+            path: "{{ cilium_hubble_metrics_path }}"
+            honorLabels: true
+            # Enable exemplars for trace correlation
+            enableHttp2: true
+        namespaceSelector:
+          matchNames:
+            - "{{ cilium_hubble_servicemonitor_namespace }}"
+  when: 
+    - cilium_hubble_servicemonitor_enabled | bool
+    - servicemonitor_crd_check.rc == 0
+
+- name: Display ServiceMonitor status
+  ansible.builtin.debug:
+    msg: >-
+      Cilium Hubble ServiceMonitor created in namespace {{ cilium_hubble_servicemonitor_namespace }}.
+      Metrics available at port {{ cilium_hubble_metrics_port }}{{ cilium_hubble_metrics_path }}
+      with OpenMetrics and exemplars support enabled.
+  when: 
+    - cilium_hubble_servicemonitor_enabled | bool
+    - servicemonitor_crd_check.rc == 0
+
+- name: Warning when ServiceMonitor CRD not found
+  ansible.builtin.debug:
+    msg: >-
+      ServiceMonitor CRD not found. Install kube-prometheus-stack first:
+      make observability
+  when: servicemonitor_crd_check.rc != 0

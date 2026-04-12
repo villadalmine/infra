@@ -11,7 +11,7 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -92,6 +92,18 @@ core: ## Install K3s + kubeconfig only (WARNING: cluster unusable without make n
 
 networking: ## Install core + networking (Cilium, LB-IPAM, Gateway API)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags networking
+
+networking-observability: ## Install networking + Hubble metrics ServiceMonitor (requires observability)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,observability,networking-observability
+
+networking-observability-basic: ## Install networking + Hubble metrics with basic profile
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,observability,networking-observability -e "cilium_hubble_metrics_profile=basic"
+
+networking-observability-security: ## Install networking + Hubble metrics with security profile  
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,observability,networking-observability -e "cilium_hubble_metrics_profile=security"
+
+networking-observability-full: ## Install networking + Hubble metrics with full profile (default)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,observability,networking-observability -e "cilium_hubble_metrics_profile=full"
 
 ingress: ## Install networking + ingress (cert-manager, Gateway)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ingress

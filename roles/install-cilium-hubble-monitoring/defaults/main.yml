@@ -1,0 +1,18 @@
+# ServiceMonitor configuration for Cilium Hubble metrics
+cilium_hubble_servicemonitor_enabled: true
+cilium_hubble_servicemonitor_namespace: kube-system
+
+# Metric collection settings
+cilium_hubble_metrics_interval: "30s"
+cilium_hubble_metrics_timeout: "10s"
+cilium_hubble_metrics_path: "/metrics"
+cilium_hubble_metrics_port: "9965"
+
+# OpenMetrics and exemplars support
+cilium_hubble_enable_exemplars: true
+cilium_hubble_exemplars_limit: 100000
+
+# Prometheus label selectors
+cilium_hubble_servicemonitor_labels:
+  app.kubernetes.io/part-of: cilium
+  app.kubernetes.io/name: hubble
