@@ -1,0 +1,9 @@
+---
+- name: Fix node identity for all nodes
+  hosts: all
+  become: yes
+  serial: 1
+  roles:
+    - role: fix-mac-address  # This role is now generalized to fix MAC, IP, and hostname
+      vars:
+        apply_immediately: true  # Ensure changes are applied right away
