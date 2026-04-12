@@ -8,7 +8,7 @@ FROM debian:13.4
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential nodejs npm python3 python3-pip python3-venv \
-        python3-dev ripgrep ffmpeg gcc libffi-dev curl && \
+        python3-dev ripgrep ffmpeg gcc libffi-dev curl git && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv (fast Python package manager) into /usr/local/bin

@@ -16,3 +16,4 @@ cilium_hubble_exemplars_limit: 100000
 cilium_hubble_servicemonitor_labels:
   app.kubernetes.io/part-of: cilium
   app.kubernetes.io/name: hubble
+  release: kube-prometheus-stack

@@ -18,10 +18,7 @@
       metadata:
         name: cilium-hubble
         namespace: "{{ cilium_hubble_servicemonitor_namespace }}"
-        labels:
-          app.kubernetes.io/name: hubble
-          app.kubernetes.io/part-of: cilium
-          app.kubernetes.io/component: metrics
+        labels: "{{ cilium_hubble_servicemonitor_labels | combine({'app.kubernetes.io/component': 'metrics'}) }}"
       spec:
         selector:
           matchLabels:
