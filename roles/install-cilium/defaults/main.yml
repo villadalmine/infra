@@ -50,6 +50,8 @@ cilium_hubble_metrics_profiles:
     - "drop:sourceContext=identity;destinationContext=identity"
     - "tcp:sourceContext=identity;destinationContext=identity"
     - "flow:sourceContext=identity;destinationContext=identity"
+    - "flow:sourceContext=identity;destinationContext=identity;encrypted"
+    - "flow:sourceContext=identity;destinationContext=identity;unencrypted"
     - "icmp:sourceContext=identity;destinationContext=identity" 
     - "http:exemplars=true;sourceContext=identity;destinationContext=identity"
     - "httpV2:exemplars=true;sourceContext=identity;destinationContext=identity"
