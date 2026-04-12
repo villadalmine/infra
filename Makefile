@@ -11,7 +11,7 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -171,6 +171,9 @@ node-identity: ## Check hostnames and IPs match inventory (fast script)
 
 node-stats: ## Show CPU, RAM, temperature for all nodes (fast script)
 	@bash scripts/node-stats
+
+fix-mac-address: ## Run fix-mac-address role for all nodes (limit individual ones if needed)
+	$(ANSIBLE) playbooks/fix-all-nodes.yml -i $(INVENTORY)
 
 status: ## Show cluster status
 	@echo "=== Nodes ==="
