@@ -31,7 +31,7 @@
 #   ansible-playbook bootstrap.yml --tags core,networking,ingress,services
 
 - name: Create partitions and install K3s
-  hosts: all
+  hosts: k3s_nodes
   become: true
   roles:
     #    - create-partition
