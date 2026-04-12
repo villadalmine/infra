@@ -1,0 +1,77 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cilium WireGuard Encryption Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Basic Encryption Settings ─────────────────────────────────────────────────
+cilium_encryption_enabled: true
+cilium_encryption_type: "wireguard"
+
+# ── CRITICAL COMPATIBILITY SETTING ────────────────────────────────────────────
+# ⚠️  nodeEncryption compatibility depends on your networking stack:
+#
+# LB-IPAM + L2 Announcements:     nodeEncryption: false (REQUIRED)
+# BGP + MetalLB:                  nodeEncryption: true  (OK)
+# BGP + Native Routing:           nodeEncryption: true  (OK)  
+# CNI Chaining (AWS VPC, Azure):  nodeEncryption: false (RECOMMENDED)
+#
+# Default: false (safe for most stacks, including ours)
+cilium_encryption_node_encryption: "{{ cilium_encryption_node_encryption_override | default(false) }}"
+
+# ── Stack-Specific Overrides ──────────────────────────────────────────────────
+# Override this in inventory/group_vars for different stacks:
+#
+# For LB-IPAM stacks (default/our setup):
+# cilium_encryption_node_encryption_override: false
+#
+# For BGP-only stacks:  
+# cilium_encryption_node_encryption_override: true
+#
+# For CNI chaining:
+# cilium_encryption_node_encryption_override: false
+# cilium_encryption_cni_route_mtu_chaining: true
+cilium_encryption_node_encryption_override: null
+
+# ── WireGuard Specific Settings ───────────────────────────────────────────────
+cilium_wireguard_persistent_keepalive: "30s"
+
+# ── Advanced Encryption Features ──────────────────────────────────────────────
+# Strict mode: enforces encryption for specific CIDR ranges
+# Usually not needed, enable only for high-security environments
+cilium_encryption_strict_mode_enabled: false
+cilium_encryption_strict_mode_egress_enabled: false
+cilium_encryption_strict_mode_egress_cidr: ""
+cilium_encryption_strict_mode_egress_allow_remote_node_identities: false
+
+# ── CNI Chaining Compatibility ────────────────────────────────────────────────
+# Enable when using Cilium with other CNIs (AWS VPC CNI, Azure CNI)
+cilium_encryption_cni_route_mtu_chaining: false
+
+# ── Kernel Module Requirements ────────────────────────────────────────────────
+cilium_wireguard_module_required: true
+cilium_wireguard_module_name: "wireguard"
+
+# ── Helm Chart Configuration ──────────────────────────────────────────────────
+cilium_chart_name: "cilium"
+cilium_chart_repo: "cilium"
+cilium_namespace: "kube-system"
+cilium_chart_version: "1.19.2"
+
+# ── Validation & Safety Settings ──────────────────────────────────────────────
+cilium_encryption_validation_timeout: 300  # 5 minutes
+cilium_encryption_wait_for_pods: true
+cilium_encryption_verify_kernel_module: true
+cilium_encryption_dry_run: false  # Set to true to preview changes only
+
+# ── Rollout Behavior ──────────────────────────────────────────────────────────  
+# These flags control whether pods restart when config changes
+# Keep enabled for encryption changes to take effect
+cilium_rollout_pods: true
+cilium_operator_rollout_pods: true
+cilium_envoy_rollout_pods: true
+
+# ── Documentation References ──────────────────────────────────────────────────
+# See ENCRYPTION_PLAN.md for:
+# - Stack compatibility matrix
+# - Emergency rollback procedures  
+# - Troubleshooting guide
+# - Performance impact measurements

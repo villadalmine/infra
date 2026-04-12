@@ -1,0 +1,206 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Install Cilium WireGuard Encryption
+# ═══════════════════════════════════════════════════════════════════════════════
+# This role enables WireGuard transparent encryption on an existing Cilium installation
+# 
+# CRITICAL: nodeEncryption compatibility depends on your networking stack:
+# - LB-IPAM + L2 Announcements: nodeEncryption MUST be false
+# - BGP routing: nodeEncryption CAN be true  
+# - CNI chaining: nodeEncryption SHOULD be false
+#
+# See ENCRYPTION_PLAN.md for full compatibility matrix
+# ═══════════════════════════════════════════════════════════════════════════════
+
+- name: Display encryption configuration being applied
+  ansible.builtin.debug:
+    msg: |
+      ═══════════════════════════════════════════════════════════════
+      🔒 Cilium WireGuard Encryption Configuration
+      ═══════════════════════════════════════════════════════════════
+      Encryption enabled:     {{ cilium_encryption_enabled }}
+      Encryption type:        {{ cilium_encryption_type }}
+      Node encryption:        {{ cilium_encryption_node_encryption }}
+      Persistent keepalive:   {{ cilium_wireguard_persistent_keepalive }}
+      Strict mode enabled:    {{ cilium_encryption_strict_mode_enabled }}
+      CNI route MTU:          {{ cilium_encryption_cni_route_mtu_chaining }}
+      ═══════════════════════════════════════════════════════════════
+      
+      ⚠️  COMPATIBILITY WARNING:
+      If using LB-IPAM + L2 Announcements: nodeEncryption MUST be false
+      Current setting: {{ cilium_encryption_node_encryption }}
+      ═══════════════════════════════════════════════════════════════
+
+- name: Check if Cilium is already installed
+  ansible.builtin.command:
+    cmd: helm list -n {{ cilium_namespace }} -o json
+  register: helm_list_result
+  failed_when: false
+  changed_when: false
+
+- name: Fail if Cilium is not installed
+  ansible.builtin.fail:
+    msg: "Cilium must be installed first. Run 'make networking' before 'make encryption'."
+  when: "'cilium' not in (helm_list_result.stdout | from_json | map(attribute='name'))"
+
+- name: Ensure WireGuard kernel module is loaded on all nodes
+  ansible.builtin.shell:
+    cmd: |
+      ansible -i inventory/hosts.ini all \
+        -m shell -a "sudo modprobe {{ cilium_wireguard_module_name }} && echo 'WireGuard loaded'"
+  register: wireguard_module_result
+  when: cilium_wireguard_module_required | bool and not cilium_encryption_dry_run | bool
+  delegate_to: localhost
+
+- name: Debug WireGuard module loading result
+  ansible.builtin.debug:
+    var: wireguard_module_result
+  when: cilium_wireguard_module_required | bool and not cilium_encryption_dry_run | bool
+
+- name: Get current Cilium Helm values
+  ansible.builtin.command:
+    cmd: helm get values {{ cilium_chart_name }} -n {{ cilium_namespace }} -o yaml
+  register: current_cilium_values
+  changed_when: false
+
+- name: Show current Cilium values (for review)
+  ansible.builtin.debug:
+    msg: |
+      Current Cilium configuration:
+      {{ current_cilium_values.stdout }}
+  when: cilium_encryption_dry_run | bool
+
+- name: Prepare Helm values for encryption
+  ansible.builtin.set_fact:
+    cilium_encryption_helm_values:
+      # Encryption configuration
+      encryption:
+        enabled: "{{ cilium_encryption_enabled }}"
+        type: "{{ cilium_encryption_type }}"
+        nodeEncryption: "{{ cilium_encryption_node_encryption }}"
+        wireguard:
+          persistentKeepalive: "{{ cilium_wireguard_persistent_keepalive }}"
+        # Strict mode (advanced feature)
+        strictMode:
+          enabled: "{{ cilium_encryption_strict_mode_enabled }}"
+          egress:
+            enabled: "{{ cilium_encryption_strict_mode_egress_enabled }}"
+            cidr: "{{ cilium_encryption_strict_mode_egress_cidr }}"
+            allowRemoteNodeIdentities: "{{ cilium_encryption_strict_mode_egress_allow_remote_node_identities }}"
+      
+      # CNI chaining compatibility  
+      cni:
+        enableRouteMTUForCNIChaining: "{{ cilium_encryption_cni_route_mtu_chaining }}"
+      
+      # Critical rollout flags to ensure pods restart with new config
+      rollOutCiliumPods: "{{ cilium_rollout_pods }}"
+      operator.rollOutPods: "{{ cilium_operator_rollout_pods }}"
+      envoy.rollOutPods: "{{ cilium_envoy_rollout_pods }}"
+
+- name: Show planned Helm values (dry run)
+  ansible.builtin.debug:
+    msg: |
+      ═══════════════════════════════════════════════════════════════
+      📋 PLANNED HELM VALUES (DRY RUN):
+      ═══════════════════════════════════════════════════════════════
+      {{ cilium_encryption_helm_values | to_nice_yaml }}
+      ═══════════════════════════════════════════════════════════════
+      To apply: set cilium_encryption_dry_run: false
+      ═══════════════════════════════════════════════════════════════
+  when: cilium_encryption_dry_run | bool
+
+- name: Update Cilium with WireGuard encryption
+  kubernetes.core.helm:
+    name: "{{ cilium_chart_name }}"
+    chart_ref: "{{ cilium_chart_repo }}/{{ cilium_chart_name }}"
+    chart_version: "{{ cilium_chart_version }}"
+    release_namespace: "{{ cilium_namespace }}"
+    create_namespace: false
+    wait: false  # Disabled because it can hang if pods restart
+    timeout: "{{ cilium_encryption_validation_timeout }}s"
+    reuse_values: true  # Preserve existing configuration
+    values: "{{ cilium_encryption_helm_values }}"
+  register: cilium_encryption_deploy
+  when: not cilium_encryption_dry_run | bool
+
+- name: Wait for Cilium operator to stabilize first
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/cilium-operator -n {{ cilium_namespace }} --timeout={{ cilium_encryption_validation_timeout }}s
+  when: cilium_encryption_wait_for_pods | bool and not cilium_encryption_dry_run | bool
+  register: operator_rollout
+  retries: 2
+  delay: 30
+
+- name: Wait for Cilium DaemonSet rollout with encryption
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/cilium -n {{ cilium_namespace }} --timeout={{ cilium_encryption_validation_timeout }}s
+  when: cilium_encryption_wait_for_pods | bool and not cilium_encryption_dry_run | bool
+  register: daemonset_rollout
+  retries: 2
+  delay: 30
+
+- name: Verify WireGuard encryption is enabled
+  ansible.builtin.command:
+    cmd: kubectl exec -n {{ cilium_namespace }} ds/cilium -- cilium-dbg status --brief | grep -i encrypt || echo "Encryption not detected"
+  register: cilium_encryption_status_result
+  retries: 5
+  delay: 15
+  until: "cilium_encryption_enabled | bool and 'Wireguard' in cilium_encryption_status_result.stdout"
+  when: not cilium_encryption_dry_run | bool and cilium_encryption_enabled | bool
+  failed_when: false
+
+- name: Get detailed encryption status
+  ansible.builtin.command:
+    cmd: kubectl exec -n {{ cilium_namespace }} ds/cilium -- cilium-dbg status | grep -A2 -B2 -i encrypt
+  register: cilium_detailed_encryption_status
+  when: not cilium_encryption_dry_run | bool
+  failed_when: false
+
+- name: Display encryption deployment result
+  ansible.builtin.debug:
+    msg: |
+      ═══════════════════════════════════════════════════════════════
+      🔒 Cilium WireGuard Encryption Deployment Result
+      ═══════════════════════════════════════════════════════════════
+      Encryption enabled:     {{ cilium_encryption_enabled }}
+      Node encryption:        {{ cilium_encryption_node_encryption }}
+      Deployment status:      {{ 'SUCCESS' if cilium_encryption_deploy is succeeded else 'FAILED' }}
+      
+      Encryption status check:
+      {{ cilium_encryption_status_result.stdout if cilium_encryption_status_result is defined else 'Not checked (dry run)' }}
+      
+      Detailed status:
+      {{ cilium_detailed_encryption_status.stdout if cilium_detailed_encryption_status is defined else 'Not available' }}
+      ═══════════════════════════════════════════════════════════════
+      
+      ✅ VALIDATION COMMANDS:
+      kubectl exec -n {{ cilium_namespace }} ds/cilium -- cilium-dbg status | grep -i encrypt
+      kubectl get pods -n {{ cilium_namespace }} -l k8s-app=cilium
+      
+      📊 METRICS VERIFICATION:
+      kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965
+      curl -s localhost:9965/metrics | grep -E "encrypted|unencrypted"
+      ═══════════════════════════════════════════════════════════════
+  when: not cilium_encryption_dry_run | bool
+
+- name: Show WireGuard interface verification commands
+  ansible.builtin.debug:
+    msg: |
+      ═══════════════════════════════════════════════════════════════
+      🔧 MANUAL VERIFICATION COMMANDS:
+      ═══════════════════════════════════════════════════════════════
+      
+      1. Check WireGuard interfaces on nodes:
+         ssh to any node and run: ip link show type wireguard
+         Expected: cilium_wg0 interface if nodeEncryption is enabled
+      
+      2. Verify encryption peers:
+         kubectl exec -n {{ cilium_namespace }} ds/cilium -- cilium-dbg debuginfo --output json | jq .encryption
+      
+      3. Test encrypted traffic:
+         kubectl exec -n {{ cilium_namespace }} ds/cilium -- cilium-dbg shell -- db/show l2-announce
+      
+      4. Monitor encryption metrics:
+         kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965 &
+         curl -s localhost:9965/metrics | grep -E "hubble.*encrypted"
+      ═══════════════════════════════════════════════════════════════
+  when: not cilium_encryption_dry_run | bool

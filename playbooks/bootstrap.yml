@@ -9,6 +9,7 @@
 # Tags (cumulative — include all tags up to the layer you need):
 #   core               → k3s + kubeconfig + node sysctls
 #   networking         → gateway-api-crds + cilium + cilium-pools  (requires core)
+#   encryption         → cilium wireguard encryption               (requires networking)
 #   networking-observability → cilium-hubble-monitoring ServiceMonitor (requires networking + observability)
 #   ingress            → cert-manager + gateway                    (requires networking)
 #   dns-metrics        → pihole                                    (requires ingress + storage for Pi-hole)
@@ -53,6 +54,8 @@
       tags: [networking]
     - role: install-cilium-pools
       tags: [networking]
+    - role: install-cilium-encryption
+      tags: [encryption]
     - role: install-cilium-hubble-monitoring
       tags: [networking-observability]
     - role: install-cert-manager
