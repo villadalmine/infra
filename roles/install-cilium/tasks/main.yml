@@ -76,6 +76,22 @@
       envoy:
         rollOutPods: true
 
+      # ── Hubble observability ──────────────────────────────────────────────────
+      hubble:
+        enabled: "{{ cilium_hubble_enabled }}"
+        relay:
+          enabled: "{{ cilium_hubble_relay_enabled }}"
+        metrics:
+          enabled: "{{ cilium_hubble_metrics_enabled }}"
+          enableOpenMetrics: "{{ cilium_hubble_enable_open_metrics }}"
+          port: 9965
+          serviceMonitor:
+            enabled: false  # Managed by separate role
+          dashboards:
+            enabled: false
+        ui:
+          enabled: false
+
       # ── Gateway API ──────────────────────────────────────────────────────────
       gatewayAPI:
         enabled: "{{ cilium_gateway_api_enabled }}"

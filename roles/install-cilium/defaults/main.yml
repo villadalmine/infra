@@ -3,7 +3,7 @@ cilium_namespace: kube-system
 
 # API server address used by Cilium's kube-proxy replacement.
 # Must match the K3s server node IP.
-k3s_api_server_host: "192.168.178.133"
+k3s_api_server_host: "192.168.178.30"
 k3s_api_server_port: "6443"
 
 # ── Gateway API ────────────────────────────────────────────────────────────────
@@ -25,6 +25,36 @@ cilium_gateway_host_network_enabled: false
 # Hubble + relay required for `hubble observe` CLI debugging.
 cilium_hubble_enabled: true
 cilium_hubble_relay_enabled: true
+
+# ── Hubble Metrics ────────────────────────────────────────────────────────────
+# Hubble metrics with OpenMetrics support for exemplars and trace correlation.
+# Profile options: basic, security, full
+cilium_hubble_metrics_profile: "full"
+cilium_hubble_metrics_enabled: true
+cilium_hubble_enable_open_metrics: true
+
+# Predefined metric profiles for different use cases
+cilium_hubble_metrics_profiles:
+  basic:
+    - "drop"
+    - "tcp"
+    - "flow"
+    - "icmp"
+    - "http"
+  security:
+    - "drop:sourceContext=identity;destinationContext=identity"
+    - "tcp:sourceContext=identity;destinationContext=identity" 
+    - "flow:sourceContext=identity;destinationContext=identity"
+    - "policy:sourceContext=identity;destinationContext=identity"
+  full:
+    - "drop:sourceContext=identity;destinationContext=identity"
+    - "tcp:sourceContext=identity;destinationContext=identity"
+    - "flow:sourceContext=identity;destinationContext=identity"
+    - "icmp:sourceContext=identity;destinationContext=identity" 
+    - "http:exemplars=true;sourceContext=identity;destinationContext=identity"
+    - "httpV2:exemplars=true;sourceContext=identity;destinationContext=identity"
+    - "policy:sourceContext=identity;destinationContext=identity"
+    - "port-distribution:sourceContext=identity;destinationContext=identity"
 
 # ── L2 Announcements (replaces MetalLB) ───────────────────────────────────────
 # Cilium natively handles ARP for LoadBalancer IPs via leader election + leases.
