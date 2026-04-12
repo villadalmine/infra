@@ -20,7 +20,7 @@ Ansible-managed K3s cluster on ARM64 nodes (Ubuntu 24.04), managed entirely via 
 | `srv-super6c-01-nvme` | 192.168.178.85 | K3s server + agent |
 | `srv-super6c-02-nvme` | 192.168.178.86 | K3s server + agent |
 | `srv-super6c-03-nvme` | 192.168.178.87 | K3s server + agent |
-| `srv-super6c-04-emmc` | 192.168.178.133 | standalone (not in K3s) |
+| `srv-rk1-nvme-01` | 192.168.178.30 | control plane (K3s Master) |
 
 ### Agent-only nodes (TuringPi 2 RK1 — 32GB RAM each, Rockchip RK3588S)
 
