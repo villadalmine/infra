@@ -105,7 +105,7 @@
     - role: install-holmes-ui
       tags: [ai, ai-holmes, ai-holmes-ui]
     - role: install-leloir-image
-      tags: [leloir, leloir-build]
+      tags: [leloir-build]
     - role: install-leloir
       tags: [leloir]
     - role: install-kagent
