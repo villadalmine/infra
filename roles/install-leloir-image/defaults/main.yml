@@ -1,0 +1,13 @@
+leloir_git_repo: "https://github.com/villadalmine/leloir.git"
+leloir_git_ref: "main"
+leloir_image_tag: "latest"
+leloir_registry: "registry.registry:5000"
+leloir_image_name: "ai/leloir-controlplane"
+
+# Kaniko build settings — use local-path (no NAS required)
+leloir_kaniko_namespace: kaniko
+leloir_kaniko_storage_class: "local-path"
+leloir_kaniko_storage_size: "10Gi"
+leloir_kaniko_workspace_storage_class: "local-path"
+leloir_kaniko_workspace_storage_size: "5Gi"
+leloir_kaniko_node_hostname: "srv-rk1-nvme-01"

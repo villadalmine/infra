@@ -1,0 +1,137 @@
+# Build leloir-controlplane ARM64 image using kaniko in-cluster.
+# Clones github.com/villadalmine/leloir (monorepo), builds from repo root
+# so the SDK replace directive (../leloir-sdk) resolves correctly.
+
+- name: Create kaniko namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ leloir_kaniko_namespace }}"
+    state: present
+
+- name: Create kaniko PVC for build cache
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: leloir-kaniko-cache
+        namespace: "{{ leloir_kaniko_namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "{{ leloir_kaniko_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ leloir_kaniko_storage_size }}"
+
+- name: Create kaniko PVC for build workspace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: leloir-kaniko-workspace
+        namespace: "{{ leloir_kaniko_namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: "{{ leloir_kaniko_workspace_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ leloir_kaniko_workspace_storage_size }}"
+
+- name: Delete previous kaniko Job if exists
+  kubernetes.core.k8s:
+    state: absent
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ leloir_kaniko_namespace }}"
+    name: build-leloir-arm64
+
+- name: Create kaniko Job to build leloir-controlplane ARM64 image
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: build-leloir-arm64
+        namespace: "{{ leloir_kaniko_namespace }}"
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: clone-source
+                image: alpine/git:2.47.2
+                command:
+                  - sh
+                  - -ec
+                  - |
+                    git config --global --add safe.directory /workspace/source
+                    if [ -d /workspace/source/.git ]; then
+                      git -C /workspace/source fetch --depth=1 origin {{ leloir_git_ref }}
+                      git -C /workspace/source reset --hard FETCH_HEAD
+                      git -C /workspace/source clean -fd
+                    else
+                      find /workspace/source -mindepth 1 -delete 2>/dev/null || true
+                      rmdir /workspace/source 2>/dev/null || true
+                      git clone --depth=1 --single-branch --branch {{ leloir_git_ref }} \
+                        {{ leloir_git_repo }} /workspace/source
+                    fi
+                volumeMounts:
+                  - name: workspace
+                    mountPath: /workspace
+            containers:
+              - name: kaniko
+                image: gcr.io/kaniko-project/executor:latest
+                args:
+                  # Dockerfile is in the monorepo — build context must be repo root
+                  # so leloir-core/go.mod replace directive (../leloir-sdk) resolves
+                  - "--dockerfile=/workspace/source/leloir-core/Dockerfile.controlplane"
+                  - "--context=dir:///workspace/source"
+                  - "--cache=true"
+                  - "--cache-dir=/cache"
+                  - "--destination={{ leloir_registry }}/{{ leloir_image_name }}:{{ leloir_image_tag }}"
+                  - "--insecure"
+                  - "--skip-tls-verify"
+                  - "--snapshot-mode=redo"
+                  - "--compression=zstd"
+                  - "--compression-level=1"
+                  - "--build-arg=VERSION={{ leloir_image_tag }}"
+                volumeMounts:
+                  - name: cache
+                    mountPath: /cache
+                  - name: workspace
+                    mountPath: /workspace
+                resources:
+                  requests:
+                    cpu: "1"
+                    memory: "2Gi"
+                  limits:
+                    cpu: "4"
+                    memory: "8Gi"
+            nodeSelector:
+              kubernetes.io/hostname: "{{ leloir_kaniko_node_hostname }}"
+            tolerations:
+              - operator: Exists
+            volumes:
+              - name: cache
+                persistentVolumeClaim:
+                  claimName: leloir-kaniko-cache
+              - name: workspace
+                persistentVolumeClaim:
+                  claimName: leloir-kaniko-workspace
+            restartPolicy: Never
+        backoffLimit: 2
+
+- name: Wait for kaniko job to complete (up to 15 min)
+  ansible.builtin.command:
+    cmd: kubectl wait --for=condition=complete job/build-leloir-arm64 -n {{ leloir_kaniko_namespace }} --timeout=900s
+  register: kaniko_wait
+  changed_when: false
+  failed_when: kaniko_wait.rc != 0

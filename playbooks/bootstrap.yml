@@ -9,7 +9,7 @@
 # Tags (cumulative — include all tags up to the layer you need):
 #   core               → k3s + kubeconfig + node sysctls
 #   networking         → gateway-api-crds + cilium + cilium-pools  (requires core)
-#   encryption         → cilium wireguard encryption               (requires networking)
+#   encryption         → cilium wireguard encryption               (DISABLED: incompatible with LB-IPAM)
 #   networking-observability → cilium-hubble-monitoring ServiceMonitor (requires networking + observability)
 #   ingress            → cert-manager + gateway                    (requires networking)
 #   dns-metrics        → pihole                                    (requires ingress + storage for Pi-hole)
@@ -24,6 +24,8 @@
 #   ai-hermes-deploy   → LiteLLM proxy + Hermes Agent deploy
 #   ai-hermes-agent    → Hermes Agent only
 #   ai-holmes          → HolmesGPT HTTP API + Gateway route
+#   leloir-build       → kaniko build of leloir-controlplane ARM64 image (requires ai-registry)
+#   leloir             → Postgres + leloir-controlplane deploy (requires ai-registry + leloir-build)
 #   kagent             → kagent + kmcp operator (multi-tenant AI agent platform)
 #   ai-platform        → alias for kagent
 #
@@ -31,6 +33,13 @@
 #   ansible-playbook bootstrap.yml --tags core
 #   ansible-playbook bootstrap.yml --tags core,networking
 #   ansible-playbook bootstrap.yml --tags core,networking,ingress,services
+
+- name: System upgrade (apt dist-upgrade, optional release upgrade — NEVER on rk1_nodes)
+  hosts: "{{ groups['all'] | difference(groups['rk1_nodes']) }}"
+  become: true
+  roles:
+    - role: apt-upgrade
+      tags: [upgrade]
 
 - name: Create partitions and install K3s
   hosts: k3s_nodes
@@ -56,6 +65,7 @@
       tags: [networking]
     - role: install-cilium-encryption
       tags: [encryption]
+      when: cilium_wireguard_enabled | default(false)
     - role: install-cilium-hubble-monitoring
       tags: [networking-observability]
     - role: install-cert-manager
@@ -94,6 +104,10 @@
       tags: [ai, ai-holmes]
     - role: install-holmes-ui
       tags: [ai, ai-holmes, ai-holmes-ui]
+    - role: install-leloir-image
+      tags: [leloir, leloir-build]
+    - role: install-leloir
+      tags: [leloir]
     - role: install-kagent
       tags: [kagent, ai-platform]
     - role: install-openclaw

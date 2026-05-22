@@ -68,6 +68,8 @@ all tags up to the layer you need.
 | `ai-hermes-deploy` | litellm-proxy + hermes-agent | `ai-hermes-build` |
 | `ai-holmes` | holmes + holmes-ui (chat interface) | `ai-hermes-deploy` |
 | `ai-holmes-ui` | holmes-ui only (nginx:alpine + ConfigMap) | `ai-holmes` |
+| `leloir-build` | kaniko ARM64 build of leloir-controlplane image | `ai-registry` |
+| `leloir` | Postgres StatefulSet + leloir-controlplane deploy + HTTPRoute | `ai-registry` + `leloir-build` |
 | `kagent` | kagent + kmcp operator (multi-tenant agent platform) | `networking` + LiteLLM |
 | `openclaw` | OpenClaw personal AI gateway (Telegram + LiteLLM + RBAC) | `networking` + LiteLLM |
 
