@@ -56,7 +56,7 @@ openclaw_mcp_k8s_tag: "v0.0.60"
 # ─── Subagent endpoints (for NetworkPolicy + AGENTS.md) ──────────────────────
 openclaw_holmes_url: "http://holmesgpt-holmes.ai.svc.cluster.local"
 openclaw_kagent_url: "http://k8s-agent.kagent.svc.cluster.local:8080"
-openclaw_hermes_url: "http://hermes-agent-mcp.ai.svc.cluster.local:8000"
+openclaw_hermes_url: "http://hermes-agent-mcp.ai.svc.cluster.local:8000"  # hermes gateway MCP port
 
 
 openclaw_prometheus_url: "http://prometheus-operated.monitoring.svc.cluster.local:9090"
@@ -107,6 +107,11 @@ openclaw_agent_instructions: |
   - `resources_get` (apiVersion, kind, name, namespace?) — recurso específico
   - `events_list` (namespace?) — eventos del cluster
 
+  ## MCP "hermes" — agente de código y operaciones complejas
+  Úsalo para: tareas de código, análisis profundo, operaciones que requieren varios pasos.
+  Es un agente autónomo con acceso al cluster K8s. Delégale tareas complejas.
+  Tools: usa las herramientas que exponga hermes directamente.
+
   ## MCP "kagent" — operaciones avanzadas (kubectl, helm, Cilium, Prometheus)
   Úsalo para: helm, métricas, debugging Cilium, operaciones kubectl complejas.
   Tools clave:
@@ -134,6 +139,7 @@ openclaw_agent_instructions: |
   - Métricas Prometheus → kagent `prometheus_query_tool`
   - Debugging Cilium/red → kagent `cilium_*`
   - Operaciones de escritura (scale, apply, delete) → kagent + pide confirmación
+  - Tareas de código, análisis multi-paso, investigación profunda → hermes MCP
 
   ## Cluster — K3s ARM64, 10 nodos
   Servers: srv-super6c-01-nvme (.85), -02 (.86), -03 (.87), -05-emmc (.104), -06-emmc (.105)
@@ -154,3 +160,4 @@ openclaw_agent_instructions: |
     Son dos servidores distintos: "kubernetes" (sidecar local) y "kagent" (kagent-tools).
     Ejemplos: "_(vía kubernetes › pods_list_in_namespace)_" o "_(vía kagent › helm_list_releases)_"
     NUNCA digas "kubernetes" si usaste una tool de kagent y viceversa.
+    Si usas hermes: "_(vía hermes › nombre_tool)_"

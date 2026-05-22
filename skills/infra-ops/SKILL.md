@@ -16,7 +16,7 @@ Operational knowledge for the 10-node ARM64 K3s homelab cluster.
 
 | Node | IP | Role |
 |------|----|------|
-| `srv-super6c-04-emmc` | 192.168.178.133 | standalone (not in K3s) |
+| `srv-rk1-nvme-01` | 192.168.178.30 | control plane (K3s Master) |
 | `srv-super6c-05-emmc` | 192.168.178.104 | K3s server |
 | `srv-super6c-06-emmc` | 192.168.178.105 | K3s server |
 

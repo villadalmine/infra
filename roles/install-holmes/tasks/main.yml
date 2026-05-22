@@ -2,6 +2,11 @@
 # It uses the in-cluster LiteLLM proxy as an OpenAI-compatible backend and
 # authenticates with the LiteLLM master key.
 
+- name: Add Robusta Helm repository
+  kubernetes.core.helm_repository:
+    name: robusta
+    repo_url: https://robusta-charts.storage.googleapis.com
+
 - name: Load Holmes secrets (if secrets.yml exists)
   ansible.builtin.include_vars:
     file: "{{ playbook_dir }}/../roles/install-litellm-proxy/defaults/secrets.yml"
@@ -47,7 +52,7 @@
         holmes-litellm:
           api_key: "{{ '{{ env.OPENAI_API_KEY }}' }}"
           api_base: "{{ '{{ env.OPENAI_API_BASE }}' }}"
-          model: openai/{{ holmes_model_name }}
+          model: "{{ holmes_model_name }}"
           temperature: 0
       toolsets:
         kubernetes/core:
@@ -82,6 +87,42 @@
           memory: "{{ holmes_memory_request }}"
         limits:
           memory: "{{ holmes_memory_limit }}"
+
+- name: Create AG-UI combined server ConfigMap
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: holmes-agui-server
+        namespace: "{{ holmes_namespace }}"
+      data:
+        server.py: "{{ lookup('file', role_path + '/files/holmes-combined-server.py') }}"
+    state: present
+
+- name: Patch Holmes Deployment to mount combined server
+  kubernetes.core.k8s:
+    merge_type: strategic-merge
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ holmes_release_name }}-holmes"
+        namespace: "{{ holmes_namespace }}"
+      spec:
+        template:
+          spec:
+            volumes:
+              - name: holmes-agui-server
+                configMap:
+                  name: holmes-agui-server
+            containers:
+              - name: holmes
+                volumeMounts:
+                  - name: holmes-agui-server
+                    mountPath: /app/server.py
+                    subPath: server.py
+    state: present
 
 - name: Wait for HolmesGPT rollout
   ansible.builtin.command:

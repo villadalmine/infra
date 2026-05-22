@@ -17,7 +17,7 @@ metadata:
 
 Single-node K3s cluster on Raspberry Pi CM4 (ARM64), Ubuntu 24.04.
 
-Node: `srv-rk1-01` / `cm4-unknow-3` at `192.168.178.133`
+Node: `srv-rk1-nvme-01` at `192.168.178.30`
 Version pinned in: `roles/install-k3s/defaults/main.yml`
 SSH: `ssh dalmine@192.168.178.133`
 

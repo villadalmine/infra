@@ -15,21 +15,20 @@ cilium_encryption_type: "wireguard"
 # CNI Chaining (AWS VPC, Azure):  nodeEncryption: false (RECOMMENDED)
 #
 # Default: false (safe for most stacks, including ours)
-cilium_encryption_node_encryption: "{{ cilium_encryption_node_encryption_override | default(false) }}"
+cilium_encryption_node_encryption: false
 
-# ── Stack-Specific Overrides ──────────────────────────────────────────────────
-# Override this in inventory/group_vars for different stacks:
+# ── Stack-Specific Configuration ─────────────────────────────────────────────
+# To change for different networking stacks, override in inventory/group_vars:
 #
-# For LB-IPAM stacks (default/our setup):
-# cilium_encryption_node_encryption_override: false
+# For LB-IPAM stacks (our default setup):
+# cilium_encryption_node_encryption: false
 #
 # For BGP-only stacks:  
-# cilium_encryption_node_encryption_override: true
+# cilium_encryption_node_encryption: true
 #
 # For CNI chaining:
-# cilium_encryption_node_encryption_override: false
+# cilium_encryption_node_encryption: false
 # cilium_encryption_cni_route_mtu_chaining: true
-cilium_encryption_node_encryption_override: null
 
 # ── WireGuard Specific Settings ───────────────────────────────────────────────
 cilium_wireguard_persistent_keepalive: "30s"

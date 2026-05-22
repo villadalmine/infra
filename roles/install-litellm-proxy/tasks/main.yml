@@ -29,7 +29,8 @@
         HOLMES_OPENROUTER_API_KEY: "{{ holmes_openrouter_api_key | default('') }}"
         KAGENT_OPENROUTER_API_KEY: "{{ kagent_openrouter_api_key | default('') }}"
         OPENCLAW_OPENROUTER_API_KEY: "{{ openclaw_openrouter_api_key | default('') }}"
-  when: hermes_openrouter_api_key | default('') | length > 0
+  # Always create secret — pod references it unconditionally.
+  # Keys are empty strings when secrets.yml is missing (local-only mode).
 
 - name: Create LiteLLM proxy ConfigMap
   kubernetes.core.k8s:
@@ -43,6 +44,43 @@
       data:
         config.yaml: |
           model_list:
+            # ── Local GPU routes (DIRECT to Ollama — bypasses t7910 LiteLLM) ─
+            # Double-hop (in-cluster LiteLLM → t7910 LiteLLM → Ollama) breaks
+            # tool_calls: models return inline JSON instead of tool_calls objects.
+            # Fix: route directly to Ollama /v1 on the GPU-specific port.
+            # P4 GPU :11434 — small models (≤8B, ~4-5 GB VRAM)
+            # M4000 dual :11436 — large models (≥14B)
+            - model_name: local-fast
+              litellm_params:
+                model: openai/qwen2.5-coder:7b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
+            - model_name: local-llama
+              litellm_params:
+                model: openai/llama3.1:8b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
+            - model_name: local-reason
+              litellm_params:
+                model: openai/deepseek-r1:8b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
+            - model_name: local-coder-7b
+              litellm_params:
+                model: openai/qwen2.5-coder:7b-instruct-q8_0
+                api_base: http://192.168.178.90:11436/v1
+                api_key: "dummy"
+            - model_name: local-codestral
+              litellm_params:
+                model: openai/codestral:latest
+                api_base: http://192.168.178.90:11436/v1
+                api_key: "dummy"
+            - model_name: local-deepseek
+              litellm_params:
+                model: openai/deepseek-coder-v2:16b
+                api_base: http://192.168.178.90:11436/v1
+                api_key: "dummy"
+
             # ── Hermes routing ──────────────────────────────────────────────
             - model_name: hermes-qwen
               litellm_params:
@@ -63,18 +101,25 @@
                 api_key: os.environ/OPENROUTER_API_KEY
 
             # ── Holmes routing ──────────────────────────────────────────────
+            # Direct Ollama (bypass t7910 LiteLLM double-hop).
+            # Double-hop (in-cluster LiteLLM → t7910 LiteLLM → Ollama) silently
+            # breaks tool calling: llama3.1:8b generates inline JSON instead of
+            # proper tool_calls API objects. Direct Ollama /v1 fixes this.
             - model_name: holmes-llama
               litellm_params:
-                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+                model: openai/llama3.1:8b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
             - model_name: holmes-free2
               litellm_params:
-                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+                model: openai/llama3.1:8b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
             - model_name: holmes-cheap
               litellm_params:
-                model: openrouter/qwen/qwen-turbo
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+                model: openai/llama3.1:8b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
 
             # ── OpenClaw routing ────────────────────────────────────────────
             # Uses openai/ prefix + api_base (NOT openrouter/ prefix) to avoid
@@ -103,17 +148,18 @@
               litellm_params:
                 model: openrouter/qwen/qwen3-coder:free
                 api_key: os.environ/OPENROUTER_API_KEY
+            # gpt-5.4 = Holmes default model name → direct Ollama (bypass t7910 LiteLLM)
+            # MUST be direct Ollama, NOT via t7910 LiteLLM. Double-hop breaks tool calling.
             - model_name: gpt-5.4
               litellm_params:
-                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
-            # Backwards-compat alias: some clients may prefix provider (eg. openai/gpt-5.4).
-            # Provide a passthrough alias so those IDs resolve to the same backend and avoid
-            # Unknown model or provider routing to api.openai.com.
+                model: openai/llama3.1:8b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
             - model_name: openai/gpt-5.4
               litellm_params:
-                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+                model: openai/llama3.1:8b
+                api_base: http://192.168.178.90:11434/v1
+                api_key: "dummy"
             - model_name: gemini-free
               litellm_params:
                 model: openai/gpt-oss-120b:free

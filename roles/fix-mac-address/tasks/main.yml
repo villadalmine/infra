@@ -1,13 +1,14 @@
-# Fix MAC address on RK1 nodes (Rockchip RK3588S on TuringPi 2).
-# Problem: RK1 modules use a locally-administered MAC that can change between
-# reboots, causing the DHCP server to assign a different IP on each boot.
+# Fix node identity (IP, MAC, Hostname) for all nodes.
+# Problem: Inconsistent IPs, MAC rotation (on RK1), and hostname mismatches
+# affect the stability of K3s clusters. DHCP assignment and MAC changes
+# must be addressed universally for all nodes (Super6C, RK1).
 #
-# Fix: Use the current MAC as permanent by writing it into a systemd-networkd
-# .link file. This tells the kernel to always apply this MAC to the interface
-# regardless of what the firmware reports.
+# Fix: Use systemd-networkd for static MAC assignment and netplan for
+# static IP configuration. Enforce hostname consistency using hostnamectl.
+# Conditional restart of K3s services based on detected changes.
 #
-# Run manually on RK1 nodes only:
-#   ansible-playbook playbooks/fix-mac.yml -i inventory/hosts.ini --limit rk1_nodes
+# Apply to all nodes in inventory:
+#   ansible-playbook playbooks/fix-all-nodes.yml -i inventory/hosts.ini
 
 - name: Detect ethernet interface name
   ansible.builtin.shell: |
@@ -15,11 +16,42 @@
   register: eth_iface
   changed_when: false
 
+- name: Ensure Cloud-Init does not overwrite hostname
+  ansible.builtin.lineinfile:
+    path: /etc/cloud/cloud.cfg
+    regexp: '^preserve_hostname:'
+    line: 'preserve_hostname: true'
+    create: true
+
+- name: Enforce hostname consistency
+  ansible.builtin.command: hostnamectl set-hostname {{ inventory_hostname }}
+  when: ansible_hostname != inventory_hostname
+
+- name: Validate k3s service type (server or agent)
+  ansible.builtin.shell: |
+    systemctl is-active k3s.service && echo server || systemctl is-active k3s-agent.service && echo agent || echo none
+  register: k3s_type
+  failed_when: false
+
 - name: Get current MAC address of ethernet interface
   ansible.builtin.shell: |
     cat /sys/class/net/{{ eth_iface.stdout }}/address
   register: current_mac
   changed_when: false
+
+- name: Check if MAC address is already persistent
+  ansible.builtin.command: cat /etc/systemd/network/10-{{ eth_iface.stdout }}-mac.link
+  register: link_file_content
+  failed_when: false
+
+- name: Evaluate if MAC address is already correct
+  ansible.builtin.set_fact:
+    mac_correct: "{{ 'MACAddress=' ~ current_mac.stdout in link_file_content.stdout }}"
+
+- name: Skip MAC change if already correct
+  ansible.builtin.debug:
+    msg: "MAC address is already fixed. No changes needed."
+  when: mac_correct
 
 - name: Show detected interface and MAC
   ansible.builtin.debug:
@@ -48,6 +80,10 @@
     group: root
     mode: "0644"
 
+- name: Check current IP address
+  ansible.builtin.shell: ip -json addr show
+  register: ip_output
+
 - name: Create static netplan config with pinned MAC and fixed IP
   ansible.builtin.template:
     src: static-ip.yaml.j2
@@ -55,12 +91,25 @@
     owner: root
     group: root
     mode: "0600"
+  when: "'192.168.178.XX' not in ip_output.stdout"  # Replace XX with desired IP
   register: netplan_changed
 
 - name: Apply netplan configuration
   ansible.builtin.command: netplan apply
   when: netplan_changed.changed or link_file.changed
   changed_when: true
+
+- name: Restart k3s service if network changes detected on server
+  ansible.builtin.systemd:
+    name: k3s.service
+    state: restarted
+  when: k3s_type.stdout == 'server' and (netplan_changed.changed or link_file.changed)
+
+- name: Restart k3s-agent service if network changes detected on agent
+  ansible.builtin.systemd:
+    name: k3s-agent.service
+    state: restarted
+  when: k3s_type.stdout == 'agent' and (netplan_changed.changed or link_file.changed)
 
 - name: Reload systemd-networkd to pick up link file
   ansible.builtin.systemd:

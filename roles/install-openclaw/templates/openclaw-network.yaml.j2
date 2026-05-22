@@ -87,7 +87,7 @@ spec:
       ports:
         - port: 8084
           protocol: TCP
-    # Hermes — subagente (port 8644 = service + targetPort)
+    # Hermes — MCP subagent (port 8000 = hermes gateway MCP HTTP server)
     - to:
         - namespaceSelector:
             matchLabels:
@@ -96,7 +96,7 @@ spec:
             matchLabels:
               app: hermes-agent-mcp
       ports:
-        - port: 8644
+        - port: 8000
           protocol: TCP
     # Prometheus — queries de métricas read-only
     - to:

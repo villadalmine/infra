@@ -37,6 +37,11 @@ data:
             "url": "http://kagent-tools.kagent.svc.cluster.local:8084/mcp",
             "transport": "streamable-http",
             "timeout": 60
+          },
+          "hermes": {
+            "url": "{{ openclaw_hermes_url }}/mcp",
+            "transport": "streamable-http",
+            "timeout": 120
           }
         }
       },
@@ -64,9 +69,10 @@ data:
     ## Subagentes disponibles
     - **kubernetes** (MCP local, streamable-http): Acceso read-only al cluster K8s. Sin Secrets.
       Úsalo para: pods, deployments, logs, events, networkpolicies, nodos, métricas.
-    - **kagent** (MCP SSE): Ejecuta kubectl, helm y operaciones K8s estructuradas.
+    - **kagent** (MCP streamable-http, port 8084): Ejecuta kubectl, helm y operaciones K8s estructuradas.
       Úsalo para: helm releases, operaciones de red con Cilium, operaciones con Prometheus.
-    - **hermes** (MCP — offline): Agente de código y operaciones. Vuelve con token propio.
+    - **hermes** (MCP streamable-http, port 8000): Agente autónomo de código y operaciones complejas.
+      Delégale tareas multi-paso, análisis profundo o investigación. Tiene acceso al cluster K8s.
 
     ## Cluster — 10 nodos K3s ARM64
     ### Servers (control plane + etcd)
@@ -81,7 +87,7 @@ data:
     - srv-rk1-nvme-03 (192.168.178.51)
     - srv-rk1-nvme-04 (192.168.178.54)
     ### Standalone (no en K3s)
-    - srv-super6c-04-emmc (192.168.178.133)
+    - srv-rk1-nvme-01 (192.168.178.30)
     ### Gateway: 192.168.178.200 | DNS/Pi-hole: 192.168.178.203 | Dominio: *.cluster.home
 
     ## Servicios del cluster

@@ -1,0 +1,25 @@
+---
+# GPU inference benchmark — Tesla P4 vs Quadro M4000 en srv-t7910
+#
+# Corre 3 tests:
+#   TEST 1 — P4 solo     (Ollama port 11434, llama3.1:8b)
+#   TEST 2 — M4000 solo  (Ollama port 11435, qwen2.5-coder:7b-q8)
+#   TEST 3 — Ambos en paralelo (Ansible async jobs simultáneos)
+#
+# Para cada test recolecta: tokens/s, TTFT, tiempo total, peak VRAM,
+# utilización GPU, temperatura máxima.
+#
+# Uso:
+#   ansible-playbook playbooks/test-gpu.yml -i inventory/hosts.ini
+#
+# Opciones:
+#   -e gpu_bench_p4_model=llama3.1:8b
+#   -e gpu_bench_m4000_model=qwen2.5-coder:7b-instruct-q8_0
+#   -e gpu_bench_prompt="tu prompt aquí"
+#   -e gpu_bench_result_dir=/tmp/gpu-bench
+
+- name: GPU inference benchmark
+  hosts: gpu_nodes
+  gather_facts: false
+  roles:
+    - role: test-gpu-inference

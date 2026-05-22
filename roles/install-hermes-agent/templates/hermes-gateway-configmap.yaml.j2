@@ -8,7 +8,7 @@ data:
     {
       "platforms": {
         "telegram": {
-          "enabled": true,
+          "enabled": {{ hermes_telegram_enabled | lower }},
           "extra": {
             "allowed_users": "{{ hermes_telegram_allowed_users | default('') }}",
             "require_mention": true,

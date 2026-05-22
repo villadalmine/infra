@@ -1,0 +1,78 @@
+---
+# apt-upgrade — safe system updates for non-RK1 nodes
+#
+# NEVER runs on rk1_nodes (custom rockchip kernel — frozen packages).
+# Supports:
+#   - apt update + dist-upgrade (security + packages)
+#   - do-release-upgrade to next LTS (24.04 → 26.04) when apt_do_release_upgrade=true
+#   - optional reboot if kernel/libs changed
+#
+# Usage:
+#   ansible-playbook playbooks/bootstrap.yml --tags upgrade
+#   ansible-playbook playbooks/bootstrap.yml --tags upgrade -e apt_do_release_upgrade=true
+
+- name: "apt-upgrade | abort if running on RK1 node (kernel freeze rule)"
+  ansible.builtin.fail:
+    msg: >
+      apt-upgrade must NEVER run on RK1 nodes (custom rockchip kernel, frozen packages).
+      Remove rk1_nodes from the target hosts or use --limit to exclude them.
+  when: "'rk1_nodes' in group_names"
+
+- name: "apt-upgrade | update apt cache"
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: "apt-upgrade | dist-upgrade (security + packages)"
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: true
+    autoclean: true
+  become: true
+  register: apt_upgrade_result
+
+- name: "apt-upgrade | check if reboot required"
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: reboot_required_file
+
+- name: "apt-upgrade | log upgrade summary"
+  ansible.builtin.debug:
+    msg: >
+      {{ inventory_hostname }}: {{ apt_upgrade_result.stdout_lines | default([]) | length }} packages updated.
+      Reboot required: {{ reboot_required_file.stat.exists }}.
+  when: apt_upgrade_result.changed
+
+- name: "apt-upgrade | install update-manager-core (needed for release upgrade)"
+  ansible.builtin.apt:
+    name: update-manager-core
+    state: present
+  become: true
+  when: apt_do_release_upgrade | bool
+
+- name: "apt-upgrade | check current Ubuntu version"
+  ansible.builtin.command: lsb_release -rs
+  register: ubuntu_version
+  changed_when: false
+  when: apt_do_release_upgrade | bool
+
+- name: "apt-upgrade | run do-release-upgrade to next LTS (24.04 → 26.04)"
+  ansible.builtin.command: do-release-upgrade -f DistUpgradeViewNonInteractive
+  become: true
+  when:
+    - apt_do_release_upgrade | bool
+    - ubuntu_version.stdout is defined
+    - ubuntu_version.stdout is version('25.99', '<')
+  register: release_upgrade_result
+  async: 3600
+  poll: 30
+
+- name: "apt-upgrade | reboot after upgrade (if required)"
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ apt_reboot_timeout }}"
+    msg: "Rebooting after apt-upgrade"
+  become: true
+  when:
+    - apt_reboot_if_needed | bool
+    - reboot_required_file.stat.exists or (release_upgrade_result is defined and release_upgrade_result.changed)

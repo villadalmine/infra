@@ -1,3 +1,27 @@
+# ⚠️ ENCRYPTION ABANDONADO - INCOMPATIBLE ⚠️
+
+**STATUS: ABANDONADO** - WireGuard encryption es **INCOMPATIBLE** con LB-IPAM + L2 Announcements.
+
+## Resultado final
+
+Después de múltiples intentos y recovery completo del cluster:
+
+❌ **nodeEncryption: true** → Cluster completamente roto (confirmado)  
+❌ **nodeEncryption: false** → Cilium CrashLoopBackOff, LoadBalancers no funcionan  
+❌ **Cualquier encryption habilitada** → Interfiere con L2 announcements  
+
+**CONCLUSIÓN**: WireGuard encryption y LB-IPAM + L2 Announcements son **mutuamente exclusivos** en este stack.
+
+## Plan futuro
+
+- **Encryption**: Cambiar a stack BGP puro (sin L2 announcements) si encryption es crítica
+- **Actual**: Mantener LB-IPAM + L2 announcements sin encryption (funciona perfectamente)
+- **Role encryption**: Comentado en Makefile, mantenido solo para referencia
+
+---
+
+# PLAN ORIGINAL (ARCHIVADO)
+
 # Cilium WireGuard Encryption Implementation Plan
 
 ## Objetivo

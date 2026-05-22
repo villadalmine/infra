@@ -1,0 +1,286 @@
+---
+# GPU inference benchmark: P4 (11434) vs Quadro M4000 (11435)
+# Tests: P4-solo, M4000-solo, ambos en paralelo (async Ansible jobs)
+# Output: informe con tokens/s, VRAM, temperatura, utilización.
+
+- name: "gpu-bench | create result dir"
+  ansible.builtin.file:
+    path: "{{ gpu_bench_result_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: "gpu-bench | verify P4 Ollama (port {{ gpu_bench_p4_port }})"
+  ansible.builtin.uri:
+    url: "http://localhost:{{ gpu_bench_p4_port }}/api/tags"
+  register: _p4_check
+  failed_when: _p4_check.status != 200
+
+- name: "gpu-bench | verify M4000 Ollama (port {{ gpu_bench_m4000_port }})"
+  ansible.builtin.uri:
+    url: "http://localhost:{{ gpu_bench_m4000_port }}/api/tags"
+  register: _m4_check
+  failed_when: _m4_check.status != 200
+
+# ─────────────────────────────────────────────────────────────────
+# TEST 1 — P4 solo  (blocking, monitorea GPU en subshell)
+# ─────────────────────────────────────────────────────────────────
+- name: "gpu-bench | TEST 1 — P4 solo ({{ gpu_bench_p4_model }})"
+  ansible.builtin.shell: |
+    OUT={{ gpu_bench_result_dir }}/p4
+    GPU_LOG=$OUT/gpu_log.csv
+    mkdir -p $OUT
+    echo "time_s,gpu_idx,name,temp_c,util_pct,mem_used_mib,mem_total_mib" > $GPU_LOG
+
+    # Start GPU monitor as background subshell
+    ( SECONDS=0; while true; do
+        nvidia-smi --query-gpu=index,name,temperature.gpu,utilization.gpu,memory.used,memory.total \
+          --format=csv,noheader \
+        | sed "s/^/$SECONDS,/" >> $GPU_LOG
+        sleep {{ gpu_bench_poll_interval }}
+        SECONDS=$((SECONDS + {{ gpu_bench_poll_interval }}))
+      done ) &
+    MONITOR_PID=$!
+
+    # Run inference
+    T_START=$SECONDS
+    curl -s -X POST http://localhost:{{ gpu_bench_p4_port }}/api/generate \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"{{ gpu_bench_p4_model }}","prompt":{{ gpu_bench_prompt | to_json }},"stream":false}' \
+      -o $OUT/response.json \
+      --max-time {{ gpu_bench_timeout }}
+    CURL_RC=$?
+    T_END=$SECONDS
+
+    kill $MONITOR_PID 2>/dev/null
+    echo "$((T_END - T_START))" > $OUT/elapsed_s.txt
+    exit $CURL_RC
+  register: _t1
+  args:
+    executable: /bin/bash
+  timeout: "{{ gpu_bench_timeout + 10 }}"
+
+# ─────────────────────────────────────────────────────────────────
+# TEST 2 — M4000 solo  (blocking)
+# ─────────────────────────────────────────────────────────────────
+- name: "gpu-bench | TEST 2 — M4000 solo ({{ gpu_bench_m4000_model }})"
+  ansible.builtin.shell: |
+    OUT={{ gpu_bench_result_dir }}/m4000
+    GPU_LOG=$OUT/gpu_log.csv
+    mkdir -p $OUT
+    echo "time_s,gpu_idx,name,temp_c,util_pct,mem_used_mib,mem_total_mib" > $GPU_LOG
+
+    ( SECONDS=0; while true; do
+        nvidia-smi --query-gpu=index,name,temperature.gpu,utilization.gpu,memory.used,memory.total \
+          --format=csv,noheader \
+        | sed "s/^/$SECONDS,/" >> $GPU_LOG
+        sleep {{ gpu_bench_poll_interval }}
+        SECONDS=$((SECONDS + {{ gpu_bench_poll_interval }}))
+      done ) &
+    MONITOR_PID=$!
+
+    T_START=$SECONDS
+    curl -s -X POST http://localhost:{{ gpu_bench_m4000_port }}/api/generate \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"{{ gpu_bench_m4000_model }}","prompt":{{ gpu_bench_prompt | to_json }},"stream":false}' \
+      -o $OUT/response.json \
+      --max-time {{ gpu_bench_timeout }}
+    CURL_RC=$?
+    T_END=$SECONDS
+
+    kill $MONITOR_PID 2>/dev/null
+    echo "$((T_END - T_START))" > $OUT/elapsed_s.txt
+    exit $CURL_RC
+  register: _t2
+  args:
+    executable: /bin/bash
+  timeout: "{{ gpu_bench_timeout + 10 }}"
+
+# ─────────────────────────────────────────────────────────────────
+# TEST 3 — Ambos en paralelo (Ansible async jobs)
+# ─────────────────────────────────────────────────────────────────
+- name: "gpu-bench | TEST 3 — fire P4 inference (async)"
+  ansible.builtin.shell: |
+    OUT={{ gpu_bench_result_dir }}/parallel
+    GPU_LOG=$OUT/p4_gpu_log.csv
+    mkdir -p $OUT
+    echo "time_s,gpu_idx,name,temp_c,util_pct,mem_used_mib,mem_total_mib" > $GPU_LOG
+
+    # Monitor only P4 (index 1 → GPU-fae46fc9)
+    ( SECONDS=0; while true; do
+        nvidia-smi -i 1 --query-gpu=index,name,temperature.gpu,utilization.gpu,memory.used,memory.total \
+          --format=csv,noheader \
+        | sed "s/^/$SECONDS,/" >> $GPU_LOG
+        sleep {{ gpu_bench_poll_interval }}
+        SECONDS=$((SECONDS + {{ gpu_bench_poll_interval }}))
+      done ) &
+    MONITOR_PID=$!
+
+    curl -s -X POST http://localhost:{{ gpu_bench_p4_port }}/api/generate \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"{{ gpu_bench_p4_model }}","prompt":{{ gpu_bench_prompt | to_json }},"stream":false}' \
+      -o $OUT/p4_response.json \
+      --max-time {{ gpu_bench_timeout }}
+    CURL_RC=$?
+
+    kill $MONITOR_PID 2>/dev/null
+    exit $CURL_RC
+  args:
+    executable: /bin/bash
+  async: "{{ gpu_bench_timeout }}"
+  poll: 0
+  register: _par_p4_job
+
+- name: "gpu-bench | TEST 3 — fire M4000 inference (async)"
+  ansible.builtin.shell: |
+    OUT={{ gpu_bench_result_dir }}/parallel
+    GPU_LOG=$OUT/m4000_gpu_log.csv
+    mkdir -p $OUT
+    echo "time_s,gpu_idx,name,temp_c,util_pct,mem_used_mib,mem_total_mib" > $GPU_LOG
+
+    # Monitor only M4000 (index 0 → GPU-6ac6668f)
+    ( SECONDS=0; while true; do
+        nvidia-smi -i 0 --query-gpu=index,name,temperature.gpu,utilization.gpu,memory.used,memory.total \
+          --format=csv,noheader \
+        | sed "s/^/$SECONDS,/" >> $GPU_LOG
+        sleep {{ gpu_bench_poll_interval }}
+        SECONDS=$((SECONDS + {{ gpu_bench_poll_interval }}))
+      done ) &
+    MONITOR_PID=$!
+
+    curl -s -X POST http://localhost:{{ gpu_bench_m4000_port }}/api/generate \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"{{ gpu_bench_m4000_model }}","prompt":{{ gpu_bench_prompt | to_json }},"stream":false}' \
+      -o $OUT/m4000_response.json \
+      --max-time {{ gpu_bench_timeout }}
+    CURL_RC=$?
+
+    kill $MONITOR_PID 2>/dev/null
+    exit $CURL_RC
+  args:
+    executable: /bin/bash
+  async: "{{ gpu_bench_timeout }}"
+  poll: 0
+  register: _par_m4_job
+
+- name: "gpu-bench | TEST 3 — wait for P4 parallel job"
+  ansible.builtin.async_status:
+    jid: "{{ _par_p4_job.ansible_job_id }}"
+  register: _par_p4_result
+  until: _par_p4_result.finished
+  retries: "{{ (gpu_bench_timeout / 5) | int }}"
+  delay: 5
+
+- name: "gpu-bench | TEST 3 — wait for M4000 parallel job"
+  ansible.builtin.async_status:
+    jid: "{{ _par_m4_job.ansible_job_id }}"
+  register: _par_m4_result
+  until: _par_m4_result.finished
+  retries: "{{ (gpu_bench_timeout / 5) | int }}"
+  delay: 5
+
+# ─────────────────────────────────────────────────────────────────
+# Informe final
+# ─────────────────────────────────────────────────────────────────
+- name: "gpu-bench | generate report"
+  ansible.builtin.shell: |
+    python3 - << 'PYEOF'
+    import json, csv, os, glob
+
+    BASE = "{{ gpu_bench_result_dir }}"
+
+    def parse_response(path):
+        if not os.path.exists(path):
+            return {"error": f"file not found: {path}"}
+        try:
+            d = json.load(open(path))
+        except Exception as e:
+            return {"error": str(e)}
+        ec  = d.get("eval_count", 0)
+        ed  = d.get("eval_duration", 1) or 1
+        td  = d.get("total_duration", ed)
+        ped = d.get("prompt_eval_duration", 0)
+        return {
+            "model":      d.get("model", "?"),
+            "tokens":     ec,
+            "tok_s":      round(ec / (ed / 1e9), 2) if ec else 0,
+            "ttft_ms":    round(ped / 1e6, 1),
+            "total_s":    round(td / 1e9, 2),
+            "excerpt":    d.get("response", "")[:160].replace("\n", " "),
+        }
+
+    def parse_gpu_log(path):
+        if not os.path.exists(path):
+            return {}
+        stats = {}
+        with open(path) as f:
+            for row in csv.DictReader(f):
+                name = row.get("name", "").strip()
+                if not name:
+                    continue
+                if name not in stats:
+                    stats[name] = {"u": [], "m": [], "t": []}
+                try:
+                    stats[name]["u"].append(int(row["util_pct"].strip()))
+                    stats[name]["m"].append(int(row["mem_used_mib"].strip()))
+                    stats[name]["t"].append(int(row["temp_c"].strip()))
+                except (ValueError, KeyError):
+                    pass
+        out = {}
+        for name, s in stats.items():
+            out[name] = {
+                "peak_util":  max(s["u"]) if s["u"] else 0,
+                "avg_util":   round(sum(s["u"]) / len(s["u"]), 1) if s["u"] else 0,
+                "peak_vram":  max(s["m"]) if s["m"] else 0,
+                "max_temp":   max(s["t"]) if s["t"] else 0,
+            }
+        return out
+
+    def show_inf(label, r):
+        if "error" in r:
+            print(f"  {label}: ERROR — {r['error']}")
+            return
+        print(f"  {label}: [{r['model']}]")
+        print(f"    {r['tokens']} tokens  |  {r['tok_s']} tok/s  |  "
+              f"total {r['total_s']}s  |  TTFT {r['ttft_ms']}ms")
+        print(f"    \"{r['excerpt']}...\"")
+
+    def show_gpu(label, g):
+        if not g:
+            print(f"  {label}: (no data)")
+            return
+        print(f"  {label}:")
+        for name, s in g.items():
+            print(f"    {name}: util peak {s['peak_util']}% avg {s['avg_util']}%  |  "
+                  f"VRAM {s['peak_vram']} MiB  |  temp max {s['max_temp']}°C")
+
+    SEP = "═" * 68
+    print(f"\n{SEP}")
+    print("  GPU BENCHMARK — t7910  (Tesla P4 + Quadro M4000)")
+    print(SEP)
+
+    print("\n┌─ TEST 1 — Tesla P4 solo (port {{ gpu_bench_p4_port }}) ─────────────────────────")
+    show_inf("Inference", parse_response(f"{BASE}/p4/response.json"))
+    show_gpu("GPU stats", parse_gpu_log(f"{BASE}/p4/gpu_log.csv"))
+
+    print("\n├─ TEST 2 — Quadro M4000 solo (port {{ gpu_bench_m4000_port }}) ──────────────────")
+    show_inf("Inference", parse_response(f"{BASE}/m4000/response.json"))
+    show_gpu("GPU stats", parse_gpu_log(f"{BASE}/m4000/gpu_log.csv"))
+
+    print("\n└─ TEST 3 — Ambos en paralelo ─────────────────────────────────")
+    show_inf("P4 inference   ", parse_response(f"{BASE}/parallel/p4_response.json"))
+    show_inf("M4000 inference", parse_response(f"{BASE}/parallel/m4000_response.json"))
+    show_gpu("P4 GPU   ", parse_gpu_log(f"{BASE}/parallel/p4_gpu_log.csv"))
+    show_gpu("M4000 GPU", parse_gpu_log(f"{BASE}/parallel/m4000_gpu_log.csv"))
+
+    print(f"\n{SEP}")
+    print(f"  Result files: {{ gpu_bench_result_dir }}/")
+    print(SEP + "\n")
+    PYEOF
+  register: _report
+  changed_when: false
+  args:
+    executable: /bin/bash
+
+- name: "gpu-bench | print report"
+  ansible.builtin.debug:
+    msg: "{{ _report.stdout_lines }}"

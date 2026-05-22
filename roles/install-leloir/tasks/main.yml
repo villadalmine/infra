@@ -194,6 +194,8 @@
             labels:
               app: leloir-controlplane
           spec:
+            nodeSelector:
+              kubernetes.io/arch: arm64
             tolerations:
               - operator: Exists
             containers:

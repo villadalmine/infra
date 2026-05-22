@@ -208,12 +208,12 @@
 # duplicate appends.
 - name: Wait for kagent-postgresql to be ready
   ansible.builtin.command:
-    cmd: kubectl rollout status deployment/kagent-postgresql -n {{ kagent_namespace }} --timeout=120s
+    cmd: kubectl rollout status deployment/kagent-postgresql -n {{ kagent_namespace }} --timeout=300s
   changed_when: false
 
 - name: Get kagent-postgresql pod name
   ansible.builtin.shell:
-    cmd: kubectl get pods -n {{ kagent_namespace }} -l app.kubernetes.io/name=postgresql -o jsonpath='{.items[0].metadata.name}'
+    cmd: kubectl get pods -n {{ kagent_namespace }} -l app.kubernetes.io/name=kagent,app.kubernetes.io/component=database -o jsonpath='{.items[0].metadata.name}'
   register: shell_pg_pod
   changed_when: false
 

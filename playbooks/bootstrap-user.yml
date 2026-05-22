@@ -1,0 +1,55 @@
+---
+# bootstrap-user.yml — configure dalmine user on fresh nodes
+#
+# Works for two cases:
+#   A) Fresh Ubuntu (user=ubuntu, no become pass needed — ubuntu has NOPASSWD sudo)
+#      ansible-playbook ... -e "ansible_user=ubuntu ansible_ssh_pass=<pass>"
+#
+#   B) Existing user with sudo+password (e.g. super6c with dalmine/changeme)
+#      ansible-playbook ... -e "ansible_user=dalmine ansible_ssh_pass=<old> ansible_become_pass=<old>"
+#
+# Order matters: sudoers NOPASSWD goes first so password change doesn't break sudo auth.
+# target_password_hash must be passed via -e (never hardcode passwords in playbooks).
+
+- name: Bootstrap dalmine user on fresh nodes
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: true
+  vars:
+    target_user: dalmine
+    ssh_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+
+  tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    - name: Configure passwordless sudo (do this first — before password change)
+      ansible.builtin.copy:
+        content: "{{ target_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        dest: /etc/sudoers.d/dalmine
+        mode: '0440'
+        validate: visudo -cf %s
+
+    - name: Create or update dalmine user (set password, ensure sudo group)
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        password: "{{ target_password_hash }}"
+        shell: /bin/bash
+        create_home: true
+        groups: sudo
+        append: true
+
+    - name: Ensure .ssh directory exists
+      ansible.builtin.file:
+        path: "/home/{{ target_user }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+
+    - name: Authorize SSH key
+      ansible.posix.authorized_key:
+        user: "{{ target_user }}"
+        key: "{{ ssh_pubkey }}"
+        state: present

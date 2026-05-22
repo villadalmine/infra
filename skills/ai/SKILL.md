@@ -327,30 +327,92 @@ HolmesGPT (Helm `robusta/holmes` v0.24.0) is deployed in the `ai` namespace alon
 
 - API: `https://holmes.cluster.home` → `POST /api/chat` `{"ask": "question"}` → `{"analysis": "markdown"}`
 - Chat UI: `https://holmes-ui.cluster.home` — nginx:alpine + ConfigMap, no kaniko needed
-- Backend: LiteLLM proxy (`sk-hermes-internal` → OpenRouter via `OPENROUTER_API_KEY`)
 - Latency: 60–90s (multiple LLM tool-use calls per query)
+- Node: `srv-rk1-nvme-01` (`holmes_node_hostname` in `roles/install-holmes/defaults/main.yml`)
+- Memory: 3Gi limit (1Gi → OOMKill, exit 137)
 
-### gpt-5.4 alias (REQUIRED in LiteLLM)
+### Model routing map — every UI surface
 
-Holmes v0.24.0 defaults to model `gpt-5.4` when no model is specified. LiteLLM must have
-this alias or Holmes fails with `BadRequestError: Invalid model name passed in model=gpt-5.4`.
+| Surface | Effective model | GPU | Where configured |
+|---|---|---|---|
+| Holmes UI (`holmes-ui.cluster.home`) | `llama3.1:8b` via `gpt-5.4` | t7910 P4 :11434 | `roles/install-litellm-proxy/tasks/main.yml` "Legacy Aliases" |
+| Headlamp ai-assistant → Holmes provider | `llama3.1:8b` via `gpt-5.4` | t7910 P4 :11434 | same LiteLLM alias above |
+| Headlamp ai-assistant → Local Models | user-configured in browser localStorage | t7910 :11434 or :4000 | no code in repo |
+| headlamp-holmes (inline pod diagnosis) | `qwen2.5-coder:7b` (`local-fast`) | t7910 P4 :11434 | hardcoded in `src/index.tsx` LITELLM_URL/LITELLM_MODEL |
 
-Aliases defined in `roles/install-litellm-proxy/tasks/main.yml`:
+**None use OpenRouter.** All use t7910 local GPU.
+
+⚠️ `local-fast` alias works at t7910 LiteLLM `:4000` but NOT at Ollama `:11434` directly.
+⚠️ `qwen2.5-coder:7b` embeds tool calls as JSON in `content` — don't use for Holmes (use `llama3.1:8b`).
+
+### gpt-5.4 alias — routes to LOCAL GPU (no OpenRouter key needed)
+
+Holmes v0.24.0 internally uses `gpt-5.4` as its default model name. The in-cluster
+LiteLLM proxy **must** have this alias or Holmes fails with `BadRequestError`.
+
+Current routing — **direct Ollama** (no t7910 LiteLLM hop):
 ```yaml
-- model_name: gpt-5.4       # Holmes default
+- model_name: gpt-5.4         # Holmes default call
   litellm_params:
-    model: openrouter/qwen/qwen3-coder:free
-- model_name: gpt-4o        # common OpenAI alias
+    model: openai/llama3.1:8b
+    api_base: http://192.168.178.90:11434/v1  # direct Ollama
+    api_key: "dummy"
+
+- model_name: openai/gpt-5.4  # same, prefixed variant
   litellm_params:
-    model: openrouter/qwen/qwen3-coder:free
-Plus fallback              - {"gemini-free": ["free", "gemini-free2", "cheap"]}
-              - {"gemini-free2": ["free", "cheap"]}
-            request_timeout: 120
-            num_retries: 1
-            set_verbose: false
-            success_callback: ["prometheus"]
-            failure_callback: ["prometheus"]
+    model: openai/llama3.1:8b
+    api_base: http://192.168.178.90:11434/v1
+    api_key: "dummy"
 ```
+
+Chain: Holmes → in-cluster LiteLLM (`gpt-5.4`) → **Ollama directly** :11434
+
+**Why direct Ollama:** The double-hop (in-cluster LiteLLM → t7910 LiteLLM → Ollama) silently
+breaks tool calling. `llama3.1:8b` generates inline JSON blobs instead of proper `tool_calls`
+API objects. Calling Ollama's OpenAI-compatible `/v1` endpoint directly fixes this.
+
+When OpenRouter key is available in `secrets.yml`, change to `openrouter/nvidia/nemotron-3-super-120b-a12b:free`.
+
+### Local GPU routes (DIRECT to Ollama — bypass t7910 LiteLLM)
+
+All `local-*` models route **directly to Ollama** ports, bypassing t7910 LiteLLM.
+**Why:** Double-hop (in-cluster LiteLLM → t7910 LiteLLM → Ollama) breaks tool_calls.
+Fixed 2026-05-22. t7910 LiteLLM still runs on :4000 for workstation/other devices.
+
+| In-cluster alias | Ollama model | Port | Notes |
+|---|---|---|---|
+| `local-fast` | `qwen2.5-coder:7b` | `:11434` P4 | Chat/debug |
+| `local-llama` | `llama3.1:8b` | `:11434` P4 | Tool calling ✅ |
+| `local-reason` | `deepseek-r1:8b` | `:11434` P4 | Reasoning (no tool calls) |
+| `local-coder-7b` | `qwen2.5-coder:7b-instruct-q8_0` | `:11436` M4000 | Code |
+| `local-codestral` | `codestral:latest` | `:11436` M4000 | Large code |
+| `local-deepseek` | `deepseek-coder-v2:16b` | `:11436` M4000 | — |
+
+**Note**: `local-fast` (qwen2.5-coder:7b) embeds tool calls as JSON in `content`, not `tool_calls`.
+Use `local-llama` (llama3.1:8b) for tool-calling tasks.
+
+### LiteLLM secret — always created (even without OpenRouter key)
+
+The `litellm-secrets` Secret is now always created (unconditionally). Previously the secret
+was only created when `hermes_openrouter_api_key` was non-empty, causing `CreateContainerConfigError`
+on fresh deploys without secrets.yml. Fixed in `roles/install-litellm-proxy/tasks/main.yml`.
+
+### Holmes model fix — no `openai/` prefix in Helm values
+
+Holmes Helm values use `model: "{{ holmes_model_name }}"` (without `openai/` prefix).
+Using `openai/local-fast` caused Holmes to fall back to `gpt-5.4` because the
+in-cluster LiteLLM had no `openai/local-fast` entry in model_list.
+
+### Robusta Helm repo — must be added explicitly
+
+The `install-holmes` role adds the repo:
+```yaml
+- name: Add Robusta Helm repository
+  kubernetes.core.helm_repository:
+    name: robusta
+    repo_url: https://robusta-charts.storage.googleapis.com
+```
+Without this, `helm install robusta/holmes` fails with "repo not found".
 
 ### LiteLLM Metrics & Grafana Dashboard
 
@@ -367,6 +429,64 @@ The `install-litellm-proxy` role automates observability:
 - `litellm_spend_metric_total`: Estimated USD cost of the inference based on model pricing.
 - `litellm_deployment_successful_fallbacks_total`: Counter for when fallback chains trigger successfully.
 
+### Holmes AG-UI — Headlamp `ai-assistant` plugin integration
+
+The Headlamp `ai-assistant` plugin (v0.2.0-alpha) can use Holmes as its AI backend
+via the AG-UI streaming protocol. This requires several pieces:
+
+#### 1. Combined server.py (ConfigMap mount)
+
+Holmes 0.24.0 only exposes `/api/chat`. The Headlamp plugin needs `/api/agui/chat`.
+Solution: mount a custom `server.py` over `/app/server.py` via ConfigMap subPath.
+
+The combined server in `roles/install-holmes/files/holmes-combined-server.py` adds:
+- `POST /api/agui/chat` — AG-UI streaming endpoint (SSE)
+- `GET  /api/agui/chat/health` — health check
+
+It uses `create_toolcalling_llm` (server toolsets) NOT `create_agui_toolcalling_llm`
+(CLI toolsets) — the CLI version lacks K8s tools and causes tool-not-found failures.
+
+#### 2. Namespace patch on ai-assistant plugin
+
+The plugin hardcodes `fB="default"` (namespace). Holmes runs in `ai`. Patch after every install:
+```bash
+sed -i 's/"holmesgpt-holmes",dB=80,fB="default"/"holmesgpt-holmes",dB=80,fB="ai"/' \
+  /tmp/headlamp-plugins/ai-assistant/main.js
+```
+
+#### 3. Proxy chain
+
+```
+Headlamp browser → localhost:4466 → k8s API proxy
+  → /api/v1/namespaces/ai/services/holmesgpt-holmes:80/proxy/api/agui/chat
+  → Holmes pod:5050 → in-cluster LiteLLM → Ollama (direct)
+```
+
+#### 4. Event generator — JSON extraction fix
+
+`llama3.1:8b` sometimes wraps answers in TodoWrite-style JSON:
+`{"id":"1","content":"The answer","status":"pending"}`.
+The event generator in `holmes-combined-server.py` extracts the `"content"` field
+rather than discarding the blob. See `_stream_agui_text_message_event` and the
+`ANSWER_END` handler with `json.loads` fallback.
+
+#### 5. Model requirements for Holmes
+
+- ✅ `llama3.1:8b` — tool calling works when called via direct Ollama `/v1`
+- ❌ `deepseek-r1:8b` — returns empty `content` (reasoning-only model, needs different handling)
+- ❌ Double-hop via t7910 LiteLLM — silently breaks tool_calls format
+
+#### 6. Memory limit + node placement
+
+Holmes requires `memory_limit: 3Gi` — 1Gi causes OOMKill under load (exit code 137).
+Node: `srv-rk1-nvme-01` (RK1 node, set via `holmes_node_hostname` in defaults).
+
+After updating in-cluster LiteLLM ConfigMap, **restart Holmes pod**:
+```bash
+kubectl rollout restart deployment/holmesgpt-holmes -n ai
+```
+SubPath ConfigMap mounts don't auto-update in running pods.
+
 ### Holmes UI pattern — nginx:alpine + ConfigMap (no kaniko)
 
 For simple static UIs (HTML/JS), skip kaniko entirely:
@@ -378,6 +498,87 @@ For simple static UIs (HTML/JS), skip kaniko entirely:
 make ai-holmes      # deploy Holmes + Holmes UI
 make holmes-ui      # deploy Holmes UI only
 ```
+
+---
+
+---
+
+## Headlamp + ai-assistant plugin (observability UI with Holmes)
+
+Headlamp is the K8s web UI. The official `ai-assistant` plugin connects it to Holmes.
+
+### Deploy order (single-node minimum)
+
+```bash
+make core          # K3s + kubeconfig
+make networking    # Cilium + Gateway API
+make ingress       # cert-manager + gateway (HTTPRoutes need this)
+make dns-metrics   # Pi-hole — wildcard *.cluster.home DNS
+
+# LiteLLM proxy + Holmes (skip hermes — no ARM64 build needed)
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini \
+  --tags ai-hermes-deploy,ai-holmes \
+  --skip-tags ai-hermes-agent
+```
+
+Resource budget on single CM4 node (7.6 GB RAM):
+- cert-manager (3 pods): ~150 Mi
+- Gateway (Cilium): ~64 Mi
+- LiteLLM proxy: 512 Mi request / 3 Gi limit
+- Holmes: 512 Mi request / 1 Gi limit
+- Pi-hole: 100 Mi
+- **Total requests: ~1.4 GB — fits comfortably on 7.6 GB**
+
+### Run Headlamp locally (workstation)
+
+```bash
+mkdir -p /tmp/headlamp-work /tmp/headlamp-plugins
+cd /tmp/headlamp-work
+curl -sL https://github.com/headlamp-k8s/headlamp/releases/download/v0.42.0/Headlamp-0.42.0-linux-x64.tar.gz \
+  -o headlamp.tar.gz && tar -xzf headlamp.tar.gz
+
+# Install ai-assistant plugin (pre-built)
+curl -sL https://github.com/headlamp-k8s/plugins/releases/download/ai-assistant-0.2.0-alpha/headlamp-k8s-ai-assistant-0.2.0-alpha.tar.gz \
+  -o /tmp/ai-assistant.tar.gz
+tar -xzf /tmp/ai-assistant.tar.gz -C /tmp/headlamp-plugins/
+
+# Start Headlamp
+/tmp/headlamp-work/Headlamp-0.42.0-linux-x64/resources/headlamp-server \
+  -kubeconfig ~/.kube/config \
+  -html-static-dir /tmp/headlamp-work/Headlamp-0.42.0-linux-x64/resources/frontend \
+  -plugins-dir /tmp/headlamp-plugins \
+  -dev -port 4466
+```
+
+### Configure ai-assistant to use Holmes
+
+In Headlamp → ✨ (top right) → **Settings** → **Add configuration**:
+
+| Field | Value |
+|---|---|
+| Provider | `Holmes` |
+| URL | `http://holmes.cluster.home` |
+
+Holmes then answers with real cluster data — it calls kubectl, reads logs, queries Prometheus.
+Latency: 20-60s per query (multiple tool calls).
+
+### Plugin compatibility fix
+
+Headlamp checks `package.json` alongside `main.js`. Without it, plugin shows "incompatible".
+Both files must exist in `/tmp/headlamp-plugins/<plugin-name>/`.
+
+### headlamp-holmes (custom lightweight plugin)
+
+Alternative to ai-assistant: adds an inline "AI Diagnosis" section to every Pod/Deployment detail.
+Source: `/tmp/headlamp-holmes/src/index.tsx`, built with:
+```bash
+cd /tmp/headlamp-holmes && node_modules/.bin/headlamp-plugin build
+cp dist/main.js package.json /tmp/headlamp-plugins/headlamp-holmes/
+```
+Calls LiteLLM directly (not Holmes) — no cluster access, just static JSON analysis.
+Auto-triggers on CrashLoopBackOff/Pending/restartCount>3.
+
+Full setup guide: `docs/headlamp-setup.md`
 
 ---
 

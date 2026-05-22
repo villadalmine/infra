@@ -1,0 +1,13 @@
+---
+# apt-upgrade role defaults
+# NEVER run on rk1_nodes — frozen kernel, running this would break the node
+
+# Whether to perform dist-upgrade (24.04 → 26.04 LTS)
+# Set to true only when you are ready for the major upgrade
+apt_do_release_upgrade: false
+
+# Reboot if required after upgrade
+apt_reboot_if_needed: true
+
+# Reboot timeout in seconds
+apt_reboot_timeout: 300

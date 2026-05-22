@@ -24,7 +24,9 @@ hermes_storage_class: "smb-nas"
 hermes_storage_role: "install-cifs-nas"
 
 # Platform integrations
-hermes_telegram_enabled: true
+# Telegram disabled: OpenClaw uses the same bot token → conflict if both run.
+# Hermes runs as MCP subagent only (OpenClaw calls it via MCP, not Telegram).
+hermes_telegram_enabled: false
 hermes_discord_enabled: false
 
 # Telegram gateway settings
@@ -34,7 +36,7 @@ hermes_telegram_webhook_url: ""
 # Local registry for ARM64 image
 hermes_registry: "registry.registry:5000"
 hermes_image_name: "ai/hermes-agent"
-hermes_image_tag: "0.7.0"
+hermes_image_tag: "v1.0.7"
 
 # Kubernetes MCP sidecar
 hermes_mcp_image_name: "ai/kubernetes-mcp-server"

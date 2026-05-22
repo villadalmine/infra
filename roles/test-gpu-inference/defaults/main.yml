@@ -1,0 +1,25 @@
+---
+# GPU benchmark — Tesla P4 vs Quadro M4000
+
+# Prompt used for all tests
+gpu_bench_prompt: >
+  Explain in detail why Kubernetes is useful for running AI workloads in production.
+  Include points about scheduling, GPU sharing, autoscaling, and fault tolerance.
+  Write at least 200 words.
+
+# P4 instance (port 11434) — models that fit in 7.6 GB VRAM
+gpu_bench_p4_port: 11434
+gpu_bench_p4_model: "llama3.1:8b"
+
+# Quadro M4000 instance (port 11435) — larger models
+gpu_bench_m4000_port: 11435
+gpu_bench_m4000_model: "qwen2.5-coder:7b-instruct-q8_0"
+
+# How long to wait for inference to complete (seconds)
+gpu_bench_timeout: 300
+
+# nvidia-smi poll interval during inference (seconds)
+gpu_bench_poll_interval: 3
+
+# Where to write the report on the remote host
+gpu_bench_result_dir: "/tmp/gpu-bench"

@@ -28,6 +28,29 @@
   when: "'k3s_nodes' in group_names"
 
 
+- name: Freeze RK1 kernel and driver packages (never auto-update — breaks custom rockchip kernel)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  become: true
+  loop:
+    - linux-headers-rockchip
+    - linux-image-rockchip
+    - linux-modules-6.1.0-1025-rockchip
+    - linux-modules-extra-6.1.0-1025-rockchip
+    - linux-rockchip
+    - libmali-g610-x11
+    - mali-g610-firmware
+    - rockchip-firmware
+    - rockchip-multimedia-config
+    - u-boot-turing-rk1
+    - ubuntu-rockchip-settings
+    - ubuntu-rockchip-settings-server
+    - ubuntu-server-rockchip
+  when:
+    - "'rk1_nodes' in group_names"
+  failed_when: false
+
 - name: Check if K3s server is running
   ansible.builtin.command:
     cmd: systemctl is-active k3s
