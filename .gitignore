@@ -5,6 +5,7 @@
 roles/*/defaults/secrets.yml
 roles/*/defaults/secrets.yaml
 roles/*/defaults/vault.yml
+roles/*/defaults/.leloir_db_password
 secrets/
 vault/
 
