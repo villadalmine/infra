@@ -1,7 +1,7 @@
 # Infra Makefile - Simplified Ansible workflow
 # Usage: make <target>
 
-ANSIBLE := ansible-playbook
+ANSIBLE := $(shell test -f .venv/bin/ansible-playbook && echo .venv/bin/ansible-playbook || echo ansible-playbook)
 INVENTORY := inventory/hosts.ini
 BOOTSTRAP := playbooks/bootstrap.yml
 UNINSTALL := playbooks/uninstall.yml

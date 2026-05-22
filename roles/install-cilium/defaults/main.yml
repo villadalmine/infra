@@ -2,8 +2,8 @@ cilium_version: "1.19.2"
 cilium_namespace: kube-system
 
 # API server address used by Cilium's kube-proxy replacement.
-# Must match the K3s server node IP.
-k3s_api_server_host: "192.168.178.30"
+# Derived from the first server_nodes entry — update inventory/hosts.ini, not here.
+k3s_api_server_host: "{{ hostvars[groups['server_nodes'][0]]['ansible_host'] }}"
 k3s_api_server_port: "6443"
 
 # ── Gateway API ────────────────────────────────────────────────────────────────
@@ -50,13 +50,14 @@ cilium_hubble_metrics_profiles:
     - "drop:sourceContext=identity;destinationContext=identity"
     - "tcp:sourceContext=identity;destinationContext=identity"
     - "flow:sourceContext=identity;destinationContext=identity"
-    - "flow:sourceContext=identity;destinationContext=identity;encrypted"
-    - "flow:sourceContext=identity;destinationContext=identity;unencrypted"
     - "icmp:sourceContext=identity;destinationContext=identity" 
-    - "http:exemplars=true;sourceContext=identity;destinationContext=identity"
     - "httpV2:exemplars=true;sourceContext=identity;destinationContext=identity"
     - "policy:sourceContext=identity;destinationContext=identity"
     - "port-distribution:sourceContext=identity;destinationContext=identity"
+
+# Enable WireGuard dataplane for encrypted pod‑to‑pod traffic.
+# This must stay true while nodeEncryption remains false.
+cilium_wireguard_enabled: true
 
 # ── L2 Announcements (replaces MetalLB) ───────────────────────────────────────
 # Cilium natively handles ARP for LoadBalancer IPs via leader election + leases.
