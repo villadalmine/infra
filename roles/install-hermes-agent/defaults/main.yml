@@ -36,7 +36,7 @@ hermes_telegram_webhook_url: ""
 # Local registry for ARM64 image
 hermes_registry: "registry.registry:5000"
 hermes_image_name: "ai/hermes-agent"
-hermes_image_tag: "v1.0.7"
+hermes_image_tag: "v2026.5.16-telegram"
 
 # Kubernetes MCP sidecar
 hermes_mcp_image_name: "ai/kubernetes-mcp-server"
