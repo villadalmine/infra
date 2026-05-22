@@ -37,6 +37,7 @@ make gitops                     # ArgoCD
 make storage                    # SMB/CIFS CSI (MUST come before observability/ai/security)
 make observability              # Prometheus + Grafana + Tempo + Loki + Alloy
 make ai && make ai-holmes && make kagent   # Full AI stack
+make leloir-all            # Leloir agentic incident analysis (Postgres + control plane)
 make openclaw              # Personal AI gateway (Telegram + LiteLLM)
 make security                   # NeuVector runtime security
 
@@ -76,3 +77,27 @@ The `fix-mac-address` role was updated and validated to ensure:
 ---
 
 For further details, see `AGENTS.md` or related Ansible playbooks.
+
+---
+
+## Leloir — Agentic Incident Analysis
+
+[Leloir](https://github.com/villadalmine/leloir) is the agentic incident analysis platform running on this cluster.
+It receives Alertmanager webhooks, routes them to HolmesGPT, and streams structured analysis to a React UI.
+
+**Deploy (first time):**
+```bash
+make leloir-all   # registry → kaniko build (~5 min) → Postgres + controlplane
+```
+
+**Update after code change:**
+```bash
+make leloir-build   # rebuild image from latest main
+make leloir         # re-deploy (rolling update)
+```
+
+**Access:** `https://leloir.cluster.home`
+**Alertmanager webhook:** `http://leloir-controlplane.leloir.svc.cluster.local/webhook/alertmanager`
+**API:** `https://leloir.cluster.home/api/v1/`
+
+**Credentials:** `roles/install-leloir/defaults/secrets.yml` (gitignored) — override `leloir_db_password`.

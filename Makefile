@@ -11,7 +11,7 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status leloir-build leloir leloir-all
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -90,10 +90,10 @@ quick: ## Quick cluster — K3s + Cilium only. DIY from here. No ingress/DNS/sto
 core: ## Install K3s + kubeconfig only (WARNING: cluster unusable without make networking)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core
 
-networking: ## Install core + networking (Cilium, LB-IPAM, Gateway API)
-	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags networking
+networking: ## Install core + networking (Cilium, LB-IPAM, Gateway API) + WireGuard encryption
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags networking,encryption
 
-encryption: ## Install networking + WireGuard encryption (transparent pod-to-pod encryption)
+encryption: ## WireGuard encryption (requires networking)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,encryption
 
 networking-observability: ## Install networking + Hubble metrics ServiceMonitor (requires observability)
@@ -143,6 +143,17 @@ ai-holmes: ## Deploy HolmesGPT + Holmes UI (OpenAI-compatible backend via LiteLL
 
 holmes-ui: ## Deploy Holmes UI only (chat interface at holmes-ui.cluster.home)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-holmes-ui
+
+leloir-build: ## Build leloir-controlplane ARM64 image with kaniko (~5 min — requires ai-registry)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags leloir-build
+
+leloir: ## Deploy Leloir control plane — Postgres + controlplane + HTTPRoute at leloir.cluster.home
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags leloir
+
+leloir-all: ## Full Leloir deploy: registry → build → deploy (idempotent)
+	$(MAKE) ai-registry
+	$(MAKE) leloir-build
+	$(MAKE) leloir
 
 kagent: ## Deploy kagent + kmcp AI agent platform (multi-tenant, LiteLLM backend)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags kagent
@@ -199,6 +210,30 @@ status: ## Show cluster status
 	@echo ""
 	@echo "=== Helm releases ==="
 	@helm list -A 2>/dev/null || echo "No helm releases"
+
+gpu-bench: ## Benchmark Tesla P4 vs Quadro M4000 — 3 tests (P4-solo, M4000-solo, parallel) with report
+	$(ANSIBLE) playbooks/test-gpu.yml -i $(INVENTORY)
+
+gpu-evict: ## Evict all models from all Ollama instances on gpu_nodes (frees VRAM for dual-GPU tests)
+	@ansible gpu_nodes -i $(INVENTORY) -m shell -a '\
+	  for PORT in 11434 11435 11436; do \
+	    MODELS=$$(curl -s http://localhost:$$PORT/api/ps | python3 -c "import json,sys; [print(m[chr(110)+chr(97)+chr(109)+chr(101)]) for m in json.load(sys.stdin).get(chr(109)+chr(111)+chr(100)+chr(101)+chr(108)+chr(115),[])]" 2>/dev/null); \
+	    [ -n "$$MODELS" ] && echo "$$MODELS" | while read M; do \
+	      curl -s -X POST http://localhost:$$PORT/api/generate \
+	        -H "Content-Type: application/json" \
+	        -d "{\"model\":\"$$M\",\"keep_alive\":0,\"prompt\":\"\"}" --max-time 10 -o /dev/null; \
+	      echo "evicted $$M from port $$PORT"; \
+	    done || echo "port $$PORT: empty"; \
+	  done' 2>&1
+
+gpu-status: ## Show GPU utilization and loaded Ollama models on gpu_nodes
+	@ansible gpu_nodes -i $(INVENTORY) -m shell -a '\
+	  echo "=== GPU VRAM ===" && nvidia-smi --query-gpu=index,name,temperature.gpu,utilization.gpu,memory.used,memory.free --format=csv,noheader && \
+	  echo "=== Loaded models ===" && \
+	  for PORT in 11434 11435 11436; do \
+	    echo -n "port $$PORT: "; \
+	    curl -s http://localhost:$$PORT/api/ps | python3 -c "import json,sys; ms=json.load(sys.stdin).get(chr(109)+chr(111)+chr(100)+chr(101)+chr(108)+chr(115),[]); print([(m[chr(110)+chr(97)+chr(109)+chr(101)],m[chr(115)+chr(105)+chr(122)+chr(101)+chr(95)+chr(118)+chr(114)+chr(97)+chr(109)]//1024//1024) for m in ms]) if ms else print(chr(40)+chr(101)+chr(109)+chr(112)+chr(116)+chr(121)+chr(41))" 2>/dev/null; \
+	  done' 2>&1
 
 logs: ## Show logs of failing pods
 	@echo "=== Failing pods ==="
