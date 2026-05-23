@@ -67,10 +67,20 @@ make nas-admin   # only helm upgrade
 
 ## Features
 
-- **PV view** (`/pvs`): all SMB-backed PVs, status badges, NAS share path, bound claim, age. Orphaned PVs (Released/Available/Failed) highlighted.
+- **PV view** (`/pvs`): all SMB-backed PVs, status badges, NAS share path, bound claim, age. Orphaned PVs (Released/Available/Failed) highlighted amber. **Delete button** visible only on orphaned rows — removes K8s object, NAS data untouched (Retain policy).
 - **PVC view** (`/pvcs`): all PVCs cross-namespace (or SMB-only filter). Shows which pod(s) mount each PVC. "Unused" PVCs (bound but no running pod) highlighted. Delete button with HTMX `hx-confirm`.
-- **NAS browser** (`/browse`): HTMX-driven directory navigation. Reads from `/mnt/nas` (smb-nas-pvc mounted ReadOnly). No direct SMBv1 connection from Python.
+- **NAS browser** (`/browse`): HTMX-driven directory navigation. Reads from `/mnt/nas` (NAS PVC mounted ReadOnly). No direct SMBv1 connection from Python.
 - **Health** (`/health`): returns `{"status":"ok"}` — used by liveness/readiness probes.
+
+### PV/PVC cleanup flow
+
+When you delete a PVC from the UI with `Retain` policy:
+1. PVC is deleted → pod can no longer mount it
+2. PV status changes `Bound → Released` — row turns amber
+3. Click **Delete** on the PV row → `DELETE /api/pvs/{name}` → K8s PV object removed
+4. NAS share data (`//192.168.178.102/service/...`) is **not touched** — only the K8s object is gone
+
+For dynamic PVs (StorageClass `smb-nas` with `Delete` reclaim policy), deleting the PVC also deletes the PV automatically — no manual PV cleanup needed.
 
 ## Authentication
 
@@ -120,7 +130,7 @@ All configurable via `charts/nas-admin/values.yaml` or `--set`:
 | `image.tag` | `latest` | Image tag |
 | `hostname` | `nas-admin.cluster.home` | HTTPRoute hostname |
 | `nasPvc.enabled` | `true` | Mount smb-nas-pvc for file browser |
-| `nasPvc.claimName` | `smb-nas-pvc` | PVC to mount |
+| `nasPvc.claimName` | `nas-admin-nas-pvc` | PVC to mount (dedicated PV in `storage` ns) |
 | `nasPvc.mountPath` | `/mnt/nas` | Mount path in pod |
 | `auth.mode` | `basic` | `basic` \| `oidc` \| `none` |
 | `auth.basic.username` | `admin` | Basic auth username |
@@ -140,12 +150,32 @@ Estimated build time: **~2 min** (python:3.12-slim + ~5 small packages).
 
 ## RBAC
 
-ClusterRole grants read access to `persistentvolumes`, `persistentvolumeclaims` (+ delete),
-`pods`, `events`, and `storageclasses`. No write access to anything except PVC deletion.
+ClusterRole grants:
+- `persistentvolumes` — get, list, watch, **delete** (for orphaned PV cleanup)
+- `persistentvolumeclaims` — get, list, watch, **delete**
+- `pods`, `events`, `storageclasses` — get, list, watch only
 
 ## Namespace
 
 Deployed in namespace `storage` (created by the Ansible role if missing).
+
+## Gotchas
+
+### Cross-namespace PVC access
+
+PVCs are namespace-scoped. The pod runs in `storage` but `smb-nas-pvc` lives in `default` — it cannot be mounted cross-namespace.
+
+Fix: `install-nas-admin` creates a **dedicated static PV** (`nas-admin-browse-pv`) pointing to `//192.168.178.102/service` with `nodeStageSecretRef: {name: smbcreds, namespace: default}`, plus a matching PVC (`nas-admin-nas-pvc`) in the `storage` namespace. The `smbcreds` Secret lives in `default` (created by `install-cifs-nas`) but the CSI driver reads it directly — no cross-namespace issue.
+
+Variables that control this: `nas_admin_nas_ip` (default `192.168.178.102`), `nas_admin_nas_share` (default `service`), `nas_admin_nas_pvc_name` (default `nas-admin-nas-pvc`).
+
+### Forcing Helm to re-apply ClusterRole changes
+
+Without `helm-diff` plugin installed, `kubernetes.core.helm` reports `changed=0` and skips upgrades when no values changed. To force a re-apply after editing chart templates (e.g., RBAC verbs), bump `version` in `Chart.yaml` — Helm will detect a chart version change and do the upgrade.
+
+### Helm chart version vs image tag
+
+The chart version (`Chart.yaml`) tracks chart structure changes. The image tag is always `latest` with `pullPolicy: Always`. After a code-only change (`make nas-admin-build`), run `kubectl rollout restart deployment/nas-admin -n storage` to pull the new image — Helm won't detect the rebuild.
 
 ## Related skills
 

@@ -130,4 +130,4 @@ make nas-admin
 **Credentials:** `roles/install-nas-admin/defaults/secrets.yml` (gitignored) — override `nas_admin_password`.
 Auth mode: `basic` (default) or `oidc` (GitHub OAuth via oauth2-proxy sidecar) — set `nas_admin_auth_mode`.
 
-**Features:** PV list (SMB-filtered, orphan detection), PVC list (all namespaces, pod owner, delete with confirm), NAS file browser (mounts `smb-nas-pvc` ReadOnly).
+**Features:** PV list (SMB-filtered, orphan detection + **delete orphaned PVs**), PVC list (all namespaces, pod owner, delete with confirm), NAS file browser (mounts NAS share ReadOnly via dedicated PVC in `storage` ns).
