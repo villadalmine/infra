@@ -16,10 +16,12 @@ data:
       system_prompt: |
 {{ hermes_system_prompt | indent(8, first=True) }}
 
+{% if hermes_groq_api_key | default('') != '' %}
     stt:
       provider: groq
       model: whisper-large-v3-turbo
 
+{% endif %}
     mcp_servers:
       kubernetes:
         url: {{ hermes_mcp_url }}
