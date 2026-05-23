@@ -269,3 +269,17 @@ async def delete_pvc(namespace: str, name: str, _=Depends(check_auth)):
     except ApiException as e:
         raise HTTPException(status_code=e.status, detail=str(e.reason))
     return HTMLResponse(content="", status_code=200)
+
+
+@app.delete("/api/pvs/{name}", response_class=HTMLResponse)
+async def delete_pv(name: str, _=Depends(check_auth)):
+    v1 = client.CoreV1Api()
+    try:
+        pv = v1.read_persistent_volume(name=name)
+        phase = (pv.status.phase if pv.status else None) or "Unknown"
+        if phase == "Bound":
+            raise HTTPException(status_code=409, detail="Cannot delete a Bound PV — delete the PVC first")
+        v1.delete_persistent_volume(name=name)
+    except ApiException as e:
+        raise HTTPException(status_code=e.status, detail=str(e.reason))
+    return HTMLResponse(content="", status_code=200)
