@@ -37,10 +37,10 @@
       apiVersion: argoproj.io/v1alpha1
       kind: Workflow
       metadata:
-        generateName: build-{{ remote_app_name }}-remote-
+        generateName: "build-{{ remote_app_name }}-remote-"
         namespace: "{{ kaniko_namespace }}"
         labels:
-          app: {{ remote_app_name }}-build-remote
+          app: "{{ remote_app_name }}-build-remote"
       spec:
         entrypoint: remote-build-pipeline
         tolerations:
