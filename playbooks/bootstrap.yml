@@ -77,7 +77,7 @@
     - role: install-pihole
       tags: [dns-metrics]
     - role: install-argo-workflows
-      tags: [services]
+      tags: [services, argo-workflows]
     - role: install-argocd
       tags: [services]
     - role: install-helm-dashboard

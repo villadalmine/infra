@@ -10,8 +10,9 @@ UNINSTALL := playbooks/uninstall.yml
 SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
+ARGO_NS      ?= kaniko
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-all
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-all
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -114,8 +115,11 @@ ingress: ## Install networking + ingress (cert-manager, Gateway)
 dns-metrics: ## Install DNS and Metrics (Pi-hole)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags dns-metrics
 
-services: ## Install ingress + services (ArgoCD, helm-dashboard, registry)
+services: ## Install ingress + services (ArgoCD, Argo Workflows, helm-dashboard, registry)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags core,networking,ingress,services
+
+argo-workflows: ## Install Argo Workflows + expose UI at argo.cluster.home (idempotent)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags argo-workflows
 
 observability: ## Install networking + observability (Prometheus, Grafana, Tempo, Loki, Alloy)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags observability
@@ -151,14 +155,15 @@ ai-holmes: ## Deploy HolmesGPT + Holmes UI (OpenAI-compatible backend via LiteLL
 holmes-ui: ## Deploy Holmes UI only (chat interface at holmes-ui.cluster.home)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-holmes-ui
 
-leloir-build: ## Build leloir-controlplane ARM64 image with kaniko (~5 min — requires ai-registry)
+leloir-build: ## Build leloir-controlplane ARM64 image with Argo Workflows + Kaniko (~5 min — requires ai-registry + argo-workflows)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags leloir-build
 
 leloir: ## Deploy Leloir control plane — Postgres + controlplane + HTTPRoute at leloir.cluster.home
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags leloir
 
-leloir-all: ## Full Leloir deploy: registry → build → deploy (idempotent)
+leloir-all: ## Full Leloir deploy: registry → argo → build → deploy (idempotent)
 	$(MAKE) ai-registry
+	$(MAKE) argo-workflows
 	$(MAKE) leloir-build
 	$(MAKE) leloir
 
