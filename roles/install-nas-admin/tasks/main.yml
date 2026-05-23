@@ -8,6 +8,56 @@
         name: "{{ nas_admin_namespace }}"
     state: present
 
+# A dedicated PV+PVC is created in the storage namespace so the pod can mount
+# the NAS share for the file browser without depending on smb-nas-pvc (which
+# lives in the default namespace and is not accessible cross-namespace).
+- name: Create static PV for NAS admin file browser
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolume
+      metadata:
+        name: nas-admin-browse-pv
+      spec:
+        capacity:
+          storage: 5Gi
+        accessModes: [ReadWriteMany]
+        persistentVolumeReclaimPolicy: Retain
+        volumeMode: Filesystem
+        mountOptions:
+          - vers=1.0
+          - uid=1000
+          - gid=1000
+          - file_mode=0777
+          - dir_mode=0777
+          - noperm
+        csi:
+          driver: smb.csi.k8s.io
+          volumeHandle: nas-admin-browse-pv
+          volumeAttributes:
+            source: "//{{ nas_admin_nas_ip }}/{{ nas_admin_nas_share }}"
+          nodeStageSecretRef:
+            name: smbcreds
+            namespace: default   # smbcreds lives in default (created by install-cifs-nas)
+
+- name: Create NAS PVC in storage namespace for file browser
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ nas_admin_nas_pvc_name }}"
+        namespace: "{{ nas_admin_namespace }}"
+      spec:
+        accessModes: [ReadWriteMany]
+        storageClassName: ""
+        volumeName: nas-admin-browse-pv
+        resources:
+          requests:
+            storage: 5Gi
+
 - name: Install/upgrade nas-admin Helm chart
   kubernetes.core.helm:
     name: nas-admin

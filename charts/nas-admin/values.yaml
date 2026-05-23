@@ -9,7 +9,7 @@ hostname: nas-admin.cluster.home
 # Mount the existing smb-nas-pvc for the file browser
 nasPvc:
   enabled: true
-  claimName: smb-nas-pvc
+  claimName: nas-admin-nas-pvc
   mountPath: /mnt/nas
 
 # Authentication: basic | oidc | none

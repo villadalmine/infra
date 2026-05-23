@@ -6,7 +6,9 @@ nas_admin_hostname: nas-admin.cluster.home
 nas_admin_auth_mode: basic
 nas_admin_basic_username: admin
 nas_admin_mount_nas_pvc: true
-nas_admin_nas_pvc_name: smb-nas-pvc
+nas_admin_nas_pvc_name: nas-admin-nas-pvc
+nas_admin_nas_ip: "192.168.178.102"
+nas_admin_nas_share: "service"
 
 # Override in defaults/secrets.yml (gitignored):
 nas_admin_password: "changeme"

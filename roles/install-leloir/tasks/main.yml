@@ -266,13 +266,6 @@
                       secretKeyRef:
                         name: postgres-leloir-credentials
                         key: DSN
-                  {% if leloir_auth_mode == "oidc" %}
-                  - name: LELOIR_OIDC_CLIENT_SECRET
-                    valueFrom:
-                      secretKeyRef:
-                        name: leloir-oidc-secret
-                        key: client-secret
-                  {% endif %}
                 volumeMounts:
                   - name: config
                     mountPath: /etc/leloir
