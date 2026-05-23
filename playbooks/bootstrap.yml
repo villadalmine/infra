@@ -101,6 +101,8 @@
       tags: [ai, ai-registry]
     - role: install-hermes-agent-image
       tags: [ai, ai-hermes-build]
+    - role: install-hermes-agent-remote-build
+      tags: [ai, ai-hermes-build-remote]
     - role: install-kubernetes-mcp-server-image
       tags: [ai, ai-kubernetes-mcp-build]
     - role: install-litellm-proxy

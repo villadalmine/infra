@@ -132,6 +132,13 @@ ai-registry: ## Install only Docker registry (5GB PVC, ARM64 compatible)
 ai-hermes-build: ## Build Hermes Agent ARM64 image with kaniko (takes ~15 min on CM4)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build
 
+ai-hermes-build-remote: ## Trigger GitHub Actions build for Hermes and sync image back locally
+	@if [ -z "$(GITHUB_PAT)" ]; then \
+		echo "Error: GITHUB_PAT is not set. Run: make ai-hermes-build-remote GITHUB_PAT=ghp_xxx"; \
+		exit 1; \
+	fi
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build-remote -e "github_pat=$(GITHUB_PAT)"
+
 ai-kubernetes-mcp-build: ## Build Kubernetes MCP server ARM64 image with kaniko
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-kubernetes-mcp-build
 

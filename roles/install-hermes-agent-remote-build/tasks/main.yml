@@ -1,0 +1,109 @@
+---
+# Trigger remote build for Hermes Agent using GitHub Actions and sync back the image.
+
+- name: Create kaniko namespace (used for builds)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ kaniko_namespace }}"
+    state: present
+
+- name: Assert GitHub PAT is defined
+  ansible.builtin.assert:
+    that:
+      - github_pat is defined
+      - github_pat | length > 0
+    msg: "You must provide github_pat. E.g.: make ai-hermes-build-remote GITHUB_PAT=ghp_xxx"
+
+- name: Create GitHub PAT Secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: github-pat-secret
+        namespace: "{{ kaniko_namespace }}"
+      type: Opaque
+      stringData:
+        token: "{{ github_pat }}"
+
+- name: Create Argo Workflow for Remote Build
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: argoproj.io/v1alpha1
+      kind: Workflow
+      metadata:
+        generateName: build-hermes-remote-
+        namespace: "{{ kaniko_namespace }}"
+        labels:
+          app: hermes-agent-build-remote
+      spec:
+        entrypoint: remote-build-pipeline
+        tolerations:
+          - key: "node.kubernetes.io/unreachable"
+            operator: Exists
+            effect: NoExecute
+          - key: "node.kubernetes.io/not-ready"
+            operator: Exists
+            effect: NoExecute
+        templates:
+          - name: remote-build-pipeline
+            steps:
+              - - name: trigger-and-wait
+                  template: gh-trigger
+              - - name: sync-image
+                  template: skopeo-sync
+
+          - name: gh-trigger
+            container:
+              image: ghcr.io/cli/cli:latest
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  echo "Triggering GitHub Action..."
+                  gh workflow run build-hermes.yml -R villadalmine/infra -f git_ref={{ hermes_git_ref }} -f image_tag={{ hermes_image_tag }}
+                  sleep 10
+                  echo "Waiting for workflow to start..."
+                  RUN_ID=$(gh run list --workflow=build-hermes.yml -R villadalmine/infra --limit 1 --json databaseId -q '.[0].databaseId')
+                  echo "Run ID: $RUN_ID"
+                  gh run watch $RUN_ID -R villadalmine/infra
+                  STATUS=$(gh run view $RUN_ID -R villadalmine/infra --json conclusion -q '.conclusion')
+                  if [ "$STATUS" != "success" ]; then
+                    echo "GitHub Action failed with status: $STATUS"
+                    exit 1
+                  fi
+                  echo "GitHub Action completed successfully!"
+              env:
+                - name: GH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-pat-secret
+                      key: token
+
+          - name: skopeo-sync
+            container:
+              image: quay.io/skopeo/stable:latest
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  echo "Syncing image from ghcr.io to local registry..."
+                  skopeo copy \
+                    --src-creds villadalmine:${GH_TOKEN} \
+                    --dest-tls-verify=false \
+                    docker://ghcr.io/villadalmine/hermes-agent:{{ hermes_image_tag }} \
+                    docker://{{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}
+                  echo "Sync complete."
+              env:
+                - name: GH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-pat-secret
+                      key: token
+
+- name: Remote Build triggered!
+  ansible.builtin.debug:
+    msg: "The Argo Workflow for REMOTE hermes-agent build has been submitted. Check the Argo UI."

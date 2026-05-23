@@ -1,0 +1,12 @@
+hermes_git_repo: "https://github.com/NousResearch/hermes-agent.git"
+hermes_git_ref: "v2026.5.16"     #  Bloqueado en el release oficial estable
+hermes_image_tag: "v2026.5.16-telegram" #  Tu tag local indicando la versión + tu parche
+hermes_registry: "registry.registry:5000"
+hermes_image_name: "ai/hermes-agent"
+kaniko_namespace: kaniko
+kaniko_storage_class: "smb-nas"
+kaniko_storage_size: "60Gi"
+kaniko_node_hostname: "srv-rk1-nvme-01"
+kaniko_workspace_storage_class: "local-path"
+kaniko_workspace_storage_size: "40Gi"
+kaniko_storage_role: "install-cifs-nas"

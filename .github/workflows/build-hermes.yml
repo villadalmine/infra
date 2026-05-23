@@ -1,0 +1,63 @@
+name: Build Hermes Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git Ref (e.g. v2026.5.16) for NousResearch/hermes-agent'
+        required: true
+        default: 'v2026.5.16'
+      image_tag:
+        description: 'Target Image Tag'
+        required: true
+        default: 'v2026.5.16-telegram'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Infra Repo
+        uses: actions/checkout@v4
+        with:
+          path: infra
+
+      - name: Checkout Hermes Repo
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ github.event.inputs.git_ref }}
+          path: source
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy Dockerfile
+        run: |
+          cp infra/roles/install-hermes-agent-image/templates/Dockerfile.j2 source/Dockerfile
+          # Remove jinja tags if any are used, though mostly it is just static right now.
+          # We might need to replace vars if Jinja was used. For now, we assume it works out of the box or requires minor patching.
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: source
+          file: source/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/hermes-agent:${{ github.event.inputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
