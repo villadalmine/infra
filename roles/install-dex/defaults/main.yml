@@ -1,0 +1,22 @@
+dex_namespace: dex
+dex_hostname: dex.cluster.home
+dex_chart_version: "0.19.1"
+
+# Leloir static client — id debe coincidir con auth.oidc.clientId en install-leloir
+dex_leloir_client_id: "leloir"
+dex_leloir_redirect_uri: "leloir.cluster.home/auth/callback"
+
+# ── Secrets (set en defaults/secrets.yml — gitignored) ───────────────────────
+#
+# GitHub OAuth App: github.com/settings/developers → New OAuth App
+#   Name:         Leloir Dex
+#   Homepage URL: https://leloir.cluster.home
+#   Callback URL: https://dex.cluster.home/callback
+#
+dex_github_client_id: ""
+dex_github_client_secret: ""
+
+# Shared secret Dex ↔ Leloir.
+# Generar: openssl rand -base64 32
+# Debe ser el mismo valor que leloir_oidc_client_secret en install-leloir.
+dex_leloir_client_secret: ""

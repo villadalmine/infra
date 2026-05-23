@@ -1,0 +1,50 @@
+# Bootstraps Dex OIDC provider secrets para el cluster homelab.
+# El chart Dex en sí lo gestiona ArgoCD via deploy/homelab/dex/ (GitOps).
+#
+# Esta tarea solo:
+#   1. Crea el namespace dex
+#   2. Crea los secrets con las credenciales (gitignoreados en infra-ai)
+#
+# Prerequisitos:
+#   - GitHub OAuth App creada (ver deploy/homelab/BOOTSTRAP.md)
+#   - dex_github_client_id / dex_github_client_secret en defaults/secrets.yml (gitignored)
+#   - dex_leloir_client_secret en defaults/secrets.yml (mismo valor que leloir_oidc_client_secret)
+#   - AppSet homelab aplicado al ArgoCD (install-leloir lo aplica al final)
+
+- name: Create dex namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ dex_namespace }}"
+    state: present
+
+# Secrets que el pod de Dex carga vía secretKeyRef (ver values.yaml del chart)
+# Claves deben coincidir con .Values.dex.env[].valueFrom.secretKeyRef.key
+- name: Create dex-github-oauth secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: dex-github-oauth
+        namespace: "{{ dex_namespace }}"
+      type: Opaque
+      stringData:
+        client-id: "{{ dex_github_client_id }}"
+        client-secret: "{{ dex_github_client_secret }}"
+
+- name: Create dex-leloir-client secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: dex-leloir-client
+        namespace: "{{ dex_namespace }}"
+      type: Opaque
+      stringData:
+        client-secret: "{{ dex_leloir_client_secret }}"

@@ -14,6 +14,23 @@ leloir_db_storage_size: "5Gi"
 # HolmesGPT endpoint (in-cluster)
 leloir_holmes_api_url: "http://holmesgpt-holmes.ai.svc.cluster.local:80"
 
+# Auth mode: "single-user" (dev) or "oidc" (production with Dex)
+leloir_auth_mode: "single-user"
+
+# OIDC config — only used when leloir_auth_mode == "oidc"
+# leloir_oidc_client_secret must match dex_leloir_client_secret in install-dex.
+# Set in defaults/secrets.yml (gitignored).
+leloir_oidc_issuer: "https://dex.cluster.home"
+leloir_oidc_client_id: "leloir"
+leloir_oidc_client_secret: ""
+leloir_oidc_redirect_url: "https://leloir.cluster.home/auth/callback"
+# Email del admin (gets "admin" role in Leloir) — set in defaults/secrets.yml
+leloir_oidc_admin_email: ""
+
+# Path al homelab-appset.yaml — ArgoCD gestiona Dex + Leloir via Helm cuando mode=oidc
+# Apunta al repo leloir clonado localmente (el mismo que se usa para make leloir-build)
+leloir_homelab_appset_path: "/home/dalmine/Nextcloud/Repos/projects/leloir/deploy/homelab-appset.yaml"
+
 # Control plane resources
 leloir_cpu_request: "100m"
 leloir_memory_request: "128Mi"

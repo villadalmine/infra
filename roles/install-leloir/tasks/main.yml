@@ -2,6 +2,23 @@
 # Pattern: ClusterIP + HTTPRoute → cluster-gateway (no LoadBalancer, no Ingress).
 # Storage: local-path PVC for Postgres (NAS-free, single-node).
 
+# ─── CRDs (bootstrap) ─────────────────────────────────────────────────────────
+# Applied once so the cluster can accept Leloir resources before ArgoCD syncs.
+# After this, the ArgoCD Application below takes over ongoing management.
+
+- name: Apply Leloir CRDs (bootstrap)
+  ansible.builtin.command:
+    cmd: kubectl apply -k {{ role_path }}/files/crds/
+  register: crd_apply
+  changed_when: "'created' in crd_apply.stdout or 'configured' in crd_apply.stdout"
+
+# ─── GitOps — ArgoCD Application ──────────────────────────────────────────────
+
+- name: Apply Leloir CRDs ArgoCD Application
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/argocd/leloir-crds-app.yaml"
+
 - name: Create leloir namespace
   kubernetes.core.k8s:
     definition:
@@ -125,9 +142,31 @@
   delay: 10
   changed_when: false
 
-# ─── Control plane config ─────────────────────────────────────────────────────
+# ─── OIDC secret (solo cuando auth.mode == "oidc") ────────────────────────────
+# Debe contener el mismo valor que dex-leloir-client.client-secret en namespace dex.
+# Generar con: openssl rand -base64 32
+
+- name: Create leloir-oidc-secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: leloir-oidc-secret
+        namespace: "{{ leloir_namespace }}"
+      type: Opaque
+      stringData:
+        client-secret: "{{ leloir_oidc_client_secret }}"
+  when: leloir_auth_mode == "oidc"
+
+# ─── Control plane config + deployment ───────────────────────────────────────
+# En modo "oidc" estas tres resources (ConfigMap, Deployment, Service, HTTPRoute)
+# pasan a ser gestionadas por ArgoCD via deploy/homelab/leloir/ Helm chart.
+# Ansible las crea solo en modo "single-user".
 
 - name: Create leloir-controlplane ConfigMap
+  when: leloir_auth_mode != "oidc"
   kubernetes.core.k8s:
     state: present
     definition:
@@ -145,12 +184,26 @@
 
           database:
             driver: postgres
-            # DSN injected via SECRET_DSN env var at runtime
+            # DSN injected via LELOIR_DATABASE_DSN env var at runtime
 
           auth:
-            mode: single-user
+            mode: {{ leloir_auth_mode }}
+          {% if leloir_auth_mode == "oidc" %}
+            oidc:
+              issuer:      "{{ leloir_oidc_issuer }}"
+              clientId:    "{{ leloir_oidc_client_id }}"
+              redirectURL: "{{ leloir_oidc_redirect_url }}"
+              scopes:
+                - openid
+                - email
+                - profile
+                - groups
+              adminEmails:
+                - "{{ leloir_oidc_admin_email }}"
+          {% else %}
             singleUser:
               username: admin
+          {% endif %}
 
           audit:
             hotRetentionDays: 7
@@ -174,6 +227,7 @@
 # ─── Control plane deployment ─────────────────────────────────────────────────
 
 - name: Deploy leloir-controlplane
+  when: leloir_auth_mode != "oidc"
   kubernetes.core.k8s:
     state: present
     definition:
@@ -207,16 +261,18 @@
                   - containerPort: 8080
                     name: http
                 env:
-                  - name: SECRET_DSN
-                    valueFrom:
-                      secretKeyRef:
-                        name: postgres-leloir-credentials
-                        key: DSN
                   - name: LELOIR_DATABASE_DSN
                     valueFrom:
                       secretKeyRef:
                         name: postgres-leloir-credentials
                         key: DSN
+                  {% if leloir_auth_mode == "oidc" %}
+                  - name: LELOIR_OIDC_CLIENT_SECRET
+                    valueFrom:
+                      secretKeyRef:
+                        name: leloir-oidc-secret
+                        key: client-secret
+                  {% endif %}
                 volumeMounts:
                   - name: config
                     mountPath: /etc/leloir
@@ -246,6 +302,7 @@
                   name: leloir-config
 
 - name: Create leloir-controlplane Service
+  when: leloir_auth_mode != "oidc"
   kubernetes.core.k8s:
     state: present
     definition:
@@ -264,6 +321,7 @@
             targetPort: 8080
 
 - name: Create HTTPRoute for leloir UI + API
+  when: leloir_auth_mode != "oidc"
   kubernetes.core.k8s:
     state: present
     definition:
@@ -283,11 +341,74 @@
               - name: leloir-controlplane
                 port: 80
 
-- name: Wait for leloir-controlplane rollout
+- name: Wait for leloir-controlplane rollout (single-user mode)
+  when: leloir_auth_mode != "oidc"
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/leloir-controlplane -n {{ leloir_namespace }} --timeout=120s
   register: leloir_rollout
   until: leloir_rollout.rc == 0
   retries: 6
   delay: 10
+  changed_when: false
+
+# ─── Migración a GitOps (solo en modo oidc) ───────────────────────────────────
+# Elimina los recursos gestionados directamente por Ansible para cederlos al
+# Helm chart via ArgoCD (deploy/homelab/leloir/).
+# Idempotente: falla silenciosamente si los recursos ya no existen.
+
+- name: Remove Ansible-managed ConfigMap (ArgoCD Helm lo recrea)
+  when: leloir_auth_mode == "oidc"
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: ConfigMap
+    name: leloir-config
+    namespace: "{{ leloir_namespace }}"
+
+- name: Remove Ansible-managed Deployment (ArgoCD Helm lo recrea)
+  when: leloir_auth_mode == "oidc"
+  kubernetes.core.k8s:
+    state: absent
+    api_version: apps/v1
+    kind: Deployment
+    name: leloir-controlplane
+    namespace: "{{ leloir_namespace }}"
+
+- name: Remove Ansible-managed Service (ArgoCD Helm lo recrea)
+  when: leloir_auth_mode == "oidc"
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Service
+    name: leloir-controlplane
+    namespace: "{{ leloir_namespace }}"
+
+- name: Remove Ansible-managed HTTPRoute (ArgoCD Helm lo recrea)
+  when: leloir_auth_mode == "oidc"
+  kubernetes.core.k8s:
+    state: absent
+    api_version: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    name: leloir
+    namespace: "{{ leloir_namespace }}"
+
+# ─── GitOps homelab ApplicationSet ───────────────────────────────────────────
+# Aplica el ApplicationSet al ArgoCD del homelab: gestiona Dex + control plane
+# vía los Helm charts en deploy/homelab/ del repo leloir.
+
+- name: Apply homelab ApplicationSet a ArgoCD
+  when: leloir_auth_mode == "oidc" and leloir_homelab_appset_path != ""
+  ansible.builtin.command:
+    cmd: kubectl apply -f {{ leloir_homelab_appset_path }} -n argocd
+  register: appset_apply
+  changed_when: "'created' in appset_apply.stdout or 'configured' in appset_apply.stdout"
+
+- name: Wait for leloir-controlplane rollout (oidc mode — ArgoCD managed)
+  when: leloir_auth_mode == "oidc"
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/leloir-controlplane -n {{ leloir_namespace }} --timeout=180s
+  register: leloir_oidc_rollout
+  until: leloir_oidc_rollout.rc == 0
+  retries: 12
+  delay: 15
   changed_when: false
