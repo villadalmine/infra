@@ -201,6 +201,25 @@
     - kagent-grafana-mcp
     - kagent-querydoc
 
+- name: Patch kagent-postgresql deployment probes for slow SMB NAS startup
+  kubernetes.core.k8s:
+    api_version: apps/v1
+    kind: Deployment
+    name: kagent-postgresql
+    namespace: "{{ kagent_namespace }}"
+    definition:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: postgresql
+                livenessProbe:
+                  initialDelaySeconds: 180
+                readinessProbe:
+                  initialDelaySeconds: 60
+    merge_type: strategic-merge
+    state: present
+
 # ── PostgreSQL: fix pg_hba.conf to allow pod-to-pod connections ──────────
 # postgres:18 default pg_hba.conf only allows Unix socket and localhost.
 # The kagent controller pod (IP range 10.0.0.0/8 or 10.42.0.0/16) connects
