@@ -412,7 +412,7 @@ ssh dalmine@192.168.178.85
 
 ---
 
-## Available Skills (dotfiles repo)
+## Available Skills (.agents/skills)
 
 | Skill | Covers |
 |-------|--------|
