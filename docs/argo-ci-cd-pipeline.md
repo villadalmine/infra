@@ -4,40 +4,74 @@ Este documento explica cómo funciona el proceso de compilación (build) de imá
 
 ## Arquitectura del Proceso de Build
 
-Históricamente, los builds de la infraestructura se realizaban directamente inyectando `Jobs` estáticos de Kubernetes mediante Ansible, y utilizando el almacenamiento SMB1 de un NAS heredado. Esto presentaba cuellos de botella de I/O importantes. 
+Históricamente, los builds se realizaban inyectando `batch/v1 Jobs` estáticos via Ansible, con almacenamiento SMB del NAS heredado. Esto generaba bloqueos sincrónicos en Ansible y cuellos de botella de I/O.
 
-El proceso ha evolucionado hacia un pipeline asíncrono y robusto basado en **Argo Workflows**:
+El sistema actual es un pipeline asíncrono basado en **Argo Workflows**:
 
-1. **Ansible (El Disparador):** 
-   - Sigue siendo la única fuente de verdad y el encargado de la configuración. 
-   - A través del comando `make ai-hermes-build` (que llama al playbook con tags específicos), Ansible crea los `ConfigMaps` con los Dockerfiles y aplica el CRD `Workflow` de Argo en el clúster (namespace `kaniko`).
-   - *Ventaja:* Ansible no se queda esperando sincrónicamente el resultado del build, liberando el hilo de ejecución.
+1. **Ansible (El Disparador):**
+   - Crea el PVC de caché (`local-path` o `smb-nas`) si no existe.
+   - Aplica el CRD `Workflow` al clúster (namespace `kaniko`). Fire-and-forget para hermes, con `kubectl wait` para leloir (necesario para que `make leloir-all` encadene correctamente build → deploy).
+   - En leloir: también espera la condición `phase=Succeeded` antes de retornar.
 
 2. **Argo Workflows (El Orquestador):**
-   - Detecta la creación del `Workflow` y orquesta la creación de pods.
-   - Consta de pasos bien definidos. Primero ejecuta un contenedor `init` que se encarga de clonar los repositorios (`inputs.artifacts.git`) directamente a un volumen temporal (usando la `StorageClass: local-path`).
-   - El volumen del `workspace` se asocia al almacenamiento NVMe rápido del nodo, desconectando el I/O intensivo de Kaniko del lento protocolo SMB1 del NAS.
+   - Detecta el `Workflow` y crea el pod de build.
+   - Clona el repo via `inputs.artifacts.git` (nativo de Argo, sin initContainer extra).
+   - El workspace es efímero: `volumeClaimTemplates` crea una PVC nueva por run, que se auto-elimina via `ttlStrategy` (1h éxito / 24h fallo).
+   - El workspace usa `local-path` (NVMe del nodo) — desacoplado del NAS SMB lento.
 
 3. **Kaniko (El Constructor):**
-   - Se ejecuta dentro del pod gestionado por Argo. 
-   - Utiliza el directorio clonado por Argo en `/workspace/source`.
-   - Utiliza un `PersistentVolumeClaim` estático llamado `kaniko-cache` (que sí reside en el NAS SMB o almacenamiento dedicado a elección) para guardar las *cachés de las capas de Docker*, acelerando significativamente los builds consecutivos.
-   - Realiza un push directo al `registry` interno del clúster (`registry.registry:5000`).
+   - Corre en el pod gestionado por Argo en `srv-rk1-nvme-01`.
+   - Lee el código clonado desde `/workspace/source`.
+   - Usa un PVC de caché persistente (`kaniko-cache` o `leloir-kaniko-cache`) para acelerar builds consecutivos.
+   - Push directo al registry in-cluster (`registry.registry:5000`).
 
-## Hitos y Solución de Problemas (Troubleshooting History)
+## Builds activos
 
-| Fecha / Hito | Problema | Solución Implementada (Commit) |
-| --- | --- | --- |
-| **Paso 1:** Reemplazo de Job por Argo Workflow | Ansible se bloqueaba esperando el estado de `Job` o fallaba si no se purgaba. | Se instaló `argo-workflows` (modo server) y se refactorizó el rol `install-hermes-agent-image` para desplegar un `Workflow`. |
-| **Paso 2:** GitHub Actions Auth & Automatic Token Fetch | N/A | To trigger GitHub Actions from inside the cluster, the `gh-trigger` Argo container relies on the `github-pat-secret`. **User Convenience (Auto-Fetching):** If you have the `gh` CLI natively authenticated on your local machine (`gh auth status` shows an active token), the `Makefile` will **automatically** extract your token and pass it to the cluster: `make ai-hermes-build-remote`. If you don't have `gh` CLI installed, you can pass it manually: `make ai-hermes-build-remote GITHUB_PAT=ghp_...`. **Implementation Detail:** The `gh-trigger` Argo pod uses the minimal `alpine:latest` image and installs `github-cli` dynamically via `apk add github-cli`. This avoids relying on `ghcr.io/cli/cli`, which sometimes blocks anonymous pulls and causes `ErrImagePull`. |
-| **Paso 3:** Deadlocks en Storage SMB | El PV de `smb-nas` se quedaba en estado `Released` impidiendo la creación del caché o el workspace de build. | Se depuró la lógica de Ansible `install-cifs-nas` eliminando el `claimRef` residual del PV, logrando redespliegues limpios y exitosos. |
-| **Paso 4:** CRD Tolerations Merge Key Error | Argo Workflows devolvía `Init:Error` o `Error` indicando `map: map[operator:Exists] does not contain declared merge key: key`. | Se parcheó el `workflow-controller-configmap` y los manifiestos de Ansible asignando una clave explícita (`node.kubernetes.io/unreachable`) para que el parche estratégico de Kubernetes no fallase al hacer merge. |
-| **Paso 5:** Conflicto de Volúmenes y Git Clone | El contenedor `init` de Argo daba el error `file exists` al intentar clonar el repo Git en `/workspace/source` porque ahí ya estaba montado el `Dockerfile`. | Se modificó el montaje del ConfigMap para inyectar el Dockerfile en `/workspace/Dockerfile` (afuera de la carpeta clonada), separando el código fuente inyectado por Argo de la receta inyectada por Ansible. |
+| Make target | Role Ansible | Imagen destino | Cache storage |
+|-------------|-------------|----------------|---------------|
+| `make ai-hermes-build` | `install-hermes-agent-image` | `ai/hermes-agent:v2026.5.16-telegram` | `smb-nas` 60Gi |
+| `make leloir-build` | `install-leloir-image` | `ai/leloir-controlplane:latest` | `local-path` 10Gi |
+| `make ai-hermes-build-remote` | `install-hermes-agent-remote-build` | idem hermes | GitHub Actions |
 
-## Tareas Completadas Recientemente
-- Implementación de **GitHub Actions** offload mediante el rol `install-hermes-agent-remote-build`.
-- Extracción automática de tokens OAuth nativos con la CLI de GitHub (`gh auth token`) para facilitar la ejecución remota de compilaciones mediante el Makefile.
+## Dependencias de Make
 
-## Siguientes Pasos (Roadmap Extendido)
-- Considerar integrar notificaciones directas desde GitHub Actions de regreso a Slack/Telegram mediante OpenClaw.
-- Optimizar la limpieza de imágenes estancadas y workflows finalizados (Garbage Collection de Argo).
+```
+make leloir-all
+├── make ai-registry       # registry in-cluster
+├── make argo-workflows    # instala Argo + RBAC para namespace kaniko
+├── make leloir-build      # dispara Argo Workflow + espera Succeeded
+└── make leloir            # Postgres + Deployment rolling update
+
+make argo-workflows
+└── tags: [argo-workflows] en bootstrap.yml
+    ├── install-argo-workflows  # Helm + HTTPRoute + RBAC kaniko SA
+    └── (disponible también dentro de make services)
+```
+
+---
+
+## Historial de Hitos y Troubleshooting
+
+| Fecha / Hito | Problema | Solución |
+|---|---|---|
+| **Paso 1:** Reemplazo Job → Argo Workflow (hermes) | Ansible se bloqueaba esperando el `Job` o fallaba si no se purgaba primero. | Se instaló `argo-workflows` (Helm, modo server) y se refactorizó `install-hermes-agent-image` para desplegar un `Workflow` CRD. |
+| **Paso 2:** Offload remoto via GitHub Actions | Builds de hermes muy pesados para el cluster. | Rol `install-hermes-agent-remote-build`: workflow de dos pasos `gh-trigger` → `skopeo-sync`. Auto-fetch del token via `gh auth token`. |
+| **Paso 3:** Deadlocks en Storage SMB | PV de `smb-nas` quedaba en `Released` bloqueando recreación del caché. | Se depuró `install-cifs-nas` eliminando el `claimRef` residual del PV. |
+| **Paso 4:** CRD Tolerations Merge Key Error | `Init:Error`: `map[operator:Exists] does not contain declared merge key: key`. | Se agregó `key: node.kubernetes.io/unreachable` explícita en todas las tolerations de todos los Workflow specs. |
+| **Paso 5:** Conflicto volumen + git clone | `file exists` al clonar en `/workspace/source` porque el Dockerfile de ConfigMap estaba montado allí. | Dockerfile montado en `/workspace/Dockerfile` (fuera del path de git clone). |
+| **Paso 6:** Migración `install-leloir-image` Job → Argo Workflow | `install-leloir-image` aún usaba `batch/v1 Job` con initContainer manual. No aparecía en Argo UI, sin retry nativo. | Migrado a `argoproj.io/v1alpha1 Workflow` con `inputs.artifacts.git`. Agrega `ttlStrategy` (1h/24h). Makefile actualizado: `argo-workflows` target standalone, `leloir-all` incluye `make argo-workflows` como prerequisito. |
+| **Paso 7:** RBAC `workflowtaskresults` forbidden | Nuevo namespace `kaniko` sin Role para el SA `default` → Argo no puede reportar el estado del workflow. Error: `workflowtaskresults.argoproj.io is forbidden`. | Role `argo-workflow-runner` + RoleBinding para `default` SA en `kaniko` ns. Persistido en `install-argo-workflows` via variable `argo_workflow_namespaces`. Idempotente via `make argo-workflows`. |
+| **Paso 8:** DiskPressure por PVCs acumulados | Build fallaba con exit code 137 + `ephemeral-storage` eviction en `srv-rk1-nvme-01`. PVCs de workspace de workflows fallidos + PVC orphanado del viejo Job (`leloir-kaniko-workspace`) acumularon espacio. | Borrar workflows fallidos/completados libera sus workspace PVCs (reclaim: Delete). PVC orphanada del Job viejo eliminada manualmente. TTL strategy previene acumulación futura. |
+
+---
+
+## Guías de referencia
+
+- Comandos de uso y troubleshooting operacional: `.agents/workflows/argo-kaniko-build.md`
+- Argo Workflows UI: `https://argo.cluster.home`
+
+## Siguientes Pasos
+
+- Considerar integrar notificaciones desde GitHub Actions a Telegram via OpenClaw cuando termine un remote build.
+- Evaluar `CronWorkflow` para re-build automático semanal de imágenes base.
+- Si se agregan más builds (ej. leloir mcp-gateway, webhook-receiver), evaluar crear un `WorkflowTemplate` reutilizable para unificar el patrón en lugar de mantener specs inline por rol.

@@ -41,6 +41,9 @@
           app: leloir-build
       spec:
         entrypoint: build-image
+        ttlStrategy:
+          secondsAfterSuccess: 3600     # cleanup workspace PVC 1h after success
+          secondsAfterFailure: 86400    # retain 24h for debug after failure
         nodeSelector:
           kubernetes.io/hostname: "{{ leloir_kaniko_node_hostname }}"
         tolerations:

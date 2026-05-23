@@ -1,3 +1,7 @@
 argo_workflows_namespace: "argo"
 argo_workflows_version: "1.0.14"
 argo_workflows_hostname: "argo.cluster.home"
+
+# Namespaces where Argo Workflows will run workflow pods — each needs RBAC for the default SA
+argo_workflow_namespaces:
+  - kaniko
