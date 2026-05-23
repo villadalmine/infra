@@ -214,9 +214,9 @@
             containers:
               - name: postgresql
                 livenessProbe:
-                  initialDelaySeconds: 180
+                  initialDelaySeconds: 600
                 readinessProbe:
-                  initialDelaySeconds: 60
+                  initialDelaySeconds: 180
     merge_type: strategic-merge
     state: present
 
@@ -261,6 +261,10 @@
       psql -U kagent -d postgres -c "CREATE DATABASE kagent OWNER kagent;"
   when: kagent_db_check.stdout | default('') | trim != '1'
   changed_when: true
+  register: db_create
+  until: db_create.rc == 0
+  retries: 5
+  delay: 10
 
 # ── Agent ServiceAccount with read + kubectl exec permissions ─────────────
 # Agents can: get/list/watch everything + exec into pods + read logs
