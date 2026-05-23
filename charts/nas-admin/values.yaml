@@ -11,7 +11,7 @@ nasPvc:
   enabled: true
   claimName: nas-admin-nas-pvc
   mountPath: /mnt/nas
-  source: ""   # SMB source of the mount (e.g. //192.168.178.102/service) — used to compute rename paths
+  source: ""   # SMB source of the mount (e.g. //192.168.178.102/service) — used for marker file path computation
 
 # Authentication: basic | oidc | none
 #

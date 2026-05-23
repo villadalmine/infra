@@ -58,6 +58,27 @@
           requests:
             storage: 5Gi
 
+# Copy smbcreds from default namespace so the pod can read NAS credentials for SMB rename
+- name: Read smbcreds from default namespace
+  kubernetes.core.k8s_info:
+    kind: Secret
+    name: smbcreds
+    namespace: default
+  register: _smbcreds
+
+- name: Copy smbcreds to storage namespace for NAS rename feature
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: smbcreds
+        namespace: "{{ nas_admin_namespace }}"
+      type: Opaque
+      data: "{{ _smbcreds.resources[0].data }}"
+  when: _smbcreds.resources | length > 0
+
 - name: Install/upgrade nas-admin Helm chart
   kubernetes.core.helm:
     name: nas-admin

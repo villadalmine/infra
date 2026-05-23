@@ -18,8 +18,8 @@ _basic = HTTPBasic(auto_error=False)
 AUTH_MODE = os.environ.get("AUTH_MODE", "none")
 AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
-NAS_MOUNT = os.environ.get("NAS_MOUNT", "/mnt/nas")
-NAS_SOURCE = os.environ.get("NAS_SOURCE", "")  # SMB source path e.g. //192.168.178.102/service
+NAS_MOUNT  = os.environ.get("NAS_MOUNT", "/mnt/nas")
+NAS_SOURCE = os.environ.get("NAS_SOURCE", "")   # e.g. //192.168.178.102/service
 
 
 def _load_k8s():
@@ -226,6 +226,7 @@ def _mark_nas_dir_deleted(nas_path: str, suffix: str) -> str | None:
         return None
 
 
+
 def _crumbs(cur_path: str):
     parts = [p for p in cur_path.split("/") if p]
     crumbs = [{"name": "nas", "path": "/"}]
@@ -364,6 +365,26 @@ async def delete_pv(name: str, _=Depends(check_auth)):
         phase = (pv.status.phase if pv.status else None) or "Unknown"
         if phase == "Bound":
             raise HTTPException(status_code=409, detail="Cannot delete a Bound PV — delete the PVC first")
+
+        # Collect NAS path and deletion context from annotations or PV spec
+        ann = pv.metadata.annotations or {}
+        nas_path = ann.get("nas-admin/deleted-nas-path") or (
+            (pv.spec.csi.volume_attributes or {}).get("source", "")
+            if pv.spec.csi else ""
+        )
+        sc = ann.get("nas-admin/deleted-sc") or pv.spec.storage_class_name or ""
+        orig_pvc = ann.get("nas-admin/deleted-pvc") or (
+            f"{pv.spec.claim_ref.namespace}/{pv.spec.claim_ref.name}"
+            if pv.spec.claim_ref else ""
+        )
+
+        # Create a visible marker file inside the NAS directory before the K8s object is gone.
+        # Note: the LG N2R1 NAS blocks renaming root-level share directories (ACCESS_DENIED),
+        # so a marker file is the only automated way to tag orphaned NAS data.
+        if nas_path and not ann.get("nas-admin/nas-dir-marked"):
+            marker_suffix = "-" + "-".join(p for p in [_safe_name(sc), _safe_name(orig_pvc)] if p)
+            _mark_nas_dir_deleted(nas_path, marker_suffix)
+
         v1.delete_persistent_volume(name=name)
     except ApiException as e:
         raise HTTPException(status_code=e.status, detail=str(e.reason))
