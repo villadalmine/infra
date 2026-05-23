@@ -1,0 +1,63 @@
+---
+# Install Argo Workflows via Helm on localhost
+
+- name: Add argo Helm repository
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+  changed_when: false
+
+- name: Install or upgrade argo-workflows
+  kubernetes.core.helm:
+    name: argo-workflows
+    chart_ref: argo/argo-workflows
+    chart_version: "{{ argo_workflows_version }}"
+    release_namespace: "{{ argo_workflows_namespace }}"
+    create_namespace: true
+    wait: false
+    values:
+      server:
+        # We use secure-mode but access it via Gateway API, so we don't need --auth-mode=server unless we want to bypass SSO.
+        # But for local dev it's easier to use server auth mode.
+        extraArgs:
+          - --auth-mode=server
+      controller:
+        workflowDefaults: {}
+
+- name: Wait for argo-server rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/argo-workflows-server -n {{ argo_workflows_namespace }} --timeout=180s
+  register: aw_rollout
+  until: aw_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Wait for workflow-controller rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/argo-workflows-workflow-controller -n {{ argo_workflows_namespace }} --timeout=180s
+  register: awc_rollout
+  until: awc_rollout.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+
+- name: Create HTTPRoute for argo-workflows
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: argo-workflows
+        namespace: "{{ argo_workflows_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ argo_workflows_hostname }}"
+        rules:
+          - backendRefs:
+              - name: argo-workflows-server
+                port: 2746
+    state: present

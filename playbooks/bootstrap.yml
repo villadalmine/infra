@@ -76,6 +76,8 @@
       tags: [ingress]
     - role: install-pihole
       tags: [dns-metrics]
+    - role: install-argo-workflows
+      tags: [services]
     - role: install-argocd
       tags: [services]
     - role: install-helm-dashboard
@@ -88,6 +90,9 @@
       tags: [observability]
     - role: install-alloy
       tags: [observability]
+
+    - role: install-csi-rclone
+      tags: [storage]
 
     # AI stack (ARM64 build required)
     - role: install-cifs-nas

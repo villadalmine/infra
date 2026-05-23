@@ -1,0 +1,3 @@
+argo_workflows_namespace: "argo"
+argo_workflows_version: "1.0.14"
+argo_workflows_hostname: "argo.cluster.home"
