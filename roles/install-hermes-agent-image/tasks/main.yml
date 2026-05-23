@@ -98,7 +98,7 @@
             container:
               image: gcr.io/kaniko-project/executor:latest
               args:
-                - "--dockerfile=/workspace/source/Dockerfile"
+                - "--dockerfile=/workspace/Dockerfile"
                 - "--context=dir:///workspace/source"
                 - "--cache=true"
                 - "--cache-dir=/cache"
@@ -117,7 +117,7 @@
                   memory: "20Gi"
               volumeMounts:
                 - name: dockerfile
-                  mountPath: /workspace/source/Dockerfile
+                  mountPath: /workspace/Dockerfile
                   subPath: Dockerfile
                 - name: cache
                   mountPath: /cache
