@@ -1,0 +1,340 @@
+# Leloir — Sample Configuration
+# Scenario: production database incident response for "team-alpha"
+#
+# What this sets up:
+#   - A tenant for team-alpha
+#   - HolmesGPT as the primary agent
+#   - Prometheus + Kubernetes + Postgres as MCP sources
+#   - An alert route that matches critical DB alerts
+#   - Notification to Microsoft Teams
+#   - Budget: $5/investigation, $50/month
+#   - HITL: approval required before write actions
+#
+# Apply with:
+#   kubectl apply -f sample-db-incident-response.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. Tenant definition (cluster-scoped)
+apiVersion: leloir.dev/v1alpha1
+kind: Tenant
+metadata:
+  name: team-alpha
+spec:
+  namespace: team-alpha
+  displayName: "Team Alpha — Infrastructure"
+  profile: corporate
+  oidc:
+    issuer: https://login.microsoftonline.com/<your-tenant-id>/v2.0
+    clientId: <azure-app-client-id>
+    clientSecretRef:
+      name: team-alpha-oidc-secret
+    groupsClaim: groups
+  rbac:
+    adminGroups: ["sre-leads"]
+    viewerGroups: ["sre-engineers", "developers"]
+
+---
+# 2. Monthly budget
+apiVersion: leloir.dev/v1alpha1
+kind: TenantBudget
+metadata:
+  name: team-alpha-budget
+  namespace: team-alpha
+spec:
+  monthly:
+    maxUSD: 50.0
+    alertAtPercent: 80
+    softLimitPercent: 90
+    hardLimitAction: reject
+  perInvestigation:
+    maxUSD: 5.0
+    maxTokens: 100000
+    maxToolCalls: 50
+    maxSubInvocations: 10
+  a2a:
+    maxInvocationDepth: 5
+    maxFanOutPerAgent: 3
+    maxTotalSubInvocations: 20
+
+---
+# 3. HolmesGPT agent registration
+apiVersion: leloir.dev/v1alpha1
+kind: AgentRegistration
+metadata:
+  name: holmes-prod
+  namespace: team-alpha
+spec:
+  adapter:
+    image: ghcr.io/leloir/adapter-holmesgpt:v1.0.0
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "256Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
+  modelConfigRef: azure-openai-corp   # configured in LLM Gateway
+  customConfig:
+    holmes:
+      apiBaseURL: "http://holmes.holmes.svc.cluster.local"
+      timeout: 300
+  canInvoke: ["*"]
+  cannotInvoke: []
+  supportsBeingInvoked: true
+
+---
+# 4. Prometheus MCP source
+apiVersion: leloir.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: prometheus-mcp
+  namespace: team-alpha
+spec:
+  trustTier: internal-hosted
+  visibility: namespace
+  transport:
+    type: streamable-http
+    endpoint: http://prometheus-mcp.tools.svc.cluster.local:8080
+  policies:
+    allowedTools: ["prometheus.query", "prometheus.query_range", "prometheus.labels"]
+    rateLimit: "200/min"
+
+---
+# 5. Kubernetes MCP source
+apiVersion: leloir.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: kubernetes-mcp
+  namespace: team-alpha
+spec:
+  trustTier: internal-hosted
+  visibility: namespace
+  transport:
+    type: streamable-http
+    endpoint: http://kubernetes-mcp.tools.svc.cluster.local:8080
+  policies:
+    allowedTools:
+      - "kubernetes.get_pod"
+      - "kubernetes.get_deployment"
+      - "kubernetes.get_events"
+      - "kubernetes.get_logs"
+      - "kubernetes.describe_node"
+    requireApproval:
+      - "kubernetes.exec"
+      - "kubernetes.delete_pod"
+    rateLimit: "100/min"
+
+---
+# 6. PostgreSQL MCP source (read-only tools only)
+apiVersion: leloir.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: postgres-mcp
+  namespace: team-alpha
+spec:
+  trustTier: internal-hosted
+  visibility: namespace
+  transport:
+    type: grpc                         # internal MCPs use gRPC from M3+
+    endpoint: https://postgres-mcp.tools.svc.cluster.local:9090
+    tls:
+      enabled: true
+      caSecretRef:
+        name: internal-ca
+        key: ca.crt
+  credentials:
+    secretRef:
+      name: postgres-mcp-credentials
+  policies:
+    allowedTools:
+      - "postgres.query"
+      - "postgres.explain"
+      - "postgres.pg_stat_activity"
+      - "postgres.pg_stat_statements"
+    requireApproval:
+      - "postgres.execute"           # write queries require HITL
+    rateLimit: "50/min"
+
+---
+# 7. Teams notification channel
+apiVersion: leloir.dev/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: teams-sre
+  namespace: team-alpha
+spec:
+  type: teams
+  teams:
+    webhookURLSecretRef:
+      name: teams-webhook-secret
+      key: url
+    mentionUsers: []
+    cardStyle: detailed
+  notification:
+    includeRootCause: true
+    includeRecommendation: true
+    includeEvidence: false
+    includeCost: true
+    maxSummaryLength: 500
+    onOutcomes: [success, partial, error, budget_exhausted]
+
+---
+# 8. HITL approval policy
+apiVersion: leloir.dev/v1alpha1
+kind: ApprovalPolicy
+metadata:
+  name: db-write-protection
+  namespace: team-alpha
+spec:
+  description: "Require human approval before any write actions on production DB"
+  tools:
+    autoApprove:
+      - tools: ["kubernetes.get_*", "prometheus.*", "postgres.query", "postgres.explain"]
+        callers: ["*"]
+    requireApproval:
+      - tools: ["kubernetes.exec", "kubernetes.delete_*", "postgres.execute"]
+        callers: ["*"]
+        channel: teams-sre
+        timeoutMinutes: 30
+  a2a:
+    autoApprove:
+      - callers: ["holmes-prod"]
+        targets: ["dba-specialist", "security-specialist"]
+    requireApproval:
+      - callers: ["*"]
+        targets: ["*"]
+        channel: teams-sre
+        timeoutMinutes: 15
+
+---
+# 9. SRE skills for DB incident investigation
+apiVersion: leloir.dev/v1alpha1
+kind: SkillSource
+metadata:
+  name: db-investigation-skills
+  namespace: team-alpha
+spec:
+  type: inline
+  visibility: namespace
+  inline:
+    - name: investigate-postgres-incident
+      description: "How to investigate PostgreSQL performance and availability incidents"
+      content: |
+        # PostgreSQL Incident Investigation Runbook
+
+        ## First checks (always run these)
+        1. Check pg_stat_activity for blocking queries
+        2. Check connection count vs max_connections
+        3. Look at pg_stat_statements for top queries by total_time
+        4. Check for autovacuum bloat
+
+        ## Common patterns
+        - **Connection exhaustion**: max_connections hit, PgBouncer misconfiguration
+        - **Lock contention**: long-running transactions, missing indexes
+        - **Autovacuum lag**: table bloat, dead tuple accumulation
+        - **Replica lag**: I/O saturation, network issues to replica
+
+        ## Escalation
+        Call DBA team if: data corruption suspected, replication broken,
+        disk 95%+ full, or query plan regression.
+      tags: [postgres, database, performance]
+
+---
+# 10. Alert route: critical DB incidents → Holmes → Teams
+apiVersion: leloir.dev/v1alpha1
+kind: AlertRoute
+metadata:
+  name: critical-db-incidents
+  namespace: team-alpha
+spec:
+  enabled: true
+  priority: 200
+  match:
+    labels:
+      severity: critical
+      type: database
+    sources: [alertmanager]
+  agent: holmes-prod
+  team: []                             # no sub-agents for now; add dba-specialist in M5
+  allowedSources:
+    - prometheus-mcp
+    - kubernetes-mcp
+    - postgres-mcp
+  skills:
+    - investigate-postgres-incident
+  notify:
+    - teams-sre
+  budget:
+    maxUSD: 3.0
+    maxTokens: 60000
+    maxToolCalls: 30
+  timeouts:
+    investigationMinutes: 10
+
+---
+# =============================================================================
+# 11. OPTIONAL: External memory integration (MCPServer pattern)
+#     See docs/integrations/memory.md for full guide.
+#     Uncomment and adapt if you want agents to recall past incidents.
+# =============================================================================
+#
+# Option A — MemPalace (local, free, good for home/dev clusters)
+# ---
+# First deploy MemPalace in your namespace (see examples/mempalace-deployment.yaml)
+# Then register it as an MCPServer:
+#
+# apiVersion: leloir.dev/v1alpha1
+# kind: MCPServer
+# metadata:
+#   name: team-alpha-memory
+#   namespace: team-alpha
+# spec:
+#   trustTier: internal-hosted
+#   visibility: namespace
+#   transport:
+#     type: streamable-http
+#     url: http://mempalace.team-alpha.svc.cluster.local:8080
+#   allowedTools:
+#     - mempalace_search
+#     - mempalace_kg_query
+#     - mempalace_list_wings
+#     - mempalace_traverse
+#     # Write tools require ApprovalPolicy — add with caution
+#     # - mempalace_add_drawer
+#   policies:
+#     rateLimit: "100/min"
+#
+# Option B — Zep (managed, enterprise-grade, SOC2)
+# ---
+# apiVersion: leloir.dev/v1alpha1
+# kind: MCPServer
+# metadata:
+#   name: team-alpha-memory
+#   namespace: team-alpha
+# spec:
+#   trustTier: vendor-vetted
+#   visibility: namespace
+#   transport:
+#     type: streamable-http
+#     url: https://api.getzep.com/mcp/v1
+#   credentialRef:
+#     secretName: zep-api-key
+#     key: api-key
+#   allowedTools:
+#     - zep_search_memory
+#     - zep_get_session
+#     - zep_get_fact
+#
+# Once registered, add it to the AlertRoute allowedSources:
+#
+# spec:
+#   allowedSources:
+#     - prometheus-mcp
+#     - kubernetes-mcp
+#     - postgres-mcp
+#     - team-alpha-memory    # ← add this
+#
+# Agents will discover the memory tools via MCP tool listing
+# and can call them during investigation — no other changes needed.
+#
+# See Section 19 of docs/proposal-v5.3.md for the full rationale.

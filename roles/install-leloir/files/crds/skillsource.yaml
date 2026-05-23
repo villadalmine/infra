@@ -1,0 +1,146 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: skillsources.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M2"
+spec:
+  group: leloir.dev
+  names:
+    kind: SkillSource
+    listKind: SkillSourceList
+    plural: skillsources
+    singular: skillsource
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          jsonPath: .spec.type
+        - name: Visibility
+          type: string
+          jsonPath: .spec.visibility
+        - name: Skills
+          type: integer
+          jsonPath: .status.skillCount
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [type]
+              properties:
+
+                type:
+                  type: string
+                  description: Where skills are loaded from.
+                  enum: [git, configmap, inline]
+
+                visibility:
+                  type: string
+                  description: >
+                    global: available to all tenants in the cluster.
+                    namespace: only available to the tenant in this namespace.
+                  enum: [global, namespace]
+                  default: namespace
+
+                git:
+                  type: object
+                  description: Git repository source.
+                  properties:
+                    url:
+                      type: string
+                      description: Repository URL (HTTPS or SSH).
+                    branch:
+                      type: string
+                      default: main
+                    path:
+                      type: string
+                      description: Path within repo to look for skills.
+                      default: "/"
+                    authSecretRef:
+                      type: object
+                      description: >
+                        Reference to a Secret with SSH key or PAT token
+                        for private repositories.
+                      properties:
+                        name:
+                          type: string
+                    syncInterval:
+                      type: string
+                      description: How often to sync. e.g. "5m", "1h".
+                      default: "5m"
+                    signing:
+                      type: object
+                      description: >
+                        Cosign signature verification for skill files.
+                        Only signed commits are accepted when enabled.
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        publicKeyRef:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            namespace:
+                              type: string
+
+                configmap:
+                  type: object
+                  description: Inline skills stored in a ConfigMap.
+                  properties:
+                    name:
+                      type: string
+                      description: Name of the ConfigMap in the same namespace.
+
+                inline:
+                  type: array
+                  description: Skills defined directly in this resource.
+                  items:
+                    type: object
+                    required: [name, content]
+                    properties:
+                      name:
+                        type: string
+                        description: Skill identifier, e.g. "investigate-db-incident".
+                      description:
+                        type: string
+                      content:
+                        type: string
+                        description: >
+                          Skill content (Markdown). This is what gets passed to
+                          the agent in InvestigateRequest.Skills[].Content.
+                      tags:
+                        type: array
+                        items:
+                          type: string
+
+            status:
+              type: object
+              properties:
+                skillCount:
+                  type: integer
+                lastSyncTime:
+                  type: string
+                  format: date-time
+                lastSyncStatus:
+                  type: string
+                  enum: [success, failed, pending]
+                skills:
+                  type: array
+                  description: Discovered skill names.
+                  items:
+                    type: string

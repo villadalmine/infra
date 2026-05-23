@@ -1,0 +1,160 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: tenants.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M2"
+spec:
+  group: leloir.dev
+  names:
+    kind: Tenant
+    listKind: TenantList
+    plural: tenants
+    singular: tenant
+  scope: Cluster           # Tenants are cluster-scoped; their workloads are namespace-scoped
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Namespace
+          type: string
+          jsonPath: .spec.namespace
+        - name: Profile
+          type: string
+          jsonPath: .spec.profile
+        - name: Ready
+          type: string
+          jsonPath: .status.ready
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [namespace]
+              properties:
+                namespace:
+                  type: string
+                  description: >
+                    Kubernetes namespace that contains this tenant's resources
+                    (AlertRoutes, MCPServers, etc.).
+                  minLength: 1
+                  maxLength: 63
+                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+
+                displayName:
+                  type: string
+                  description: Human-readable name shown in the UI.
+                  maxLength: 128
+
+                profile:
+                  type: string
+                  description: >
+                    Deployment profile controlling security, audit, and provider
+                    defaults. "corporate" enforces strict policies; "local" is
+                    more permissive for development/experimentation.
+                  enum: [corporate, local, experimental]
+                  default: local
+
+                oidc:
+                  type: object
+                  description: OIDC authentication settings for this tenant.
+                  properties:
+                    issuer:
+                      type: string
+                      description: OIDC issuer URL, e.g. https://login.microsoftonline.com/<tenant>/v2.0
+                    clientId:
+                      type: string
+                    clientSecretRef:
+                      type: object
+                      description: Reference to a Kubernetes Secret containing the client secret.
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    scopes:
+                      type: array
+                      items:
+                        type: string
+                      default: [openid, profile, email]
+                    groupsClaim:
+                      type: string
+                      description: JWT claim name that contains group memberships.
+                      default: groups
+
+                rbac:
+                  type: object
+                  description: RBAC configuration for this tenant.
+                  properties:
+                    adminGroups:
+                      type: array
+                      description: OIDC groups that have full admin access.
+                      items:
+                        type: string
+                    viewerGroups:
+                      type: array
+                      description: OIDC groups with read-only access.
+                      items:
+                        type: string
+
+                audit:
+                  type: object
+                  description: Audit log settings for this tenant.
+                  properties:
+                    retentionHotDays:
+                      type: integer
+                      description: Days to retain audit events in hot (Postgres) tier.
+                      minimum: 7
+                      maximum: 3650
+                      default: 90
+                    retentionWarmDays:
+                      type: integer
+                      description: Days to retain audit events in warm (object storage) tier.
+                      minimum: 30
+                      maximum: 3650
+                      default: 365
+                    wormEnabled:
+                      type: boolean
+                      description: >
+                        Enable WORM (write-once-read-many) on cold tier.
+                        Requires object storage configured at platform level.
+                      default: false
+
+                labels:
+                  type: object
+                  description: Arbitrary labels for grouping and filtering tenants.
+                  additionalProperties:
+                    type: string
+
+            status:
+              type: object
+              properties:
+                ready:
+                  type: string
+                  enum: ["True", "False", "Unknown"]
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

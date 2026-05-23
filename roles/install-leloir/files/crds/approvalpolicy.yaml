@@ -1,0 +1,178 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: approvalpolicies.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M4"
+spec:
+  group: leloir.dev
+  names:
+    kind: ApprovalPolicy
+    listKind: ApprovalPolicyList
+    plural: approvalpolicies
+    singular: approvalpolicy
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              properties:
+
+                description:
+                  type: string
+                  description: Human-readable description of what this policy controls.
+
+                # Tool-level approval rules
+                tools:
+                  type: object
+                  description: >
+                    Approval rules for MCP tool calls.
+                    Rules are evaluated in order; first match wins.
+                    If no rule matches, the action is auto-approved.
+                  properties:
+                    autoApprove:
+                      type: array
+                      description: Tool patterns that are always auto-approved.
+                      items:
+                        type: object
+                        properties:
+                          tools:
+                            type: array
+                            items:
+                              type: string
+                            description: >
+                              Tool name patterns. Supports "*" wildcard.
+                              e.g. ["kubernetes.get_*", "prometheus.*"]
+                          callers:
+                            type: array
+                            items:
+                              type: string
+                            description: Agent names that this rule applies to. "*" = all.
+                          conditions:
+                            type: object
+                            description: Additional match conditions.
+                            properties:
+                              readOnly:
+                                type: boolean
+                                description: Only auto-approve read-only operations.
+
+                    requireApproval:
+                      type: array
+                      description: Tool patterns that require human approval.
+                      items:
+                        type: object
+                        required: [tools]
+                        properties:
+                          tools:
+                            type: array
+                            items:
+                              type: string
+                            description: Tool name patterns requiring approval.
+                          callers:
+                            type: array
+                            items:
+                              type: string
+                          channel:
+                            type: string
+                            description: >
+                              Name of a NotificationChannel to send the approval
+                              request to. If empty, uses the route's notify channels.
+                          timeoutMinutes:
+                            type: integer
+                            description: >
+                              Minutes to wait for approval before auto-denying.
+                            default: 30
+                            minimum: 1
+                            maximum: 1440
+
+                # A2A approval rules
+                a2a:
+                  type: object
+                  description: Approval rules for agent-to-agent invocations.
+                  properties:
+                    autoApprove:
+                      type: array
+                      description: A2A pairs that are auto-approved.
+                      items:
+                        type: object
+                        properties:
+                          callers:
+                            type: array
+                            items:
+                              type: string
+                          targets:
+                            type: array
+                            items:
+                              type: string
+
+                    requireApproval:
+                      type: array
+                      description: A2A pairs that require human approval.
+                      items:
+                        type: object
+                        properties:
+                          callers:
+                            type: array
+                            items:
+                              type: string
+                          targets:
+                            type: array
+                            items:
+                              type: string
+                          channel:
+                            type: string
+                          timeoutMinutes:
+                            type: integer
+                            default: 15
+
+                # Limit overrides via approval
+                limitOverrides:
+                  type: object
+                  description: >
+                    Allow approved escalation of resource limits when an
+                    investigation hits a hard cap (e.g. depth, fan-out, budget).
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    channel:
+                      type: string
+                      description: Channel to send override requests to.
+                    maxBudgetExtensionUSD:
+                      type: number
+                      description: Maximum additional USD that can be approved.
+                      default: 5.0
+                    maxDepthExtension:
+                      type: integer
+                      description: Maximum additional A2A depth that can be approved.
+                      default: 2
+
+            status:
+              type: object
+              properties:
+                approvalsRequested:
+                  type: integer
+                  format: int64
+                approvalsGranted:
+                  type: integer
+                  format: int64
+                approvalsDenied:
+                  type: integer
+                  format: int64
+                approvalsTimedOut:
+                  type: integer
+                  format: int64

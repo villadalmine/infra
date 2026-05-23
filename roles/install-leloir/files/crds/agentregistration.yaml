@@ -1,0 +1,195 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: agentregistrations.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M1"
+spec:
+  group: leloir.dev
+  names:
+    kind: AgentRegistration
+    listKind: AgentRegistrationList
+    plural: agentregistrations
+    singular: agentregistration
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Agent
+          type: string
+          jsonPath: .spec.adapter.name
+        - name: Image
+          type: string
+          jsonPath: .spec.adapter.image
+        - name: Health
+          type: string
+          jsonPath: .status.health
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [adapter]
+              properties:
+
+                adapter:
+                  type: object
+                  required: [image]
+                  description: Container image that implements the AgentAdapter interface.
+                  properties:
+                    image:
+                      type: string
+                      description: >
+                        Container image reference, e.g.
+                        ghcr.io/leloir/adapter-holmesgpt:v1.4.2
+                    imagePullPolicy:
+                      type: string
+                      enum: [Always, IfNotPresent, Never]
+                      default: IfNotPresent
+                    resources:
+                      type: object
+                      description: Kubernetes resource requests and limits.
+                      properties:
+                        requests:
+                          type: object
+                          properties:
+                            cpu:
+                              type: string
+                              default: "100m"
+                            memory:
+                              type: string
+                              default: "128Mi"
+                        limits:
+                          type: object
+                          properties:
+                            cpu:
+                              type: string
+                              default: "500m"
+                            memory:
+                              type: string
+                              default: "512Mi"
+
+                modelConfigRef:
+                  type: string
+                  description: >
+                    Name of the LLM provider configured in the LLM Gateway
+                    (e.g. "azure-openai-corp"). The gateway passes credentials
+                    and endpoint details to the adapter.
+                  default: "default"
+
+                customConfig:
+                  type: object
+                  description: >
+                    Adapter-specific configuration passed verbatim to
+                    AgentAdapter.Configure() as Config.CustomConfig.
+                    Schema is adapter-specific and not validated here.
+                  x-kubernetes-preserve-unknown-fields: true
+
+                canInvoke:
+                  type: array
+                  description: >
+                    Agent-to-Agent policy: list of agent names this agent is
+                    globally authorized to invoke as sub-agents.
+                    Wildcard "*" allows invoking any registered agent.
+                    Combined with AlertRoute.team as defense in depth.
+                    Default: ["*"] (permissive, operators tighten as needed).
+                  items:
+                    type: string
+                  default: ["*"]
+
+                cannotInvoke:
+                  type: array
+                  description: >
+                    Explicit deny list that overrides canInvoke.
+                    Even if canInvoke is "*", agents in cannotInvoke are never
+                    invocable by this agent under any circumstances.
+                  items:
+                    type: string
+                  default: []
+
+                supportsBeingInvoked:
+                  type: boolean
+                  description: >
+                    If true, this agent can be a sub-agent target in A2A calls.
+                    If false, other agents cannot invoke this one.
+                  default: true
+
+                healthCheck:
+                  type: object
+                  description: Health check configuration.
+                  properties:
+                    intervalSeconds:
+                      type: integer
+                      minimum: 10
+                      maximum: 600
+                      default: 30
+                    timeoutSeconds:
+                      type: integer
+                      minimum: 1
+                      maximum: 30
+                      default: 5
+                    failureThreshold:
+                      type: integer
+                      minimum: 1
+                      maximum: 10
+                      default: 3
+
+                secretsRef:
+                  type: object
+                  description: >
+                    Reference to a Kubernetes Secret mounted read-only into
+                    the adapter container at Config.SecretsPath.
+                    Most adapters do NOT need this — credentials flow via
+                    the MCP Gateway and LLM Gateway.
+                  properties:
+                    name:
+                      type: string
+                    mountPath:
+                      type: string
+                      default: "/var/run/leloir/secrets"
+
+            status:
+              type: object
+              properties:
+                health:
+                  type: string
+                  enum: [healthy, unhealthy, degraded, unknown]
+                lastHealthCheckTime:
+                  type: string
+                  format: date-time
+                healthMessage:
+                  type: string
+                adapterVersion:
+                  type: string
+                sdkVersion:
+                  type: string
+                capabilities:
+                  type: array
+                  items:
+                    type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

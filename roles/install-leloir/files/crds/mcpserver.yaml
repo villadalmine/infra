@@ -1,0 +1,228 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mcpservers.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M1"
+spec:
+  group: leloir.dev
+  names:
+    kind: MCPServer
+    listKind: MCPServerList
+    plural: mcpservers
+    singular: mcpserver
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Transport
+          type: string
+          jsonPath: .spec.transport.type
+        - name: TrustTier
+          type: string
+          jsonPath: .spec.trustTier
+        - name: Visibility
+          type: string
+          jsonPath: .spec.visibility
+        - name: Ready
+          type: string
+          jsonPath: .status.ready
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [transport, trustTier]
+              properties:
+
+                trustTier:
+                  type: string
+                  description: >
+                    Trust classification that controls security policies applied
+                    to this MCP server.
+                    internal-hosted: we deploy and control this server (tightest policies).
+                    vendor-vetted: third-party server we've reviewed and trust.
+                    external: community MCP server (most restrictive sandboxing).
+                  enum: [internal-hosted, vendor-vetted, external]
+
+                visibility:
+                  type: string
+                  description: >
+                    Who can discover and use this MCP server.
+                    global: available to all tenants in the cluster.
+                    namespace: only available to the tenant in this namespace.
+                  enum: [global, namespace]
+                  default: namespace
+
+                transport:
+                  type: object
+                  required: [type]
+                  description: Transport protocol used to communicate with this MCP server.
+                  properties:
+                    type:
+                      type: string
+                      description: >
+                        Transport type. streamable-http is the current community default.
+                        grpc is used for high-performance internal MCPs (M3+).
+                        stdio is for sandboxed local processes (e.g. Claude Code).
+                        sse is legacy (pre-Streamable HTTP) for backward compatibility.
+                      enum: [streamable-http, grpc, stdio, sse]
+                      default: streamable-http
+
+                    endpoint:
+                      type: string
+                      description: >
+                        URL for streamable-http, grpc, or sse transports.
+                        Not used for stdio.
+                      example: "http://kubernetes-mcp.tools.svc.cluster.local:8080"
+
+                    command:
+                      type: string
+                      description: Command to run for stdio transport.
+                      example: "python -m my_mcp_server"
+
+                    args:
+                      type: array
+                      description: Arguments for stdio transport command.
+                      items:
+                        type: string
+
+                    tls:
+                      type: object
+                      description: TLS configuration for grpc or https endpoints.
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        insecureSkipVerify:
+                          type: boolean
+                          default: false
+                          description: >
+                            Never set true in production. Only for local development.
+                        caSecretRef:
+                          type: object
+                          description: Reference to a secret containing the CA certificate.
+                          properties:
+                            name:
+                              type: string
+                            key:
+                              type: string
+                              default: ca.crt
+
+                credentials:
+                  type: object
+                  description: >
+                    Credentials for accessing this MCP server, injected by the
+                    MCP Gateway at call time. Adapters never see these values.
+                  properties:
+                    secretRef:
+                      type: object
+                      description: >
+                        Reference to a Kubernetes Secret (or External Secrets
+                        Operator ExternalSecret for Vault-backed credentials).
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    headerName:
+                      type: string
+                      description: >
+                        HTTP header name to inject the credential into.
+                        e.g. "Authorization" (gateway prepends "Bearer ").
+                      default: Authorization
+
+                policies:
+                  type: object
+                  description: Policies the MCP Gateway enforces for this server.
+                  properties:
+                    allowedTools:
+                      type: array
+                      description: >
+                        If set, only these tool names may be called through this
+                        MCPServer. Wildcard "*" allows all tools.
+                        AlertRoute.allowedSources provides secondary scoping.
+                      items:
+                        type: string
+                      default: ["*"]
+
+                    rateLimit:
+                      type: string
+                      description: >
+                        Rate limit in format "N/period", e.g. "100/min", "1000/hour".
+                        Applied per-tenant.
+                      example: "100/min"
+
+                    requireApproval:
+                      type: array
+                      description: >
+                        Tool names that require human approval (HITL) before
+                        execution. Matched against ApprovalPolicy for routing.
+                      items:
+                        type: string
+
+                    sandboxed:
+                      type: boolean
+                      description: >
+                        If true, tool call results are passed through an output
+                        sanitizer before being returned to the agent.
+                      default: false
+
+                signing:
+                  type: object
+                  description: >
+                    Supply chain verification for this MCP server's container image.
+                    Only applicable when the MCP server is deployed by Leloir.
+                  properties:
+                    cosignEnabled:
+                      type: boolean
+                      default: false
+                    publicKeyRef:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+
+            status:
+              type: object
+              properties:
+                ready:
+                  type: string
+                  enum: ["True", "False", "Unknown"]
+                lastHealthCheckTime:
+                  type: string
+                  format: date-time
+                availableTools:
+                  type: array
+                  description: Tools discovered from this MCP server.
+                  items:
+                    type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

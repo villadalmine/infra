@@ -1,0 +1,229 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: notificationchannels.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M1"
+spec:
+  group: leloir.dev
+  names:
+    kind: NotificationChannel
+    listKind: NotificationChannelList
+    plural: notificationchannels
+    singular: notificationchannel
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          jsonPath: .spec.type
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [type]
+              properties:
+
+                type:
+                  type: string
+                  enum: [teams, slack, telegram, webhook, pagerduty, opsgenie]
+
+                # --- Microsoft Teams ---
+                teams:
+                  type: object
+                  description: Microsoft Teams Incoming Webhook configuration.
+                  properties:
+                    webhookURLSecretRef:
+                      type: object
+                      description: Reference to a Secret containing the Teams webhook URL.
+                      required: [name, key]
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    mentionUsers:
+                      type: array
+                      description: User UPNs to @mention in the notification.
+                      items:
+                        type: string
+                    cardStyle:
+                      type: string
+                      description: Format for the Adaptive Card.
+                      enum: [compact, detailed]
+                      default: detailed
+
+                # --- Slack ---
+                slack:
+                  type: object
+                  description: Slack incoming webhook or bot token configuration.
+                  properties:
+                    webhookURLSecretRef:
+                      type: object
+                      required: [name, key]
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    channel:
+                      type: string
+                      description: Channel name or ID, e.g. "#sre-alerts" or "C012AB3CD".
+                    mentionUsers:
+                      type: array
+                      items:
+                        type: string
+
+                # --- Telegram ---
+                telegram:
+                  type: object
+                  description: Telegram Bot API configuration.
+                  properties:
+                    botTokenSecretRef:
+                      type: object
+                      required: [name, key]
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    chatId:
+                      type: string
+                      description: Telegram chat ID or channel username.
+                    parseMode:
+                      type: string
+                      enum: [MarkdownV2, HTML]
+                      default: MarkdownV2
+
+                # --- Generic Webhook ---
+                webhook:
+                  type: object
+                  description: Generic HTTP webhook for custom integrations.
+                  properties:
+                    url:
+                      type: string
+                      description: Webhook URL. May contain {investigationId} placeholder.
+                    method:
+                      type: string
+                      enum: [POST, PUT]
+                      default: POST
+                    headers:
+                      type: object
+                      description: Static headers to include in the request.
+                      additionalProperties:
+                        type: string
+                    authSecretRef:
+                      type: object
+                      description: >
+                        Optional reference to a Secret with auth token.
+                        Injected as "Authorization: Bearer <token>".
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    timeoutSeconds:
+                      type: integer
+                      default: 10
+                      minimum: 1
+                      maximum: 60
+
+                # --- PagerDuty ---
+                pagerduty:
+                  type: object
+                  description: PagerDuty Events API v2 configuration.
+                  properties:
+                    routingKeySecretRef:
+                      type: object
+                      required: [name, key]
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    severity:
+                      type: string
+                      enum: [critical, error, warning, info]
+                      default: error
+
+                # --- Opsgenie ---
+                opsgenie:
+                  type: object
+                  description: Opsgenie Alert API configuration.
+                  properties:
+                    apiKeySecretRef:
+                      type: object
+                      required: [name, key]
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                    region:
+                      type: string
+                      enum: [us, eu]
+                      default: us
+
+                # --- Shared notification options ---
+                notification:
+                  type: object
+                  description: What to include in the notification payload.
+                  properties:
+                    includeRootCause:
+                      type: boolean
+                      default: true
+                    includeRecommendation:
+                      type: boolean
+                      default: true
+                    includeEvidence:
+                      type: boolean
+                      default: false
+                    includeCost:
+                      type: boolean
+                      default: false
+                    maxSummaryLength:
+                      type: integer
+                      description: Truncate summary to this many characters.
+                      default: 500
+                      minimum: 50
+                      maximum: 5000
+                    onOutcomes:
+                      type: array
+                      description: >
+                        Only notify on these investigation outcomes.
+                        Default: all outcomes trigger a notification.
+                      items:
+                        type: string
+                        enum:
+                          - success
+                          - partial
+                          - no_result
+                          - budget_exhausted
+                          - deadline_exceeded
+                          - cancelled
+                          - error
+
+            status:
+              type: object
+              properties:
+                lastNotificationTime:
+                  type: string
+                  format: date-time
+                lastNotificationStatus:
+                  type: string
+                  enum: [success, failed]
+                notificationsSent:
+                  type: integer
+                  format: int64

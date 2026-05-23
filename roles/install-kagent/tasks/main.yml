@@ -78,6 +78,8 @@
       agents.kagent.dev
       modelconfigs.kagent.dev
       mcpservers.kagent.dev
+      sandboxagents.kagent.dev
+      agentharnesses.kagent.dev
       --timeout=60s
   changed_when: false
 
@@ -144,9 +146,8 @@
             storageClassName: "{{ kagent_db_storage_class }}"
             storage: "{{ kagent_db_storage_size }}"
 
-      # ── RBAC: cluster-scoped (controller needs write access to manage agents)
-      rbac:
-        clusterScoped: true
+      # ── RBAC: cluster-scoped by default in 0.9.4+ (rbac.clusterScoped removed)
+      # Leave rbac.namespaces unset/empty = cluster-scoped.
 
       # ── kmcp: MCP server lifecycle manager (bundled) ─────────────────────
       kmcp:

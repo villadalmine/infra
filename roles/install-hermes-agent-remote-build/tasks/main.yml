@@ -60,10 +60,11 @@
 
           - name: gh-trigger
             container:
-              image: ghcr.io/cli/cli:latest
+              image: alpine:latest
               command: ["/bin/sh", "-c"]
               args:
                 - |
+                  apk add --no-cache github-cli
                   echo "Triggering GitHub Action..."
                   gh workflow run build-hermes.yml -R villadalmine/infra -f git_ref={{ hermes_git_ref }} -f image_tag={{ hermes_image_tag }}
                   sleep 10

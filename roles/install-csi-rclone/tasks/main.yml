@@ -1,0 +1,19 @@
+---
+- name: Include secrets
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+
+- name: Install csi-rclone via Helm (OCI)
+  kubernetes.core.helm:
+    name: csi-rclone
+    chart_ref: oci://ghcr.io/veloxpack/charts/csi-driver-rclone
+    chart_version: "{{ csi_rclone_helm_chart_version }}"
+    release_namespace: "{{ csi_rclone_namespace }}"
+    create_namespace: true
+    state: present
+    wait: true
+
+- name: Deploy rclone-webdav StorageClass
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'storageclass.yml.j2') | from_yaml }}"

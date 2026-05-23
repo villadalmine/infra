@@ -1,0 +1,188 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: alertroutes.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M1"
+spec:
+  group: leloir.dev
+  names:
+    kind: AlertRoute
+    listKind: AlertRouteList
+    plural: alertroutes
+    singular: alertroute
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Agent
+          type: string
+          jsonPath: .spec.agent
+        - name: Priority
+          type: integer
+          jsonPath: .spec.priority
+        - name: Enabled
+          type: boolean
+          jsonPath: .spec.enabled
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [agent]
+              properties:
+
+                enabled:
+                  type: boolean
+                  description: If false, this route is ignored during matching.
+                  default: true
+
+                priority:
+                  type: integer
+                  description: >
+                    Routes are evaluated in descending priority order.
+                    Higher number = evaluated first. Default 100.
+                    When multiple routes match, the highest-priority one wins.
+                  default: 100
+                  minimum: 0
+                  maximum: 10000
+
+                match:
+                  type: object
+                  description: >
+                    Alert matching criteria. ALL specified conditions must match
+                    (AND semantics). Omitting a field means "match any value".
+                  properties:
+                    labels:
+                      type: object
+                      description: >
+                        Alert labels that must all be present and equal.
+                        Example: {severity: critical, team: infra}
+                      additionalProperties:
+                        type: string
+                    labelsRegex:
+                      type: object
+                      description: >
+                        Alert label values matched as regular expressions.
+                        Example: {alertname: ".*Postgres.*"}
+                      additionalProperties:
+                        type: string
+                    sources:
+                      type: array
+                      description: Only match alerts from these source systems.
+                      items:
+                        type: string
+                    severities:
+                      type: array
+                      description: Only match alerts with these normalized severities.
+                      items:
+                        type: string
+                        enum: [critical, warning, info]
+
+                agent:
+                  type: string
+                  description: >
+                    Name of an AgentRegistration in this namespace.
+                    This is the primary agent that leads the investigation.
+                  minLength: 1
+
+                team:
+                  type: array
+                  description: >
+                    Agent-to-Agent policy (contextual): agents from this list
+                    may be invoked as sub-agents during investigations routed
+                    by this route. Combined with AgentRegistration.canInvoke
+                    as defense in depth — BOTH must permit.
+                  items:
+                    type: string
+                  default: []
+
+                allowedSources:
+                  type: array
+                  description: >
+                    Names of MCPServer resources the agent is allowed to call
+                    for this route. Scoping is enforced by the MCP Gateway.
+                    If empty, the agent inherits the default tool set.
+                  items:
+                    type: string
+
+                skills:
+                  type: array
+                  description: >
+                    Names of SkillSource skills to pre-load for this route.
+                    The control plane loads these and passes them in
+                    InvestigateRequest.Skills.
+                  items:
+                    type: string
+
+                notify:
+                  type: array
+                  description: >
+                    Names of NotificationChannel resources to notify when an
+                    investigation completes (or partially completes).
+                  items:
+                    type: string
+
+                budget:
+                  type: object
+                  description: >
+                    Cost and resource limits for investigations routed here.
+                    Combined with TenantBudget as a floor/ceiling: the
+                    effective budget is min(tenant remaining, route budget).
+                  properties:
+                    maxTokens:
+                      type: integer
+                      format: int64
+                      description: Maximum total LLM tokens per investigation.
+                      default: 50000
+                    maxUSD:
+                      type: number
+                      description: Maximum cost in USD per investigation.
+                      default: 2.0
+                    maxToolCalls:
+                      type: integer
+                      description: Maximum MCP tool calls per investigation.
+                      default: 30
+                    maxSubInvocations:
+                      type: integer
+                      description: Maximum A2A sub-agent invocations per investigation.
+                      default: 5
+
+                timeouts:
+                  type: object
+                  description: Timeout configuration for investigations.
+                  properties:
+                    investigationMinutes:
+                      type: integer
+                      description: Hard wall-clock deadline for each investigation.
+                      default: 10
+                      minimum: 1
+                      maximum: 120
+
+                customParams:
+                  type: object
+                  description: >
+                    Adapter-specific parameters passed in
+                    InvestigateRequest.CustomParams for all investigations
+                    matched by this route.
+                  x-kubernetes-preserve-unknown-fields: true
+
+            status:
+              type: object
+              properties:
+                matchedInvestigations:
+                  type: integer
+                  format: int64
+                lastMatchedTime:
+                  type: string
+                  format: date-time

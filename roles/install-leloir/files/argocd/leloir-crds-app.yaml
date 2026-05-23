@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: leloir-crds
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/villadalmine/leloir.git
+    targetRevision: main
+    path: leloir-core/deploy/crds
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: leloir
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true

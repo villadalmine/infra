@@ -1,0 +1,10 @@
+---
+csi_rclone_helm_chart_version: "0.4.11"
+csi_rclone_namespace: "csi-rclone"
+
+# Nextcloud WebDAV configuration
+# Token and URL loaded from defaults/secrets.yml (gitignored — see secrets.yml.example).
+csi_rclone_webdav_url: ""
+csi_rclone_webdav_user: ""
+# Nextcloud public shares don't support chunked uploads so we must use 'other'
+csi_rclone_webdav_vendor: "other"

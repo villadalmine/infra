@@ -1,0 +1,19 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rclone-webdav
+provisioner: rclone.csi.veloxpack.io
+parameters:
+  remote: "nextcloud"
+  remotePath: ""
+  configData: |
+    [nextcloud]
+    type = webdav
+    url = {{ csi_rclone_webdav_url }}
+    vendor = {{ csi_rclone_webdav_vendor }}
+    user = {{ csi_rclone_webdav_user }}
+    pass = 
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+mountOptions:
+  - vfs-cache-mode=writes
