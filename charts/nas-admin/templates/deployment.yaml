@@ -27,6 +27,10 @@ spec:
               value: {{ .Values.auth.mode | quote }}
             - name: NAS_MOUNT
               value: {{ .Values.nasPvc.mountPath | quote }}
+            {{- if .Values.nasPvc.source }}
+            - name: NAS_SOURCE
+              value: {{ .Values.nasPvc.source | quote }}
+            {{- end }}
             {{- if eq .Values.auth.mode "basic" }}
             - name: AUTH_USERNAME
               valueFrom:
@@ -57,7 +61,6 @@ spec:
           volumeMounts:
             - name: nas-storage
               mountPath: {{ .Values.nasPvc.mountPath }}
-              readOnly: true
           {{- end }}
 
         {{- if eq .Values.auth.mode "oidc" }}

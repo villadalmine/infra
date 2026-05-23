@@ -82,3 +82,4 @@
       nasPvc:
         enabled: "{{ nas_admin_mount_nas_pvc | bool }}"
         claimName: "{{ nas_admin_nas_pvc_name }}"
+        source: "//{{ nas_admin_nas_ip }}/{{ nas_admin_nas_share }}"

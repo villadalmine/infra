@@ -19,6 +19,7 @@ AUTH_MODE = os.environ.get("AUTH_MODE", "none")
 AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
 NAS_MOUNT = os.environ.get("NAS_MOUNT", "/mnt/nas")
+NAS_SOURCE = os.environ.get("NAS_SOURCE", "")  # SMB source path e.g. //192.168.178.102/service
 
 
 def _load_k8s():
@@ -85,6 +86,7 @@ def _smb_pvs():
                 "name": spec.claim_ref.name,
             }
         phase = (pv.status.phase if pv.status else None) or "Unknown"
+        ann = pv.metadata.annotations or {}
         result.append({
             "name": pv.metadata.name,
             "capacity": (pv.spec.capacity or {}).get("storage", "?"),
@@ -95,6 +97,12 @@ def _smb_pvs():
             "bound_claim": claim_ref,
             "age": _age(pv.metadata.creation_timestamp),
             "orphaned": phase in ("Released", "Available", "Failed"),
+            "deleted_at":           ann.get("nas-admin/deleted-at"),
+            "deleted_pvc":          ann.get("nas-admin/deleted-pvc"),
+            "deleted_sc":           ann.get("nas-admin/deleted-sc"),
+            "deleted_pods":         ann.get("nas-admin/deleted-pods"),
+            "deleted_nas_path":  ann.get("nas-admin/deleted-nas-path"),
+            "deleted_nas_marked": ann.get("nas-admin/nas-dir-marked", ""),
         })
     return result
 
@@ -183,6 +191,41 @@ def _fmt(n: int) -> str:
     return f"{n:.1f} TB"
 
 
+def _safe_name(s: str) -> str:
+    """Sanitize a string for use in a directory name component."""
+    return s.replace("/", "-").replace(":", "-").replace(" ", "-").strip("-")
+
+
+def _mark_nas_dir_deleted(nas_path: str, suffix: str) -> str | None:
+    """Create a .nas-admin-deleted-{suffix} marker file inside the NAS dir.
+    Returns the marker file path on success, None otherwise.
+    Uses a marker file (not rename) because the NAS root share disallows renaming its children."""
+    if not NAS_SOURCE or not nas_path or not NAS_MOUNT:
+        return None
+    source = NAS_SOURCE.rstrip("/")
+    if not nas_path.startswith(source + "/"):
+        return None  # different share — can't reach via our mount
+    rel = nas_path[len(source) + 1:]
+    if not rel:
+        return None  # don't touch the root
+    base = Path(NAS_MOUNT).resolve()
+    local = (base / rel).resolve()
+    try:
+        local.relative_to(base)  # path traversal guard
+    except ValueError:
+        return None
+    if not local.exists() or not local.is_dir():
+        return None
+    marker = local / f".nas-admin-deleted{suffix}"
+    if marker.exists():
+        return str(marker)  # already marked
+    try:
+        marker.write_text(f"marked by nas-admin\n")
+        return str(marker)
+    except OSError:
+        return None
+
+
 def _crumbs(cur_path: str):
     parts = [p for p in cur_path.split("/") if p]
     crumbs = [{"name": "nas", "path": "/"}]
@@ -265,6 +308,48 @@ async def browse_partial(request: Request, path: str = "/", _=Depends(check_auth
 async def delete_pvc(namespace: str, name: str, _=Depends(check_auth)):
     v1 = client.CoreV1Api()
     try:
+        pvc = v1.read_namespaced_persistent_volume_claim(name=name, namespace=namespace)
+        pv_name = pvc.spec.volume_name
+        sc = pvc.spec.storage_class_name or "—"
+
+        # Find pods using this PVC before deletion
+        pods = v1.list_namespaced_pod(namespace=namespace).items
+        pod_names = [
+            p.metadata.name for p in pods
+            if any(
+                v.persistent_volume_claim and v.persistent_volume_claim.claim_name == name
+                for v in (p.spec.volumes or [])
+            )
+        ]
+
+        # Annotate the bound PV with deletion context so Released PVs stay identifiable
+        if pv_name:
+            try:
+                pv_obj = v1.read_persistent_volume(pv_name)
+                nas_path = ""
+                if pv_obj.spec.csi and pv_obj.spec.csi.volume_attributes:
+                    nas_path = pv_obj.spec.csi.volume_attributes.get("source", "")
+                deleted_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                # Rename the NAS directory to mark it as deleted
+                marker_suffix = "-" + "-".join([
+                    _safe_name(sc),
+                    _safe_name(namespace),
+                    _safe_name(name),
+                ])
+                marker_path = _mark_nas_dir_deleted(nas_path, marker_suffix)
+                v1.patch_persistent_volume(pv_name, {
+                    "metadata": {"annotations": {
+                        "nas-admin/deleted-at":       deleted_at,
+                        "nas-admin/deleted-pvc":      f"{namespace}/{name}",
+                        "nas-admin/deleted-sc":       sc,
+                        "nas-admin/deleted-pods":     ",".join(pod_names) if pod_names else "—",
+                        "nas-admin/deleted-nas-path": nas_path,
+                        "nas-admin/nas-dir-marked":   marker_path or "",
+                    }}
+                })
+            except ApiException:
+                pass  # annotation is best-effort — don't block deletion
+
         v1.delete_namespaced_persistent_volume_claim(name=name, namespace=namespace)
     except ApiException as e:
         raise HTTPException(status_code=e.status, detail=str(e.reason))
