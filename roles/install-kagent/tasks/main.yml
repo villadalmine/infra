@@ -182,6 +182,10 @@
 # so we patch it directly after helm install.
 # Patch deployments that don't inherit global tolerations (postgres, grafana-mcp, querydoc)
 
+- name: Wait for kagent deployments to be created by Helm (avoid race condition)
+  ansible.builtin.command: sleep 5
+  changed_when: false
+
 - name: Patch {{ item }} deployment with tolerations (no nodeSelector)
   kubernetes.core.k8s:
     api_version: apps/v1
