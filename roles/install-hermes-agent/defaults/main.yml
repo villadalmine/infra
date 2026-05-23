@@ -48,6 +48,10 @@ hermes_mcp_url: "http://127.0.0.1:8080/mcp"
 hermes_mcp_timeout: 120
 hermes_mcp_connect_timeout: 30
 
+# STT — Groq Whisper (free tier). Key goes in secrets.yml.
+hermes_stt_provider: "groq"
+hermes_stt_model: "whisper-large-v3-turbo"
+
 # kagent MCP — helm, prometheus, cilium ops
 hermes_kagent_mcp_url: "http://kagent-tools.kagent.svc.cluster.local:8084/mcp"
 hermes_kagent_mcp_timeout: 60
