@@ -64,7 +64,7 @@
               command: ["/bin/sh", "-c"]
               args:
                 - |
-                  apk add --no-cache github-cli
+                  apk add --no-cache github-cli curl
                   echo "Triggering GitHub Action..."
                   gh workflow run build-hermes.yml -R villadalmine/infra -f git_ref={{ hermes_git_ref }} -f image_tag={{ hermes_image_tag }}
                   sleep 10
@@ -77,7 +77,28 @@
                     echo "GitHub Action failed with status: $STATUS"
                     exit 1
                   fi
-                  echo "GitHub Action completed successfully!"
+                  echo "GitHub Action completed successfully! Notifying OpenClaw..."
+                  curl -sf -X POST -H "Content-Type: application/json" -d '{
+                    "version": "4",
+                    "groupKey": "{}:{alertname=\"CI/CD Build Finished\"}",
+                    "status": "firing",
+                    "receiver": "openclaw",
+                    "alerts": [
+                      {
+                        "status": "firing",
+                        "labels": {
+                          "alertname": "ArgoRemoteBuildSuccess",
+                          "severity": "info",
+                          "namespace": "kaniko",
+                          "pod": "hermes-agent-build-remote"
+                        },
+                        "annotations": {
+                          "summary": "Build Remoto Finalizado",
+                          "description": "La compilación remota de hermes-agent finalizó exitosamente. Skopeo sincronizará la imagen a continuación."
+                        }
+                      }
+                    ]
+                  }' http://openclaw.openclaw.svc.cluster.local:18789/webhook || true
               env:
                 - name: GH_TOKEN
                   valueFrom:

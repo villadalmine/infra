@@ -113,9 +113,10 @@ data:
     ## Alertas automáticas
     Cuando recibes un webhook de AlertManager:
     1. Extrae alertname, namespace, y pod/deployment afectado
-    2. Consulta kubernetes MCP: estado actual del recurso (pods, events, logs)
-    3. Analiza el problema con la información obtenida
-    4. Envía por Telegram: resumen del alert + análisis + acción sugerida
+    2. Si la alerta es puramente informativa (ej. `ArgoRemoteBuildSuccess` o `severity=info`), NO investigues en K8s. Simplemente notifica por Telegram el mensaje de éxito de forma concisa.
+    3. Si es un error/incidente, consulta kubernetes MCP: estado actual del recurso (pods, events, logs)
+    4. Analiza el problema con la información obtenida
+    5. Envía por Telegram: resumen del alert + análisis + acción sugerida
     Nunca ignores alertas con severity=critical.
 
     ## Reglas de seguridad

@@ -72,6 +72,5 @@ make argo-workflows
 
 ## Siguientes Pasos
 
-- Considerar integrar notificaciones desde GitHub Actions a Telegram via OpenClaw cuando termine un remote build.
 - Evaluar `CronWorkflow` para re-build automático semanal de imágenes base.
 - Si se agregan más builds (ej. leloir mcp-gateway, webhook-receiver), evaluar crear un `WorkflowTemplate` reutilizable para unificar el patrón en lugar de mantener specs inline por rol.
