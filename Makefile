@@ -137,11 +137,15 @@ ai-hermes-build: ## Build Hermes Agent ARM64 image with kaniko (takes ~15 min on
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build
 
 ai-hermes-build-remote: ## Trigger GitHub Actions build for Hermes and sync image back locally
-	@if [ -z "$(GITHUB_PAT)" ]; then \
-		echo "Error: GITHUB_PAT is not set. Run: make ai-hermes-build-remote GITHUB_PAT=ghp_xxx"; \
+	@if [ -z "$(GITHUB_PAT)" ] && command -v gh >/dev/null 2>&1; then \
+		echo "GITHUB_PAT not provided, attempting to use local gh CLI token..."; \
+		GITHUB_PAT=$$(gh auth token); \
+	fi; \
+	if [ -z "$$GITHUB_PAT" ]; then \
+		echo "Error: GITHUB_PAT is not set and gh CLI is not authenticated. Run: make ai-hermes-build-remote GITHUB_PAT=ghp_xxx"; \
 		exit 1; \
-	fi
-	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build-remote -e "github_pat=$(GITHUB_PAT)"
+	fi; \
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build-remote -e "github_pat=$$GITHUB_PAT"
 
 ai-kubernetes-mcp-build: ## Build Kubernetes MCP server ARM64 image with kaniko
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-kubernetes-mcp-build
