@@ -101,8 +101,38 @@
       tags: [ai, ai-registry]
     - role: install-hermes-agent-image
       tags: [ai, ai-hermes-build]
-    - role: install-hermes-agent-remote-build
-      tags: [ai, ai-hermes-build-remote]
+    - role: run-remote-build
+      tags: [ai-hermes-build-remote]
+      vars:
+        remote_app_name: hermes-agent
+        remote_github_workflow: build-hermes.yml
+        remote_git_ref: "{{ hermes_git_ref }}"
+        remote_image_tag: "{{ hermes_image_tag }}"
+        remote_ghcr_image: hermes-agent
+        remote_local_registry: "{{ hermes_registry }}"
+        remote_local_image_name: "{{ hermes_image_name }}"
+    
+    - role: run-remote-build
+      tags: [leloir-build-remote]
+      vars:
+        remote_app_name: leloir-controlplane
+        remote_github_workflow: build-leloir.yml
+        remote_git_ref: "{{ leloir_git_ref | default('main') }}"
+        remote_image_tag: "{{ leloir_image_tag | default('latest') }}"
+        remote_ghcr_image: leloir-controlplane
+        remote_local_registry: "{{ leloir_registry | default('registry.registry:5000') }}"
+        remote_local_image_name: "{{ leloir_image_name | default('ai/leloir-controlplane') }}"
+    
+    - role: run-remote-build
+      tags: [nas-admin-build-remote]
+      vars:
+        remote_app_name: nas-admin
+        remote_github_workflow: build-nas-admin.yml
+        remote_git_ref: "main"
+        remote_image_tag: "latest"
+        remote_ghcr_image: nas-admin
+        remote_local_registry: "registry.registry:5000"
+        remote_local_image_name: "admin/nas-admin"
     - role: install-kubernetes-mcp-server-image
       tags: [ai, ai-kubernetes-mcp-build]
     - role: install-litellm-proxy

@@ -16,6 +16,19 @@ data:
       system_prompt: |
 {{ hermes_system_prompt | indent(8, first=True) }}
 
+    auxiliary:
+      provider: custom
+      model: {{ hermes_model }}
+      base_url: {{ hermes_openai_api_base }}
+      api_key_env: OPENAI_API_KEY
+
+    memory:
+      provider: {{ hermes_memory_provider }}
+      memory_enabled: {{ hermes_memory_enabled | lower }}
+      user_profile_enabled: {{ hermes_user_profile_enabled | lower }}
+      memory_char_limit: 2200
+      user_char_limit: 1375
+
 {% if hermes_groq_api_key | default('') != '' %}
     stt:
       provider: groq

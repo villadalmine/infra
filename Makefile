@@ -136,16 +136,44 @@ ai-registry: ## Install only Docker registry (5GB PVC, ARM64 compatible)
 ai-hermes-build: ## Build Hermes Agent ARM64 image with kaniko (takes ~15 min on CM4)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build
 
-ai-hermes-build-remote: ## Trigger GitHub Actions build for Hermes and sync image back locally
+build-remote-hermes: ## Compilar Hermes remotamente con GitHub Actions
 	@if [ -z "$(GITHUB_PAT)" ] && command -v gh >/dev/null 2>&1; then \
 		echo "GITHUB_PAT not provided, attempting to use local gh CLI token..."; \
 		GITHUB_PAT=$$(gh auth token); \
 	fi; \
 	if [ -z "$$GITHUB_PAT" ]; then \
-		echo "Error: GITHUB_PAT is not set and gh CLI is not authenticated. Run: make ai-hermes-build-remote GITHUB_PAT=ghp_xxx"; \
+		echo "Error: GITHUB_PAT is not set and gh CLI is not authenticated. Run: make build-remote-hermes GITHUB_PAT=ghp_xxx"; \
 		exit 1; \
 	fi; \
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build-remote -e "github_pat=$$GITHUB_PAT"
+
+build-remote-leloir: ## Compilar Leloir remotamente con GitHub Actions
+	@if [ -z "$(GITHUB_PAT)" ] && command -v gh >/dev/null 2>&1; then \
+		echo "GITHUB_PAT not provided, attempting to use local gh CLI token..."; \
+		GITHUB_PAT=$$(gh auth token); \
+	fi; \
+	if [ -z "$$GITHUB_PAT" ]; then \
+		echo "Error: GITHUB_PAT is not set and gh CLI is not authenticated. Run: make build-remote-leloir GITHUB_PAT=ghp_xxx"; \
+		exit 1; \
+	fi; \
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags leloir-build-remote -e "github_pat=$$GITHUB_PAT"
+
+build-remote-nas: ## Compilar NAS Admin remotamente con GitHub Actions
+	@if [ -z "$(GITHUB_PAT)" ] && command -v gh >/dev/null 2>&1; then \
+		echo "GITHUB_PAT not provided, attempting to use local gh CLI token..."; \
+		GITHUB_PAT=$$(gh auth token); \
+	fi; \
+	if [ -z "$$GITHUB_PAT" ]; then \
+		echo "Error: GITHUB_PAT is not set and gh CLI is not authenticated. Run: make build-remote-nas GITHUB_PAT=ghp_xxx"; \
+		exit 1; \
+	fi; \
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags nas-admin-build-remote -e "github_pat=$$GITHUB_PAT"
+
+build-remote-all: build-remote-hermes build-remote-leloir build-remote-nas ## Compilar TODAS las imágenes remotamente
+	@echo "All remote builds submitted."
+
+# Alias for backwards compatibility
+ai-hermes-build-remote: build-remote-hermes
 
 ai-kubernetes-mcp-build: ## Build Kubernetes MCP server ARM64 image with kaniko
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-kubernetes-mcp-build

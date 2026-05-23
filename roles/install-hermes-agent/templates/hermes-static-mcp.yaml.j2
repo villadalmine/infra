@@ -162,6 +162,8 @@ spec:
                 secretKeyRef:
                   name: hermes-secrets
                   key: GROQ_API_KEY
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://alloy.observability.svc.cluster.local:4318"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -241,3 +243,16 @@ spec:
         - name: hermes-config
           configMap:
             name: hermes-config
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hermes-agent-metrics
+  namespace: {{ hermes_namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: hermes-agent-mcp
+  endpoints:
+    - port: mcp
+      path: /metrics

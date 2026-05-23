@@ -1,0 +1,50 @@
+name: Build NAS Admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git Ref for infra repo'
+        required: true
+        default: 'main'
+      image_tag:
+        description: 'Target Image Tag'
+        required: true
+        default: 'latest'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Infra Repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/nas-admin
+          file: apps/nas-admin/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/nas-admin:${{ github.event.inputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

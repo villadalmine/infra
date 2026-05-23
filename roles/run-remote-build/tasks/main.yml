@@ -37,10 +37,10 @@
       apiVersion: argoproj.io/v1alpha1
       kind: Workflow
       metadata:
-        generateName: build-hermes-remote-
+        generateName: build-{{ remote_app_name }}-remote-
         namespace: "{{ kaniko_namespace }}"
         labels:
-          app: hermes-agent-build-remote
+          app: {{ remote_app_name }}-build-remote
       spec:
         entrypoint: remote-build-pipeline
         tolerations:
@@ -66,10 +66,10 @@
                 - |
                   apk add --no-cache github-cli curl
                   echo "Triggering GitHub Action..."
-                  gh workflow run build-hermes.yml -R villadalmine/infra -f git_ref={{ hermes_git_ref }} -f image_tag={{ hermes_image_tag }}
+                  gh workflow run {{ remote_github_workflow }} -R villadalmine/infra -f git_ref={{ remote_git_ref }} -f image_tag={{ remote_image_tag }}
                   sleep 10
                   echo "Waiting for workflow to start..."
-                  RUN_ID=$(gh run list --workflow=build-hermes.yml -R villadalmine/infra --limit 1 --json databaseId -q '.[0].databaseId')
+                  RUN_ID=$(gh run list --workflow={{ remote_github_workflow }} -R villadalmine/infra --limit 1 --json databaseId -q '.[0].databaseId')
                   echo "Run ID: $RUN_ID"
                   gh run watch $RUN_ID -R villadalmine/infra
                   STATUS=$(gh run view $RUN_ID -R villadalmine/infra --json conclusion -q '.conclusion')
@@ -90,11 +90,11 @@
                           "alertname": "ArgoRemoteBuildSuccess",
                           "severity": "info",
                           "namespace": "kaniko",
-                          "pod": "hermes-agent-build-remote"
+                          "pod": "{{ remote_app_name }}-build-remote"
                         },
                         "annotations": {
                           "summary": "Build Remoto Finalizado",
-                          "description": "La compilación remota de hermes-agent finalizó exitosamente. Skopeo sincronizará la imagen a continuación."
+                          "description": "La compilación remota de {{ remote_app_name }} finalizó exitosamente. Skopeo sincronizará la imagen a continuación."
                         }
                       }
                     ]
@@ -116,8 +116,8 @@
                   skopeo copy \
                     --src-creds villadalmine:${GH_TOKEN} \
                     --dest-tls-verify=false \
-                    docker://ghcr.io/villadalmine/hermes-agent:{{ hermes_image_tag }} \
-                    docker://{{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}
+                    docker://ghcr.io/villadalmine/{{ remote_ghcr_image }}:{{ remote_image_tag }} \
+                    docker://{{ remote_local_registry }}/{{ remote_local_image_name }}:{{ remote_image_tag }}-remote
                   echo "Sync complete."
               env:
                 - name: GH_TOKEN
@@ -128,4 +128,4 @@
 
 - name: Remote Build triggered!
   ansible.builtin.debug:
-    msg: "The Argo Workflow for REMOTE hermes-agent build has been submitted. Check the Argo UI."
+    msg: "The Argo Workflow for REMOTE {{ remote_app_name }} build has been submitted. Check the Argo UI."

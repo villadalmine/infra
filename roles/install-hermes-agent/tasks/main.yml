@@ -18,6 +18,8 @@
         DISCORD_BOT_TOKEN: "{{ hermes_discord_token | default('') }}"
         OPENAI_API_KEY: "{{ hermes_openai_api_key }}"
         GROQ_API_KEY: "{{ hermes_groq_api_key | default('') }}"
+        HONCHO_API_KEY: "{{ hermes_honcho_api_key | default('') }}"
+        HONCHO_WORKSPACE: "{{ hermes_honcho_workspace | default('') }}"
 
 - name: Ensure custom Storage backend is installed before deploying Hermes Agent
   ansible.builtin.include_role:

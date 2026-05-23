@@ -42,6 +42,12 @@ hermes_image_tag: "v2026.5.16-telegram"
 hermes_mcp_image_name: "ai/kubernetes-mcp-server"
 hermes_mcp_image_tag: "v0.0.60"
 
+# Hermes memory and learning loop settings
+hermes_memory_provider: "honcho"
+hermes_honcho_workspace: "hermes"
+hermes_memory_enabled: true
+hermes_user_profile_enabled: true
+
 # Hermes kubernetes MCP sidecar (localhost)
 hermes_mcp_enabled: true
 hermes_mcp_url: "http://127.0.0.1:8080/mcp"
