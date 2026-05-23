@@ -155,7 +155,7 @@ leloir-all: ## Full Leloir deploy: registry → build → deploy (idempotent)
 	$(MAKE) leloir-build
 	$(MAKE) leloir
 
-dex: ## Deploy Dex OIDC provider (requires dex_github_client_id/secret in secrets.yml)
+dex: ## Bootstrap Dex secrets — ArgoCD deploys the chart (requires GitHub OAuth App + secrets.yml)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags dex
 
 leloir-oidc: ## Enable OIDC on Leloir (deploy Dex + reconfigure Leloir — requires secrets.yml)
