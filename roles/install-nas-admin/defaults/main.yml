@@ -1,0 +1,19 @@
+nas_admin_namespace: storage
+nas_admin_registry: registry.registry:5000
+nas_admin_image_name: ai/nas-admin
+nas_admin_image_tag: latest
+nas_admin_hostname: nas-admin.cluster.home
+nas_admin_auth_mode: basic
+nas_admin_basic_username: admin
+nas_admin_mount_nas_pvc: true
+nas_admin_nas_pvc_name: smb-nas-pvc
+
+# Override in defaults/secrets.yml (gitignored):
+nas_admin_password: "changeme"
+# nas_admin_oidc_client_id: ""
+# nas_admin_oidc_client_secret: ""
+# nas_admin_oidc_cookie_secret: ""   # openssl rand -base64 32
+nas_admin_oidc_client_id: ""
+nas_admin_oidc_client_secret: ""
+nas_admin_oidc_cookie_secret: ""
+nas_admin_oidc_email_domain: "*"

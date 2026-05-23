@@ -151,6 +151,7 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 | Holmes UI | `nginx:alpine` | — | ConfigMap-mounted static UI |
 | kagent | `oci://ghcr.io/kagent-dev/kagent/helm/kagent` | 0.8.5 | 0.8.5 (multi-arch) |
 | OpenClaw | `registry.registry:5000/ai/openclaw` (custom build) | — | ARM64, namespace `openclaw` |
+| NAS Admin | `registry.registry:5000/ai/nas-admin` (custom build) | 0.1.0 | ARM64, namespace `storage` |
 
 Hermes is deployed as a persistent gateway on the high-resource node with a
 mounted `gateway.json` so the webhook platform stays enabled and the pod does
@@ -185,6 +186,7 @@ Read the relevant skill before working on a component.
 | `openclaw` | Personal AI gateway — Telegram bot, LiteLLM routing, RBAC levels, double `message_start` fix |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |
+| `nas-admin` | NAS admin panel — FastAPI+HTMX+Helm, Kaniko build, auth options |
 | `ai-memory` | Guidelines for cross-session AI Memory persistence |
 
 ## AI Tools (self-contained)

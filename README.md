@@ -101,3 +101,33 @@ make leloir         # re-deploy (rolling update)
 **API:** `https://leloir.cluster.home/api/v1/`
 
 **Credentials:** `roles/install-leloir/defaults/secrets.yml` (gitignored) — override `leloir_db_password`.
+
+---
+
+## NAS Admin Panel
+
+Admin panel for browsing and cleaning up K8s PersistentVolumes/Claims backed by the LG N2R1 NAS (SMBv1).
+Built with FastAPI + HTMX + Tailwind CDN, deployed as a Helm chart.
+
+**Deploy (first time):**
+```bash
+make nas-admin-all   # kaniko build (~2 min) → Helm deploy
+```
+
+**Update after code change:**
+```bash
+make nas-admin-build   # rebuild image
+make nas-admin         # helm upgrade (rolling restart)
+```
+
+**Config-only change (auth, password, hostname) — no rebuild:**
+```bash
+# edit roles/install-nas-admin/defaults/main.yml or secrets.yml
+make nas-admin
+```
+
+**Access:** `https://nas-admin.cluster.home`
+**Credentials:** `roles/install-nas-admin/defaults/secrets.yml` (gitignored) — override `nas_admin_password`.
+Auth mode: `basic` (default) or `oidc` (GitHub OAuth via oauth2-proxy sidecar) — set `nas_admin_auth_mode`.
+
+**Features:** PV list (SMB-filtered, orphan detection), PVC list (all namespaces, pod owner, delete with confirm), NAS file browser (mounts `smb-nas-pvc` ReadOnly).

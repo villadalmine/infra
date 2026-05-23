@@ -1,0 +1,41 @@
+image:
+  repository: registry.registry:5000/ai/nas-admin
+  tag: latest
+  pullPolicy: Always
+
+# HTTPRoute hostname (wildcard *.cluster.home via Pi-hole)
+hostname: nas-admin.cluster.home
+
+# Mount the existing smb-nas-pvc for the file browser
+nasPvc:
+  enabled: true
+  claimName: smb-nas-pvc
+  mountPath: /mnt/nas
+
+# Authentication: basic | oidc | none
+#
+# basic — HTTP Basic Auth, credentials stored in a K8s Secret
+# oidc  — GitHub OAuth via oauth2-proxy sidecar (requires a GitHub OAuth App)
+#         Note: the GitHub callback URL must be reachable from the browser.
+#         Works on *.cluster.home if your machine resolves it via Pi-hole.
+# none  — no auth (not recommended for production)
+auth:
+  mode: basic
+  basic:
+    username: admin
+    password: "changeme"   # override in Ansible defaults/secrets.yml (gitignored)
+  oidc:
+    clientId: ""
+    clientSecret: ""
+    cookieSecret: ""       # generate: openssl rand -base64 32
+    emailDomain: "*"       # restrict by email domain, or "*" for any GitHub account
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+replicaCount: 1

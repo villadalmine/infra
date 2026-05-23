@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% set active = "browse" %}
+{% block title %}Browse NAS{% endblock %}
+
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold text-gray-800">Browse NAS</h1>
+  <p class="text-sm text-gray-500 mt-1">
+    LG N2R1 &mdash; mounted at <code class="bg-gray-100 px-1 rounded text-xs">{{ nas_mount }}</code> (SMBv1)
+  </p>
+</div>
+
+{% if not nas_available %}
+<div class="bg-red-50 border border-red-200 rounded-lg px-4 py-4 text-sm text-red-800 flex items-start gap-3">
+  <svg class="w-5 h-5 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+  </svg>
+  <div>
+    <strong>NAS mount not available</strong> at <code class="bg-red-100 px-1 rounded">{{ nas_mount }}</code>.
+    Ensure the pod has the <code class="bg-red-100 px-1 rounded">smb-nas-pvc</code> volume mounted.
+    Set <code class="bg-red-100 px-1 rounded">nasPvc.enabled: true</code> in the Helm chart values.
+  </div>
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+  <div id="browse-content">
+    {% include "_browse_content.html" %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

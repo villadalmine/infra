@@ -1,0 +1,34 @@
+---
+- name: Create storage namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ nas_admin_namespace }}"
+    state: present
+
+- name: Install/upgrade nas-admin Helm chart
+  kubernetes.core.helm:
+    name: nas-admin
+    chart_ref: "{{ role_path }}/../../charts/nas-admin"
+    release_namespace: "{{ nas_admin_namespace }}"
+    create_namespace: true
+    values:
+      image:
+        repository: "{{ nas_admin_registry }}/{{ nas_admin_image_name }}"
+        tag: "{{ nas_admin_image_tag }}"
+      hostname: "{{ nas_admin_hostname }}"
+      auth:
+        mode: "{{ nas_admin_auth_mode }}"
+        basic:
+          username: "{{ nas_admin_basic_username }}"
+          password: "{{ nas_admin_password }}"
+        oidc:
+          clientId: "{{ nas_admin_oidc_client_id }}"
+          clientSecret: "{{ nas_admin_oidc_client_secret }}"
+          cookieSecret: "{{ nas_admin_oidc_cookie_secret }}"
+          emailDomain: "{{ nas_admin_oidc_email_domain }}"
+      nasPvc:
+        enabled: "{{ nas_admin_mount_nas_pvc | bool }}"
+        claimName: "{{ nas_admin_nas_pvc_name }}"

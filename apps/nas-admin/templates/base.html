@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NAS Admin — {% block title %}{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+    .htmx-request .htmx-indicator { opacity: 1; }
+    .htmx-request.htmx-indicator { opacity: 1; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-gray-900 text-white px-6 py-3 flex items-center gap-1 shadow-md">
+    <span class="font-bold text-base tracking-tight mr-4 text-white">NAS Admin</span>
+    <a href="/pvs"
+       class="text-sm px-3 py-1.5 rounded-md transition-colors
+              {% if active == 'pvs' %}bg-gray-700 text-white{% else %}text-gray-400 hover:text-white hover:bg-gray-800{% endif %}">
+      Volumes (PV)
+    </a>
+    <a href="/pvcs"
+       class="text-sm px-3 py-1.5 rounded-md transition-colors
+              {% if active == 'pvcs' %}bg-gray-700 text-white{% else %}text-gray-400 hover:text-white hover:bg-gray-800{% endif %}">
+      Claims (PVC)
+    </a>
+    <a href="/browse"
+       class="text-sm px-3 py-1.5 rounded-md transition-colors
+              {% if active == 'browse' %}bg-gray-700 text-white{% else %}text-gray-400 hover:text-white hover:bg-gray-800{% endif %}">
+      Browse NAS
+    </a>
+    <span class="ml-auto text-xs text-gray-500 font-mono">LG N2R1 &bull; SMBv1</span>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

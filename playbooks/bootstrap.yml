@@ -28,6 +28,8 @@
 #   leloir             → Postgres + leloir-controlplane deploy (requires ai-registry + leloir-build)
 #   kagent             → kagent + kmcp operator (multi-tenant AI agent platform)
 #   ai-platform        → alias for kagent
+#   nas-admin-build    → kaniko build of nas-admin image (requires ai-registry)
+#   nas-admin          → NAS admin panel Helm chart deploy at nas-admin.cluster.home
 #
 # Examples:
 #   ansible-playbook bootstrap.yml --tags core
@@ -108,7 +110,15 @@
       tags: [leloir-build]
     - role: install-leloir
       tags: [leloir]
+    - role: install-dex
+      tags: [dex]
     - role: install-kagent
       tags: [kagent, ai-platform]
     - role: install-openclaw
       tags: [openclaw]
+
+    # NAS admin panel — PV/PVC browser + cleanup tool (SMBv1 / LG N2R1)
+    - role: install-nas-admin-image
+      tags: [nas-admin-build]
+    - role: install-nas-admin
+      tags: [nas-admin]

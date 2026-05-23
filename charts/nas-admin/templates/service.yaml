@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nas-admin.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nas-admin.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nas-admin.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ include "nas-admin.servicePort" . }}
+      targetPort: {{ include "nas-admin.servicePort" . }}
+      protocol: TCP

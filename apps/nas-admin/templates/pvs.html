@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% set active = "pvs" %}
+{% block title %}Persistent Volumes{% endblock %}
+
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-2xl font-bold text-gray-800">Persistent Volumes</h1>
+  <p class="text-sm text-gray-500 mt-1">SMB/NAS-backed PVs — driver <code class="bg-gray-100 px-1 rounded text-xs">smb.csi.k8s.io</code></p>
+</div>
+
+{% if orphan_count > 0 %}
+<div class="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+  <svg class="w-5 h-5 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+  </svg>
+  <span><strong>{{ orphan_count }} orphaned PV{{ 's' if orphan_count != 1 }}</strong> with status Released, Available, or Failed. These are safe to delete once you confirm no workload needs them.</span>
+</div>
+{% endif %}
+
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+  <table class="min-w-full text-sm">
+    <thead class="bg-gray-50 border-b border-gray-200">
+      <tr>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">NAS Path</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Capacity</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">StorageClass</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Bound To</th>
+        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Age</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+      {% for pv in pvs %}
+      <tr class="hover:bg-gray-50{% if pv.orphaned %} bg-amber-50 hover:bg-amber-100{% endif %}">
+        <td class="px-4 py-3 font-mono text-xs font-medium text-gray-800">{{ pv.name }}</td>
+        <td class="px-4 py-3 font-mono text-xs text-gray-500 max-w-xs truncate" title="{{ pv.nas_path }}">{{ pv.nas_path or "—" }}</td>
+        <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ pv.capacity }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          {% if pv.status == "Bound" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Bound</span>
+          {% elif pv.status == "Released" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Released</span>
+          {% elif pv.status == "Available" %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Available</span>
+          {% else %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">{{ pv.status }}</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 font-mono text-xs text-gray-600">{{ pv.storage_class }}</td>
+        <td class="px-4 py-3 font-mono text-xs">
+          {% if pv.bound_claim %}
+            <span class="text-blue-600">{{ pv.bound_claim.namespace }}/{{ pv.bound_claim.name }}</span>
+          {% else %}
+            <span class="text-gray-400">—</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-gray-400 whitespace-nowrap">{{ pv.age }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">
+          No SMB/NAS PVs found in this cluster.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

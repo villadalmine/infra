@@ -1,0 +1,140 @@
+---
+# Builds the nas-admin ARM64 Docker image using Kaniko in-cluster.
+# Source files are read from apps/nas-admin/ and injected via ConfigMaps.
+# Push target: registry.registry:5000/ai/nas-admin:latest
+
+- name: Create build namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ nas_admin_build_namespace }}"
+    state: present
+
+- name: Create nas-admin source ConfigMap (main.py + requirements + Dockerfile)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nas-admin-source
+        namespace: "{{ nas_admin_build_namespace }}"
+      data:
+        main.py: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/main.py') }}"
+        requirements.txt: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/requirements.txt') }}"
+        Dockerfile: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/Dockerfile') }}"
+
+- name: Create nas-admin templates ConfigMap (HTML templates)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nas-admin-templates
+        namespace: "{{ nas_admin_build_namespace }}"
+      data:
+        base.html: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/templates/base.html') }}"
+        pvs.html: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/templates/pvs.html') }}"
+        pvcs.html: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/templates/pvcs.html') }}"
+        browse.html: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/templates/browse.html') }}"
+        _browse_content.html: "{{ lookup('file', playbook_dir + '/../apps/nas-admin/templates/_browse_content.html') }}"
+
+- name: Create Kaniko workspace PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: nas-admin-build-workspace
+        namespace: "{{ nas_admin_build_namespace }}"
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: "{{ nas_admin_build_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ nas_admin_build_workspace_size }}"
+
+- name: Delete existing Kaniko Job (idempotent re-run)
+  kubernetes.core.k8s:
+    state: absent
+    api_version: batch/v1
+    kind: Job
+    name: build-nas-admin
+    namespace: "{{ nas_admin_build_namespace }}"
+
+- name: Create Kaniko Job — build nas-admin ARM64 image
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: build-nas-admin
+        namespace: "{{ nas_admin_build_namespace }}"
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: prepare-source
+                image: busybox:1.36
+                command:
+                  - sh
+                  - -c
+                  - |
+                    cp /src/main.py /workspace/
+                    cp /src/requirements.txt /workspace/
+                    cp /src/Dockerfile /workspace/
+                    mkdir -p /workspace/templates
+                    cp /tpl/*.html /workspace/templates/
+                volumeMounts:
+                  - name: source-cm
+                    mountPath: /src
+                  - name: templates-cm
+                    mountPath: /tpl
+                  - name: workspace
+                    mountPath: /workspace
+            containers:
+              - name: kaniko
+                image: gcr.io/kaniko-project/executor:latest
+                args:
+                  - "--dockerfile=/workspace/Dockerfile"
+                  - "--context=dir:///workspace"
+                  - "--destination={{ nas_admin_registry }}/{{ nas_admin_image_name }}:{{ nas_admin_image_tag }}"
+                  - "--insecure"
+                  - "--skip-tls-verify"
+                  - "--snapshot-mode=redo"
+                  - "--compression=zstd"
+                  - "--compression-level=1"
+                resources:
+                  requests:
+                    cpu: "500m"
+                    memory: "1Gi"
+                  limits:
+                    cpu: "2"
+                    memory: "4Gi"
+                volumeMounts:
+                  - name: workspace
+                    mountPath: /workspace
+            volumes:
+              - name: source-cm
+                configMap:
+                  name: nas-admin-source
+              - name: templates-cm
+                configMap:
+                  name: nas-admin-templates
+              - name: workspace
+                persistentVolumeClaim:
+                  claimName: nas-admin-build-workspace
+            restartPolicy: Never
+        backoffLimit: 2
+
+- name: Wait for Kaniko build to complete (~2 min)
+  ansible.builtin.command:
+    cmd: kubectl wait --for=condition=complete job/build-nas-admin -n {{ nas_admin_build_namespace }} --timeout=600s
+  register: kaniko_wait
+  changed_when: false
+  failed_when: kaniko_wait.rc != 0

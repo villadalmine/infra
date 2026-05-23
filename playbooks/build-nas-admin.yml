@@ -1,0 +1,19 @@
+---
+# Standalone Kaniko build for the NAS admin panel image.
+# Faster than running bootstrap.yml --tags nas-admin-build because it skips
+# fact gathering on k3s_nodes and loads only the one role needed.
+#
+# Usage:
+#   make nas-admin-build               (calls this playbook)
+#   make nas-admin-build-logs          (tail build logs)
+#
+# The image is pushed to registry.registry:5000/ai/nas-admin:latest.
+# Source files are read from apps/nas-admin/ at run time via lookup('file',...).
+
+- name: Build NAS admin panel ARM64 image (Kaniko)
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ lookup('env','HOME') }}/.asdf/shims:{{ lookup('env','HOME') }}/.asdf/bin:{{ lookup('env','PATH') }}"
+  roles:
+    - role: install-nas-admin-image

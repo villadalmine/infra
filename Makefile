@@ -11,7 +11,7 @@ SSH_KEY      ?=
 SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status leloir-build leloir leloir-all
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-all
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -155,6 +155,13 @@ leloir-all: ## Full Leloir deploy: registry → build → deploy (idempotent)
 	$(MAKE) leloir-build
 	$(MAKE) leloir
 
+dex: ## Deploy Dex OIDC provider (requires dex_github_client_id/secret in secrets.yml)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags dex
+
+leloir-oidc: ## Enable OIDC on Leloir (deploy Dex + reconfigure Leloir — requires secrets.yml)
+	$(MAKE) dex
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags leloir -e "leloir_auth_mode=oidc"
+
 kagent: ## Deploy kagent + kmcp AI agent platform (multi-tenant, LiteLLM backend)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags kagent
 
@@ -234,6 +241,19 @@ gpu-status: ## Show GPU utilization and loaded Ollama models on gpu_nodes
 	    echo -n "port $$PORT: "; \
 	    curl -s http://localhost:$$PORT/api/ps | python3 -c "import json,sys; ms=json.load(sys.stdin).get(chr(109)+chr(111)+chr(100)+chr(101)+chr(108)+chr(115),[]); print([(m[chr(110)+chr(97)+chr(109)+chr(101)],m[chr(115)+chr(105)+chr(122)+chr(101)+chr(95)+chr(118)+chr(114)+chr(97)+chr(109)]//1024//1024) for m in ms]) if ms else print(chr(40)+chr(101)+chr(109)+chr(112)+chr(116)+chr(121)+chr(41))" 2>/dev/null; \
 	  done' 2>&1
+
+nas-admin-build: ## Build NAS admin panel ARM64 image with kaniko (~2 min, standalone — no cluster bootstrap needed)
+	$(ANSIBLE) playbooks/build-nas-admin.yml -i $(INVENTORY)
+
+nas-admin-build-logs: ## Tail kaniko build logs for nas-admin (run while nas-admin-build is in progress)
+	kubectl logs -n build job/build-nas-admin --follow 2>/dev/null || kubectl logs -n build job/build-nas-admin
+
+nas-admin: ## Deploy/upgrade NAS admin panel Helm chart at nas-admin.cluster.home
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags nas-admin
+
+nas-admin-all: ## Full NAS admin: build image → deploy Helm chart (idempotent)
+	$(MAKE) nas-admin-build
+	$(MAKE) nas-admin
 
 logs: ## Show logs of failing pods
 	@echo "=== Failing pods ==="

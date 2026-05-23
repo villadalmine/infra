@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nas-admin.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nas-admin.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nas-admin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nas-admin.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "nas-admin.fullname" . }}
+      containers:
+        - name: app
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            - name: NAS_MOUNT
+              value: {{ .Values.nasPvc.mountPath | quote }}
+            {{- if eq .Values.auth.mode "basic" }}
+            - name: AUTH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nas-admin.fullname" . }}-auth
+                  key: username
+            - name: AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nas-admin.fullname" . }}-auth
+                  key: password
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.nasPvc.enabled }}
+          volumeMounts:
+            - name: nas-storage
+              mountPath: {{ .Values.nasPvc.mountPath }}
+              readOnly: true
+          {{- end }}
+
+        {{- if eq .Values.auth.mode "oidc" }}
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+          args:
+            - --provider=github
+            - --upstream=http://localhost:8080
+            - --http-address=0.0.0.0:4180
+            - --cookie-secure=false
+            - --email-domain={{ .Values.auth.oidc.emailDomain | default "*" }}
+            - --redirect-url=https://{{ .Values.hostname }}/oauth2/callback
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nas-admin.fullname" . }}-oidc
+                  key: clientId
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nas-admin.fullname" . }}-oidc
+                  key: clientSecret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nas-admin.fullname" . }}-oidc
+                  key: cookieSecret
+          ports:
+            - containerPort: 4180
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 5
+            periodSeconds: 30
+        {{- end }}
+
+      {{- if .Values.nasPvc.enabled }}
+      volumes:
+        - name: nas-storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.nasPvc.claimName }}
+      {{- end }}
