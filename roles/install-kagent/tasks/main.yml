@@ -205,7 +205,7 @@
     - kagent-grafana-mcp
     - kagent-querydoc
 
-- name: Patch kagent-postgresql deployment probes for slow SMB NAS startup
+- name: Patch kagent-postgresql deployment for local-path storage
   kubernetes.core.k8s:
     api_version: apps/v1
     kind: Deployment
@@ -215,12 +215,8 @@
       spec:
         template:
           spec:
-            containers:
-              - name: postgresql
-                livenessProbe:
-                  initialDelaySeconds: 600
-                readinessProbe:
-                  initialDelaySeconds: 180
+            securityContext:
+              fsGroup: 999
     merge_type: strategic-merge
     state: present
 

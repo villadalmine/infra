@@ -29,7 +29,7 @@ conectados via Tailscale.
 ║                                  ║       ║                                  ║
 ║  ┌────────────────────────┐      ║       ║  ┌────────────────────────┐      ║
 ║  │  srv-rk1-01 (master)   │      ║       ║  │  srv-rk1-03 (worker)   │      ║
-║  │  LAN:  192.168.178.133 │      ║       ║  │  LAN:  192.168.y.y.x   │      ║
+║  │  LAN:  192.168.178.30 │      ║       ║  │  LAN:  192.168.y.y.x   │      ║
 ║  │  TS:   100.x.x.1       │      ║       ║  │  TS:   100.x.x.3       │      ║
 ║  └───────────┬────────────┘      ║       ║  └────────────┬───────────┘      ║
 ║              │ K3s API :6443     ║       ║               │ K3s agent        ║
@@ -80,8 +80,8 @@ conectados via Tailscale.
 |---|---|---|---|
 | **L2 Announcements** | `l2announcements.enabled: true` | ARP es capa 2 — no cruza redes. El worker remoto nunca ve los anuncios del master. Si el lease cae en el worker remoto, el VIP `.200` queda muerto | Desactivar. Reemplazar con kube-vip |
 | **LB-IPAM pool** | `192.168.178.200-210` | Son IPs de la LAN local, no routable desde Tailscale ni desde la red del amigo | Pool con IPs Tailscale-routable (ej. `100.x.x.100-110`) |
-| **`k3s_api_server_host`** | `192.168.178.133` | El worker remoto no puede llegar a esa IP | Tailscale IP del master (`100.x.x.1`) |
-| **`k8sServiceHost` en Cilium** | `192.168.178.133` | Mismo problema — hardcodeado a LAN IP | Tailscale IP del master |
+| **`k3s_api_server_host`** | `192.168.178.30` | El worker remoto no puede llegar a esa IP | Tailscale IP del master (`100.x.x.1`) |
+| **`k8sServiceHost` en Cilium** | `192.168.178.30` | Mismo problema — hardcodeado a LAN IP | Tailscale IP del master |
 | **Pi-hole DNS** | `*.cluster.home → 192.168.178.200` | `.200` no es alcanzable desde fuera de la LAN local | `*.cluster.home → 100.x.x.100` (kube-vip VIP) |
 | **Cilium tunnel mode** | `L2` (default single-node) | Sin encapsulación cross-site — los pods de Site B no pueden hablar con pods de Site A | `tunnel: vxlan` o `geneve` sobre Tailscale |
 | **TLS SAN en K3s** | Solo LAN IP | El kubeconfig generado no acepta conexiones via Tailscale IP | Agregar `--tls-san <tailscale-ip>` |
