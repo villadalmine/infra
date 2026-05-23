@@ -25,13 +25,43 @@ metadata:
   name: hermes-agent-mcp-readonly
 rules:
   - apiGroups: [""]
-    resources: ["pods", "pods/log", "namespaces", "services", "configmaps", "nodes", "events"]
+    resources:
+      - pods
+      - pods/log
+      - pods/exec
+      - namespaces
+      - services
+      - endpoints
+      - configmaps
+      - nodes
+      - events
+      - persistentvolumeclaims
+      - persistentvolumes
+      - resourcequotas
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "daemonsets"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "gateways", "grpcroutes", "tcproutes", "tlsroutes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["cilium.io"]
+    resources:
+      - ciliumloadbalancerippools
+      - ciliuml2announcementpolicies
+      - ciliumnetworkpolicies
+      - ciliumclusterwidenetworkpolicies
+      - ciliumendpoints
+      - ciliumidentities
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kagent.dev"]
+    resources: ["agents", "modelconfigs", "mcpservers", "remotemcpservers"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
