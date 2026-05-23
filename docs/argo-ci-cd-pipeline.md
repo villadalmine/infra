@@ -25,6 +25,28 @@ El sistema actual es un pipeline asíncrono basado en **Argo Workflows**:
    - Usa un PVC de caché persistente (`kaniko-cache` o `leloir-kaniko-cache`) para acelerar builds consecutivos.
    - Push directo al registry in-cluster (`registry.registry:5000`).
 
+## Comparativa de Modelos de Build: Local vs Externo
+
+Durante la evolución de este pipeline, se diseñaron dos modelos para sortear las limitaciones de hardware de los nodos ARM64 (TuringPi/Rockchip) y la red.
+
+### 1. Modelo Interno (Kaniko + SMB NAS + Registry in-cluster)
+Este fue el modelo original para compilar todo on-premise.
+* **Flujo**: Ansible `->` Argo Workflows `->` Kaniko `->` NAS SMB caché `->` K3s Registry.
+* **Métricas y Limitaciones**: 
+  * Los procesadores ARM64 (RK3588S) sufren de extrema saturación de CPU durante la fase de compresión de imágenes de Docker (gzip).
+  * El caché (`smb-nas`) sobre el NAS SMB v1 crea cuellos de botella de I/O bloqueantes. Compilar capas de dependencias pesadas como las de Python (Leloir/Hermes) toma más de 10-15 minutos debido al I/O wait.
+  * Ocasionalmente se sufren CrashLoopBackOffs o deadlocks en el mount del storage, ralentizando todo el clúster (DiskPressure/CPU Thrashing).
+* **Casos de uso actual**: Componentes muy ligeros, herramientas locales o despliegues con información sensible que no pueden enviarse a la nube.
+
+### 2. Modelo Externo (GitHub Actions + GHCR + GitOps/ArgoCD)
+Este modelo delega el trabajo pesado a runners en la nube, usando el clúster local solo para sincronizar o ejecutar.
+* **Flujo**: Ansible `->` Argo Workflow (trigger/skopeo) o Git Push `->` GitHub Actions (Runner x86/ARM) `->` ghcr.io `->` ArgoCD (despliegue) o Skopeo (sincronización).
+* **Métricas y Ventajas**:
+  * **Velocidad radical**: Los runners de GitHub descargan, compilan y comprimen imágenes pesadas en menos de 2 minutos (comparado a los ~15m locales), debido a los discos NVMe locales de GH y anchos de banda simétricos de red.
+  * **Cero impacto local**: Libera por completo la CPU y RAM de los nodos RK1, permitiendo que sigan sirviendo tráfico sin interrupciones.
+  * **Despliegue GitOps**: Como se ve en el proyecto *Leloir*, GitHub Actions pushea el tag nuevo directamente a un repo vía `git commit` a `values.yaml`, dejando que ArgoCD lo sincronice solo, sin que Ansible siquiera deba intervenir.
+* **Casos de uso actual**: Proyectos pesados como *Leloir* (que usa `.github/workflows/build-poc.yaml`), y la rama secundaria de *Hermes-Agent* (`ai-hermes-build-remote`).
+
 ## Builds activos
 
 | Make target | Role Ansible | Imagen destino | Cache storage |
