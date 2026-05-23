@@ -1,8 +1,10 @@
 ---
 name: ai
 description: >
-  AI Agent stack: Hermes Agent (self-improving AI assistant) routed through
-  in-cluster LiteLLM proxy with OpenRouter fallback chains (free→free2→cheap).
+  AI Agent stack: Hermes Agent (self-improving AI assistant), HolmesGPT (SRE),
+  and OpenClaw (personal AI gateway) routed through in-cluster LiteLLM proxy.
+  Holmes uses GPU-local Ollama primary with OpenRouter cloud fallbacks.
+  OpenRouter fallback chains for all services (free→free2→cheap→paid).
   Built for ARM64 (Raspberry Pi CM4) using in-cluster kaniko build.
   Includes Docker registry:2 for storing custom ARM64 images.
 license: MIT
@@ -76,22 +78,53 @@ For ARM64 clusters (Raspberry Pi CM4), we build in-cluster using kaniko.
 
 ## LiteLLM Proxy — Model Routing
 
-Hermes does NOT call OpenRouter directly. It calls the in-cluster LiteLLM proxy:
+Services do NOT call OpenRouter directly. They call the in-cluster LiteLLM proxy:
 
 ```
 OPENAI_API_BASE=http://litellm-proxy.ai.svc.cluster.local:4000
 OPENAI_API_KEY=sk-hermes-internal  (LiteLLM master key)
-HERMES_MODEL=free
+HERMES_MODEL=hermes-qwen
 ```
 
 LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 
-| Virtual model | Real model | Provider |
-|--------------|-----------|---------|
-| `free` | `openrouter/qwen/qwen3-coder:free` | coding-first free tier |
-| `free2` | `openrouter/google/gemini-2.0-flash-exp:free` | Google free fallback |
-| `cheap` | `openrouter/qwen/qwen-turbo` | reliable paid fallback |
-| `strong` | `openrouter/deepseek/deepseek-chat-v3-0324` | best balance for hard tasks |
+### Hermes routing
+
+| Virtual model | Real model | Provider | Notes |
+|--------------|-----------|---------|-------|
+| `hermes-qwen` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | Primary Hermes |
+| `free` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | Legacy alias |
+| `free2` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Fallback tier 1 |
+| `cheap` | `openrouter/qwen/qwen-turbo` | OpenRouter | Fallback tier 2 |
+| `qwen-pro` | `openrouter/qwen/qwen3.6-plus` | OpenRouter | Paid last resort |
+
+### Holmes routing (GPU primary → cloud fallback)
+
+| Virtual model | Real model | Provider | Notes |
+|--------------|-----------|---------|-------|
+| `holmes-llama` | `openai/llama3.1:8b` | GPU Ollama :11434 | Primary |
+| `gpt-5.4` | `openai/llama3.1:8b` | GPU Ollama :11434 | Holmes default model name |
+| `local-reason` | `openai/deepseek-r1:8b` | GPU Ollama :11434 | Headlamp AG-UI default |
+| `holmes-free2` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Cloud fallback tier 1 |
+| `holmes-cheap` | `openrouter/qwen/qwen-turbo` | OpenRouter | Cloud fallback tier 2 |
+
+### OpenClaw routing
+
+| Virtual model | Real model | Provider | Notes |
+|--------------|-----------|---------|-------|
+| `openclaw-gemini` | `openai/gpt-oss-120b:free` | OpenRouter | Primary |
+| `gemini-free2` | `openai/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Fallback tier 1 |
+| `openclaw-cheap` | `openai/qwen/qwen-turbo` | OpenRouter | Fallback tier 2 |
+| `gpt-4o` / `openai/gpt-4o` | `openai/gpt-oss-120b:free` | OpenRouter | OpenClaw compatibility alias |
+
+### Fallback chains
+
+```
+Hermes:   hermes-qwen → qwen-pro → free2 → cheap
+Holmes:   GPU Ollama → holmes-free2 (cloud) → holmes-cheap (cloud) → qwen-pro (paid)
+OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap
+Local GPU (all): GPU → free tier → cheap → qwen-pro (paid last resort)
+```
 
 ### Hermes MCP lessons learned
 
@@ -103,9 +136,6 @@ LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 - The working static manifest uses a sidecar pattern: Hermes agent + `kubernetes-mcp-server` sidecar + `/opt/data` + `serviceAccountName` + `mcp_servers.kubernetes.url=/mcp`.
 - For cluster metrics, Hermes still needs either `metrics-server` or a custom bridge; Prometheus alone is not enough for `pods_top` / `nodes_top`.
 - Telegram privacy is enforced with `TELEGRAM_ALLOWED_USERS` and the gateway platform `allowed_users` list. Keep those aligned to a single user ID when you want a private bot.
-
-Fallback chain: `free → free2 → cheap` (automatic, transparent to Hermes).
-Use `cheap` or `strong` directly when you want to skip free tiers.
 
 ---
 

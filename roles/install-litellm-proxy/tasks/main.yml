@@ -50,6 +50,7 @@
             # Fix: route directly to Ollama /v1 on the GPU-specific port.
             # P4 GPU :11434 — small models (≤8B, ~4-5 GB VRAM)
             # M4000 dual :11436 — large models (≥14B)
+            # ── Local GPU models (primary) — fallback → OpenRouter when GPU host is down ─
             - model_name: local-fast
               litellm_params:
                 model: openai/qwen2.5-coder:7b
@@ -62,6 +63,7 @@
                 api_key: "dummy"
             - model_name: local-reason
               litellm_params:
+                # Used by Holmes default config + Headlamp AG-UI plugin
                 model: openai/deepseek-r1:8b
                 api_base: http://192.168.178.90:11434/v1
                 api_key: "dummy"
@@ -112,14 +114,14 @@
                 api_key: "dummy"
             - model_name: holmes-free2
               litellm_params:
-                model: openai/llama3.1:8b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
+                # Cloud fallback tier 1 — used when GPU host (192.168.178.90) is down
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: holmes-cheap
               litellm_params:
-                model: openai/llama3.1:8b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
+                # Cloud fallback tier 2 — last resort if free tier also fails
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
 
             # ── OpenClaw routing ────────────────────────────────────────────
             # Uses openai/ prefix + api_base (NOT openrouter/ prefix) to avoid
@@ -150,6 +152,7 @@
                 api_key: os.environ/OPENROUTER_API_KEY
             # gpt-5.4 = Holmes default model name → direct Ollama (bypass t7910 LiteLLM)
             # MUST be direct Ollama, NOT via t7910 LiteLLM. Double-hop breaks tool calling.
+            # Fallbacks: holmes-free2 (OpenRouter free) → holmes-cheap (OpenRouter cheap)
             - model_name: gpt-5.4
               litellm_params:
                 model: openai/llama3.1:8b
@@ -208,13 +211,19 @@
           litellm_settings:
             fallbacks:
               - {"hermes-qwen": ["qwen-pro", "free2", "cheap"]}
-              - {"holmes-llama": ["holmes-free2", "holmes-cheap"]}
+              # Holmes: GPU → OpenRouter free → OpenRouter cheap → paid (qwen-pro)
+              - {"holmes-llama": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
+              - {"gpt-5.4": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
+              # local-reason = Holmes default model (Headlamp AG-UI) — same fallback chain
+              - {"local-reason": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
+              # Other GPU models — fallback to Hermes OpenRouter chain (+ paid last resort)
+              - {"local-fast": ["free2", "cheap", "qwen-pro"]}
+              - {"local-llama": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
               - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap"]}
               - {"gpt-4o": ["gemini-free2", "openclaw-cheap"]}
               - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap"]}
               - {"kagent-orchestrator": ["cheap"]}
               - {"free": ["free2", "cheap"]}
-              - {"gpt-5.4": ["holmes-free2", "holmes-cheap"]}
               - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap"]}
             request_timeout: 120
             num_retries: 1

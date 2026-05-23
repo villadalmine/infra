@@ -281,6 +281,27 @@ annotations:
   lbipam.cilium.io/sharing-key: "pihole-dns"  # share TCP+UDP on same IP
 ```
 
+### Hubble Metrics
+
+Cilium 1.19.2 includes comprehensive network observability via Hubble metrics:
+
+**Configured metrics**: `httpV2` (with exemplars), `drop`, `tcp`, `flow`, `icmp`, `policy`, `port-distribution`
+**ServiceMonitor**: Created by `install-cilium-hubble-monitoring` role (tag: `networking-observability`)
+**Prometheus Integration**: 4 targets discovered (one per node), all UP status
+**Port**: `9965/metrics` with OpenMetrics format for trace correlation
+
+⚠️ **Critical**: Never enable both `http` and `httpV2` metrics — causes CrashLoopBackOff
+✅ **Idempotency**: ServiceMonitor managed separately, `networking` tag won't disable monitoring
+
+```bash
+# Deploy Hubble monitoring
+make networking-observability
+
+# Verify metrics
+kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965 &
+curl -s localhost:9965/metrics | grep hubble_
+```
+
 ---
 
 ## Scheduling — Global Tolerations Required
@@ -310,7 +331,7 @@ NAS: LG N2R1 @ `192.168.178.102`, share `//192.168.178.102/service`, SMB1 only.
 
 | Service | Namespace | URL | Notes |
 |---------|-----------|-----|-------|
-| LiteLLM proxy | `ai` | cluster-internal only | OpenRouter fallback: free→free2→cheap |
+| LiteLLM proxy | `ai` | cluster-internal only | OpenRouter fallback chains + GPU→cloud fallback for Holmes/Headlamp |
 | Hermes Agent | `ai` | `hermes.cluster.home` | ARM64 custom build via kaniko |
 | HolmesGPT | `ai` | `holmes.cluster.home` | SRE assistant |
 | kagent | `kagent` | `kagent.cluster.home` | AI agent platform + kmcp, multi-tenant |
@@ -319,61 +340,17 @@ NAS: LG N2R1 @ `192.168.178.102`, share `//192.168.178.102/service`, SMB1 only.
 kagent uses `smb-nas-pg` StorageClass for bundled PostgreSQL.
 Built-in agents need `tolerations: [{operator: Exists}]` patched onto Agent CRDs after deploy.
 
----
+### LiteLLM Fallback Chains
 
-## Cilium — Critical Knowledge
+All GPU-local models (Ollama on `192.168.178.90`) have cloud fallback via OpenRouter.
+When the GPU host is down, requests fall through automatically:
 
-### rollOutPods flags (REQUIRED)
-
-```yaml
-rollOutCiliumPods: true
-operator.rollOutPods: true
-envoy.rollOutPods: true
 ```
-
-Without these, `helm upgrade` updates the ConfigMap but pods keep running with
-stale in-memory config — silent deadlock.
-
-### externalTrafficPolicy — MUST be Cluster with L2 Announcements
-
-`externalTrafficPolicy: Local` is incompatible with Cilium L2 Announcements.
-Always use `Cluster`.
-
-### GatewayClass status
-
-- `Unknown` — operator/agent not yet running with new config
-- `True` — fully operational
-
-### Requesting a specific IP
-
-```yaml
-annotations:
-  lbipam.cilium.io/ips: "192.168.178.203"
-  lbipam.cilium.io/sharing-key: "pihole-dns"  # share TCP+UDP on same IP
+Hermes:   hermes-qwen → qwen-pro (paid) → free2 → cheap
+Holmes:   GPU Ollama → holmes-free2 (cloud free) → holmes-cheap (cloud cheap) → qwen-pro (paid)
+Headlamp: local-reason (GPU) → same Holmes chain ↑
+OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap
 ```
-
-### Hubble Metrics
-
-Cilium 1.19.2 includes comprehensive network observability via Hubble metrics:
-
-**Configured metrics**: `httpV2` (with exemplars), `drop`, `tcp`, `flow`, `icmp`, `policy`, `port-distribution`
-**ServiceMonitor**: Created by `install-cilium-hubble-monitoring` role (tag: `networking-observability`)
-**Prometheus Integration**: 4 targets discovered (one per node), all UP status
-**Port**: `9965/metrics` with OpenMetrics format for trace correlation
-
-⚠️ **Critical**: Never enable both `http` and `httpV2` metrics — causes CrashLoopBackOff
-✅ **Idempotency**: ServiceMonitor managed separately, `networking` tag won't disable monitoring
-
-```bash
-# Deploy Hubble monitoring
-make networking-observability
-
-# Verify metrics
-kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965 &
-curl -s localhost:9965/metrics | grep hubble_
-```
-
----
 
 ## Pi-hole — Critical Knowledge
 
@@ -424,7 +401,7 @@ ssh dalmine@192.168.178.85
 | `pihole` | wildcard DNS, Pi-hole 6 gotchas |
 | `monitoring` | Prometheus, Grafana, Tempo, Loki, Alloy |
 | `storage` | CSI SMB, StorageClasses, dependency pattern (all PVC-backed roles) |
-| `ai` | registry + LiteLLM + Hermes Agent + OpenClaw |
+| `ai` | registry + LiteLLM + Hermes Agent + HolmesGPT + OpenClaw |
 | `openclaw` | Personal AI gateway, Telegram bot, modular RBAC, LiteLLM config |
 | `kagent` | AI agent platform, CRDs, RBAC, LiteLLM integration |
 | `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops |
