@@ -6,6 +6,27 @@ Este workflow detalla cómo interactuar con el proceso de compilación (CI/CD) b
 ## Contexto
 El sistema de build local utiliza Ansible únicamente como el motor que inyecta la receta (Dockerfile a través de ConfigMaps) y despliega la solicitud de compilación (`Workflow` CRD). Argo Workflows toma el control orquestando un pod que primero usa un contenedor `init` para clonar el repositorio Git en un volumen local rápido (`local-path`), y luego dispara a Kaniko para armar la imagen usando un caché montado en NAS SMB, subiendo el resultado final al registro interno de Docker.
 
+### Scenario 2: Remote Compilation (GitHub Actions Offloading)
+
+1. **Trigger the workflow**
+   You can offload heavy builds to GitHub Actions and use Argo to just trigger and wait for the image sync:
+   ```bash
+   # Automatically uses your local `gh auth token` and fires the remote build
+   make ai-hermes-build-remote
+   ```
+   *Note: If the `gh` CLI isn't authenticated, pass `GITHUB_PAT=ghp_...`.*
+
+2. **Check the bridge pods**
+   This workflow uses a two-step `gh-trigger` -> `skopeo-sync` approach:
+   ```bash
+   kubectl get pods -n kaniko
+   ```
+   If `gh-trigger` fails, check its logs:
+   ```bash
+   kubectl logs -l app=hermes-agent-build-remote -c main -n kaniko
+   ```
+   *(Common fix: verify the GitHub Actions pipeline is green and token has workflow scopes).*
+
 ## Instrucciones y Comandos Útiles
 
 **1. Disparar un nuevo Build (Trigger)**

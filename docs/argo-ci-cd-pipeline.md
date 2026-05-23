@@ -29,12 +29,15 @@ El proceso ha evolucionado hacia un pipeline asíncrono y robusto basado en **Ar
 | Fecha / Hito | Problema | Solución Implementada (Commit) |
 | --- | --- | --- |
 | **Paso 1:** Reemplazo de Job por Argo Workflow | Ansible se bloqueaba esperando el estado de `Job` o fallaba si no se purgaba. | Se instaló `argo-workflows` (modo server) y se refactorizó el rol `install-hermes-agent-image` para desplegar un `Workflow`. |
-| **Paso 2:** Deadlocks en Storage SMB | El PV de `smb-nas` se quedaba en estado `Released` impidiendo la creación del caché o el workspace de build. | Se depuró la lógica de Ansible `install-cifs-nas` eliminando el `claimRef` residual del PV, logrando redespliegues limpios y exitosos. |
-| **Paso 3:** CRD Tolerations Merge Key Error | Argo Workflows devolvía `Init:Error` o `Error` indicando `map: map[operator:Exists] does not contain declared merge key: key`. | Se parcheó el `workflow-controller-configmap` y los manifiestos de Ansible asignando una clave explícita (`node.kubernetes.io/unreachable`) para que el parche estratégico de Kubernetes no fallase al hacer merge. |
-| **Paso 4:** Conflicto de Volúmenes y Git Clone | El contenedor `init` de Argo daba el error `file exists` al intentar clonar el repo Git en `/workspace/source` porque ahí ya estaba montado el `Dockerfile`. | Se modificó el montaje del ConfigMap para inyectar el Dockerfile en `/workspace/Dockerfile` (afuera de la carpeta clonada), separando el código fuente inyectado por Argo de la receta inyectada por Ansible. |
+| **Paso 2:** GitHub Actions Auth & Automatic Token Fetch | N/A | To trigger GitHub Actions from inside the cluster, the `gh-trigger` Argo container relies on the `github-pat-secret`. **User Convenience (Auto-Fetching):** If you have the `gh` CLI natively authenticated on your local machine (`gh auth status` shows an active token), the `Makefile` will **automatically** extract your token and pass it to the cluster: `make ai-hermes-build-remote`. If you don't have `gh` CLI installed, you can pass it manually: `make ai-hermes-build-remote GITHUB_PAT=ghp_...`. **Implementation Detail:** The `gh-trigger` Argo pod uses the minimal `alpine:latest` image and installs `github-cli` dynamically via `apk add github-cli`. This avoids relying on `ghcr.io/cli/cli`, which sometimes blocks anonymous pulls and causes `ErrImagePull`. |
+| **Paso 3:** Deadlocks en Storage SMB | El PV de `smb-nas` se quedaba en estado `Released` impidiendo la creación del caché o el workspace de build. | Se depuró la lógica de Ansible `install-cifs-nas` eliminando el `claimRef` residual del PV, logrando redespliegues limpios y exitosos. |
+| **Paso 4:** CRD Tolerations Merge Key Error | Argo Workflows devolvía `Init:Error` o `Error` indicando `map: map[operator:Exists] does not contain declared merge key: key`. | Se parcheó el `workflow-controller-configmap` y los manifiestos de Ansible asignando una clave explícita (`node.kubernetes.io/unreachable`) para que el parche estratégico de Kubernetes no fallase al hacer merge. |
+| **Paso 5:** Conflicto de Volúmenes y Git Clone | El contenedor `init` de Argo daba el error `file exists` al intentar clonar el repo Git en `/workspace/source` porque ahí ya estaba montado el `Dockerfile`. | Se modificó el montaje del ConfigMap para inyectar el Dockerfile en `/workspace/Dockerfile` (afuera de la carpeta clonada), separando el código fuente inyectado por Argo de la receta inyectada por Ansible. |
+
+## Tareas Completadas Recientemente
+- Implementación de **GitHub Actions** offload mediante el rol `install-hermes-agent-remote-build`.
+- Extracción automática de tokens OAuth nativos con la CLI de GitHub (`gh auth token`) para facilitar la ejecución remota de compilaciones mediante el Makefile.
 
 ## Siguientes Pasos (Roadmap Extendido)
-
-La meta final es lograr que **Argo Workflows** actúe como un proxy/router para offload de compilaciones:
-- Evaluar integraciones desde Argo Workflows hacia **GitHub Actions** o **Google Cloud Build**.
-- Esto permitirá que builds muy pesados para arquitecturas AMD64/ARM64 se procesen fuera del clúster (ahorrando RAM/CPU local) y el resultado se sincronice de vuelta.
+- Considerar integrar notificaciones directas desde GitHub Actions de regreso a Slack/Telegram mediante OpenClaw.
+- Optimizar la limpieza de imágenes estancadas y workflows finalizados (Garbage Collection de Argo).
