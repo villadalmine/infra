@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-hubble-table
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/managed-by: ansible
+    dashboard-source: "hubble-dashboard-table"
+
+data:
+  hubble-table-dashboard.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "id": null,
+      "iteration": 1,
+      "links": [],
+      "panels": [
+        {
+          "datasource": "Prometheus",
+          "type": "table",
+          "title": "Live Hubble Flows (last 5m)",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {"filterable": true}
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {"desc": true, "displayName": "Rate (bytes/s)"}
+            ]
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(hubble_flow_total[5m])) by (sourceIdentity, destinationIdentity, sourceNamespace, destinationNamespace, sourcePod, destinationPod, sourceIP, destinationIP)",
+              "legendFormat": "{{sourceIdentity}}→{{destinationIdentity}}",
+              "refId": "A",
+              "instant": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": [],
+                "indexByName": {
+                  "sourceIdentity": 0,
+                  "destinationIdentity": 1,
+                  "sourceNamespace": 2,
+                  "destinationNamespace": 3,
+                  "sourcePod": 4,
+                  "destinationPod": 5,
+                  "sourceIP": 6,
+                  "destinationIP": 7,
+                  "Value": 8
+                },
+                "renameByName": {}
+              }
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 37,
+      "style": "dark",
+      "tags": ["cilium", "hubble", "table"],
+      "templating": {"list": []},
+      "time": {"from": "now-5m", "to": "now"},
+      "timepicker": {"refresh_intervals": ["5s","10s","30s","1m","5m"], "time_options": ["5m","15m","30m","1h", "6h", "12h", "24h"]},
+      "timezone": "",
+      "title": "Cilium – Hubble Live Table",
+      "uid": "cilium-hubble-live-table",
+      "version": 1,
+      "weekStart": ""
+    }

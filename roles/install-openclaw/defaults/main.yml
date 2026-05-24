@@ -21,6 +21,9 @@ openclaw_cpu_limit: "2000m"
 openclaw_memory_request: "512Mi"
 openclaw_memory_limit: "2Gi"
 
+# Smee.io Webhook Relay URL
+openclaw_smee_url: "https://smee.io/NibMMS9tqGdtxzN1"
+
 # ─── Storage ──────────────────────────────────────────────────────────────────
 # smb-nas StorageClass (default). Override to local-path for no-NAS testing.
 # The storage backend role is auto-installed first (idempotent include_role).

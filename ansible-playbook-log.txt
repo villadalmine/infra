@@ -1,0 +1,54 @@
+Using /var/home/dalmine/Nextcloud/Repos/infra-ai/infra/ansible.cfg as config file
+
+PLAY [Fix node identity for all nodes] *****************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Detect ethernet interface name] ************************
+ok: [srv-super6c-02-nvme] => {"changed": false, "cmd": "ip -o link show | grep -v lo | grep -v LOOPBACK | awk '{print $2}' | tr -d ':' | head -1\n", "delta": "0:00:00.038497", "end": "2026-04-12 17:08:10.754383", "msg": "", "rc": 0, "start": "2026-04-12 17:08:10.715886", "stderr": "", "stderr_lines": [], "stdout": "eth0", "stdout_lines": ["eth0"]}
+
+TASK [fix-mac-address : Enforce hostname consistency] **************************
+skipping: [srv-super6c-02-nvme] => {"changed": false, "false_condition": "ansible_hostname != inventory_hostname", "skip_reason": "Conditional result was False"}
+
+TASK [fix-mac-address : Validate k3s service type (server or agent)] ***********
+changed: [srv-super6c-02-nvme] => {"changed": true, "cmd": "systemctl is-active k3s.service && echo server || systemctl is-active k3s-agent.service && echo agent || echo none\n", "delta": "0:00:00.058559", "end": "2026-04-12 17:08:12.255055", "failed_when_result": false, "msg": "", "rc": 0, "start": "2026-04-12 17:08:12.196496", "stderr": "", "stderr_lines": [], "stdout": "inactive\nactive\nagent", "stdout_lines": ["inactive", "active", "agent"]}
+
+TASK [fix-mac-address : Get current MAC address of ethernet interface] *********
+ok: [srv-super6c-02-nvme] => {"changed": false, "cmd": "cat /sys/class/net/eth0/address\n", "delta": "0:00:00.021257", "end": "2026-04-12 17:08:13.910136", "msg": "", "rc": 0, "start": "2026-04-12 17:08:13.888879", "stderr": "", "stderr_lines": [], "stdout": "d8:3a:dd:88:55:ef", "stdout_lines": ["d8:3a:dd:88:55:ef"]}
+
+TASK [fix-mac-address : Show detected interface and MAC] ***********************
+ok: [srv-super6c-02-nvme] => {
+    "msg": "Interface: eth0, MAC: d8:3a:dd:88:55:ef"
+}
+
+TASK [fix-mac-address : Create systemd-networkd link file to pin MAC address permanently] ***
+ok: [srv-super6c-02-nvme] => {"changed": false, "checksum": "a96883726b20aecd7d093e794de4ba8baaa534d9", "dest": "/etc/systemd/network/10-eth0-mac.link", "gid": 0, "group": "root", "mode": "0644", "owner": "root", "path": "/etc/systemd/network/10-eth0-mac.link", "size": 113, "state": "file", "uid": 0}
+
+TASK [fix-mac-address : Disable cloud-init network management (prevents overwriting static config)] ***
+ok: [srv-super6c-02-nvme] => {"changed": false, "checksum": "0f3d0ffe82300531d3656dd1370de6172586f85c", "dest": "/etc/cloud/cloud.cfg.d/99-disable-network.cfg", "gid": 0, "group": "root", "mode": "0644", "owner": "root", "path": "/etc/cloud/cloud.cfg.d/99-disable-network.cfg", "size": 28, "state": "file", "uid": 0}
+
+TASK [fix-mac-address : Create static netplan config with pinned MAC and fixed IP] ***
+changed: [srv-super6c-02-nvme] => {"changed": true, "checksum": "a59b13344fd6ffa3136ac650dad3653e26eace47", "dest": "/etc/netplan/60-static.yaml", "gid": 0, "group": "root", "md5sum": "280e97310509c8dbd47ea97512a23bf2", "mode": "0600", "owner": "root", "size": 332, "src": "/home/dalmine/.ansible/tmp/ansible-tmp-1776006500.8394146-17539-129735226002852/.source.yaml", "state": "file", "uid": 0}
+
+TASK [fix-mac-address : Apply netplan configuration] ***************************
+changed: [srv-super6c-02-nvme] => {"changed": true, "cmd": ["netplan", "apply"], "delta": "0:00:05.342113", "end": "2026-04-12 17:08:30.453393", "msg": "", "rc": 0, "start": "2026-04-12 17:08:25.111280", "stderr": "", "stderr_lines": [], "stdout": "", "stdout_lines": []}
+
+TASK [fix-mac-address : Restart k3s service if network changes detected on server] ***
+skipping: [srv-super6c-02-nvme] => {"changed": false, "false_condition": "k3s_type.stdout == 'server' and (netplan_changed.changed or link_file.changed)", "skip_reason": "Conditional result was False"}
+
+TASK [fix-mac-address : Restart k3s-agent service if network changes detected on agent] ***
+skipping: [srv-super6c-02-nvme] => {"changed": false, "false_condition": "k3s_type.stdout == 'agent' and (netplan_changed.changed or link_file.changed)", "skip_reason": "Conditional result was False"}
+
+TASK [fix-mac-address : Reload systemd-networkd to pick up link file] **********
+skipping: [srv-super6c-02-nvme] => {"changed": false, "false_condition": "link_file.changed", "skip_reason": "Conditional result was False"}
+
+PLAY [Fix node identity for all nodes] *****************************************
+
+TASK [Gathering Facts] *********************************************************
+fatal: [srv-super6c-03-nvme]: UNREACHABLE! => {"changed": false, "msg": "Failed to connect to the host via ssh: debug1: OpenSSH_10.0p2, OpenSSL 3.5.4 30 Sep 2025\r\ndebug1: Reading configuration data /home/dalmine/.ssh/config\r\ndebug1: Reading configuration data /etc/ssh/ssh_config\r\ndebug1: Reading configuration data /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf\r\ndebug1: Reading configuration data /etc/ssh/ssh_config.d/50-redhat.conf\r\ndebug1: Reading configuration data /etc/crypto-policies/back-ends/openssh.config\r\ndebug1: configuration requests final Match pass\r\ndebug1: re-parsing configuration\r\ndebug1: Reading configuration data /home/dalmine/.ssh/config\r\ndebug1: Reading configuration data /etc/ssh/ssh_config\r\ndebug1: Reading configuration data /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf\r\ndebug1: Reading configuration data /etc/ssh/ssh_config.d/50-redhat.conf\r\ndebug1: Reading configuration data /etc/crypto-policies/back-ends/openssh.config\r\ndebug1: auto-mux: Trying existing master at '/var/home/dalmine/.ansible/cp/2058306bcb'\r\ndebug1: Control socket \"/var/home/dalmine/.ansible/cp/2058306bcb\" does not exist\r\ndebug1: Connecting to 192.168.178.87 [192.168.178.87] port 22.\r\ndebug1: connect to address 192.168.178.87 port 22: Connection refused\r\nssh: connect to host 192.168.178.87 port 22: Connection refused", "unreachable": true}
+
+PLAY RECAP *********************************************************************
+srv-super6c-02-nvme        : ok=9    changed=3    unreachable=0    failed=0    skipped=4    rescued=0    ignored=0   
+srv-super6c-03-nvme        : ok=0    changed=0    unreachable=1    failed=0    skipped=0    rescued=0    ignored=0   
+

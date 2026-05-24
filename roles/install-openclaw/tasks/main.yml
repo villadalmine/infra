@@ -116,6 +116,23 @@
     path: /tmp/openclaw-network.yaml
     state: absent
 
+# ─── Smee Webhook Relay ───────────────────────────────────────────────────────
+- name: Render Smee Webhook Relay manifest
+  ansible.builtin.template:
+    src: smee-deployment.yaml.j2
+    dest: /tmp/smee-deployment.yaml
+    mode: "0644"
+
+- name: Apply Smee Webhook Relay
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/smee-deployment.yaml
+  changed_when: false
+
+- name: Remove temporary Smee manifest
+  ansible.builtin.file:
+    path: /tmp/smee-deployment.yaml
+    state: absent
+
 # ─── Wait for rollout ─────────────────────────────────────────────────────────
 - name: Wait for OpenClaw deployment to be ready
   ansible.builtin.command:

@@ -17,9 +17,11 @@ OpenClaw is a personal AI assistant and gateway that integrates directly into th
 
 ### 1. Webhooks & CI/CD Automation
 OpenClaw can function as an autonomous agent processing webhooks.
-- **Endpoint**: `https://openclaw.cluster.home/hooks/agent` (for complex analysis) or `/hooks/wake` (for simple ping)
-- **Allowed Ingress**: Traffic is permitted from `gateway` (for external sources like GitHub Actions) and internal namespaces like `argocd`, `monitoring` (AlertManager), and `kaniko`.
-- **Note on Remote URLs**: Currently, `openclaw.cluster.home` is a private DNS. To receive GitHub Actions webhooks directly from public runners, OpenClaw needs to be exposed via a public URL (e.g. Cloudflare Tunnel) or integrated via ArgoCD Notifications (internal webhook).
+- **Endpoint**: `https://openclaw.cluster.home/hooks/agent` (for complex analysis) o `/hooks/wake` (for simple ping).
+- **GitHub Actions Integration (Smee.io)**: Dado que `openclaw.cluster.home` es un DNS privado, OpenClaw utiliza un Webhook Relay a través de Smee.io (`https://smee.io/NibMMS9tqGdtxzN1`).
+  - Un pod `smee-client` corre junto a OpenClaw, intercepta las peticiones enviadas a Smee desde GitHub Actions y las reenvía a `http://openclaw:18789/hooks/wake`.
+  - **Requisito en GitHub**: El repositorio debe tener el secret `OPENCLAW_GATEWAY_TOKEN` configurado para autenticar las peticiones.
+- **Allowed Ingress**: Traffic is permitted from `gateway` (for external sources) and internal namespaces like `argocd`, `monitoring` (AlertManager), and `kaniko`.
 - **Behavior**:
   - Automatically parses payloads (e.g. `alertname`, `status`, `repo`).
   - If a job/workflow is successful (`severity=info`, `sync-success`), it notifies Telegram directly without polling Kubernetes.

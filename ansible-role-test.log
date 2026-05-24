@@ -1,0 +1,64 @@
+
+PLAY [Fix node identity for all nodes] *****************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Detect ethernet interface name] ************************
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Ensure Cloud-Init does not overwrite hostname] *********
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Enforce hostname consistency] **************************
+skipping: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Validate k3s service type (server or agent)] ***********
+changed: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Get current MAC address of ethernet interface] *********
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Check if MAC address is already persistent] ************
+changed: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Evaluate if MAC address is already correct] ************
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Skip MAC change if already correct] ********************
+ok: [srv-super6c-02-nvme] => {
+    "msg": "MAC address is already fixed. No changes needed."
+}
+
+TASK [fix-mac-address : Show detected interface and MAC] ***********************
+ok: [srv-super6c-02-nvme] => {
+    "msg": "Interface: eth0, MAC: d8:3a:dd:88:55:ef"
+}
+
+TASK [fix-mac-address : Create systemd-networkd link file to pin MAC address permanently] ***
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Disable cloud-init network management (prevents overwriting static config)] ***
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Check current IP address] ******************************
+changed: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Create static netplan config with pinned MAC and fixed IP] ***
+ok: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Apply netplan configuration] ***************************
+skipping: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Restart k3s service if network changes detected on server] ***
+skipping: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Restart k3s-agent service if network changes detected on agent] ***
+skipping: [srv-super6c-02-nvme]
+
+TASK [fix-mac-address : Reload systemd-networkd to pick up link file] **********
+skipping: [srv-super6c-02-nvme]
+
+PLAY RECAP *********************************************************************
+srv-super6c-02-nvme        : ok=13   changed=3    unreachable=0    failed=0    skipped=5    rescued=0    ignored=0   
+
