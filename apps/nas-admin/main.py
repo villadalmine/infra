@@ -332,7 +332,7 @@ async def delete_pvc(namespace: str, name: str, _=Depends(check_auth)):
                     nas_path = pv_obj.spec.csi.volume_attributes.get("source", "")
                 deleted_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 # Rename the NAS directory to mark it as deleted
-                marker_suffix = "-" + "-".join([
+                marker_suffix = "_" + "_".join([
                     _safe_name(sc),
                     _safe_name(namespace),
                     _safe_name(name),
@@ -354,7 +354,18 @@ async def delete_pvc(namespace: str, name: str, _=Depends(check_auth)):
         v1.delete_namespaced_persistent_volume_claim(name=name, namespace=namespace)
     except ApiException as e:
         raise HTTPException(status_code=e.status, detail=str(e.reason))
-    return HTMLResponse(content="", status_code=200)
+    toast = ""
+    if pv_name:
+        toast = (
+            f'<div hx-swap-oob="beforeend:#toast-container">'
+            f'<div id="toast-pvc-deleted" class="flex items-start gap-3 bg-blue-50 border border-blue-200 '
+            f'rounded-lg px-4 py-3 text-sm text-blue-900 shadow-md max-w-sm" '
+            f'style="animation:fadeout 0.5s ease 6s forwards">'
+            f'<span>PVC deleted. PV <span class="font-mono font-semibold">{pv_name}</span> is now Released — '
+            f'find it in the <a href="/pvs" class="underline font-semibold">Volumes tab</a> to clean up.</span>'
+            f'</div></div>'
+        )
+    return HTMLResponse(content=toast, status_code=200)
 
 
 @app.delete("/api/pvs/{name}", response_class=HTMLResponse)
@@ -382,7 +393,7 @@ async def delete_pv(name: str, _=Depends(check_auth)):
         # Note: the LG N2R1 NAS blocks renaming root-level share directories (ACCESS_DENIED),
         # so a marker file is the only automated way to tag orphaned NAS data.
         if nas_path and not ann.get("nas-admin/nas-dir-marked"):
-            marker_suffix = "-" + "-".join(p for p in [_safe_name(sc), _safe_name(orig_pvc)] if p)
+            marker_suffix = "_" + "_".join(p for p in [_safe_name(sc), _safe_name(orig_pvc)] if p)
             _mark_nas_dir_deleted(nas_path, marker_suffix)
 
         v1.delete_persistent_volume(name=name)

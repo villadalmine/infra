@@ -10,6 +10,7 @@
     .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
     .htmx-request .htmx-indicator { opacity: 1; }
     .htmx-request.htmx-indicator { opacity: 1; }
+    @keyframes fadeout { to { opacity: 0; pointer-events: none; } }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -32,6 +33,8 @@
     </a>
     <span class="ml-auto text-xs text-gray-500 font-mono">LG N2R1 &bull; SMBv1</span>
   </nav>
+
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <main class="max-w-7xl mx-auto px-4 py-6">
     {% block content %}{% endblock %}

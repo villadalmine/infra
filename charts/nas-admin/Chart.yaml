@@ -2,5 +2,5 @@ apiVersion: v2
 name: nas-admin
 description: NAS PV/PVC admin panel for K8s clusters with SMB/CIFS storage (LG N2R1 SMBv1)
 type: application
-version: 0.1.5
+version: 0.1.6
 appVersion: "latest"
