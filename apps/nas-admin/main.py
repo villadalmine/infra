@@ -77,8 +77,11 @@ def _smb_pvs():
         if not (is_smb_csi or is_smb_sc):
             continue
         source = ""
+        subdir = ""
         if spec.csi and spec.csi.volume_attributes:
             source = spec.csi.volume_attributes.get("source", "")
+            subdir = spec.csi.volume_attributes.get("subdir", "")
+        full_path = (source.rstrip("/") + "/" + subdir) if subdir else source
         claim_ref = None
         if spec.claim_ref:
             claim_ref = {
@@ -93,7 +96,7 @@ def _smb_pvs():
             "access_modes": pv.spec.access_modes or [],
             "storage_class": pv.spec.storage_class_name or "—",
             "status": phase,
-            "nas_path": source,
+            "nas_path": full_path,
             "bound_claim": claim_ref,
             "age": _age(pv.metadata.creation_timestamp),
             "orphaned": phase in ("Released", "Available", "Failed"),
@@ -196,31 +199,53 @@ def _safe_name(s: str) -> str:
     return s.replace("/", "-").replace(":", "-").replace(" ", "-").strip("-")
 
 
-def _mark_nas_dir_deleted(nas_path: str, suffix: str) -> str | None:
-    """Create a .nas-admin-deleted-{suffix} marker file inside the NAS dir.
-    Returns the marker file path on success, None otherwise.
-    Uses a marker file (not rename) because the NAS root share disallows renaming its children."""
+def _nas_local_path(nas_path: str) -> Path | None:
+    """Resolve a NAS UNC path to its local mount path. Returns None if not reachable."""
     if not NAS_SOURCE or not nas_path or not NAS_MOUNT:
         return None
     source = NAS_SOURCE.rstrip("/")
     if not nas_path.startswith(source + "/"):
-        return None  # different share — can't reach via our mount
+        return None
     rel = nas_path[len(source) + 1:]
     if not rel:
-        return None  # don't touch the root
+        return None
     base = Path(NAS_MOUNT).resolve()
     local = (base / rel).resolve()
     try:
-        local.relative_to(base)  # path traversal guard
+        local.relative_to(base)
     except ValueError:
         return None
-    if not local.exists() or not local.is_dir():
+    return local if local.exists() and local.is_dir() else None
+
+
+def _rename_nas_dir(nas_path: str, new_name: str) -> str | None:
+    """Rename the NAS directory at nas_path to new_name (sibling rename).
+    Works for non-root subdirectories; root-level dirs are blocked by LG N2R1 firmware.
+    Returns the new NAS UNC path on success, None on failure."""
+    local = _nas_local_path(nas_path)
+    if local is None:
+        return None
+    new_local = local.parent / new_name
+    if new_local.exists():
+        return NAS_SOURCE.rstrip("/") + "/" + str(new_local.relative_to(Path(NAS_MOUNT).resolve()))
+    try:
+        local.rename(new_local)
+        return NAS_SOURCE.rstrip("/") + "/" + str(new_local.relative_to(Path(NAS_MOUNT).resolve()))
+    except OSError:
+        return None
+
+
+def _mark_nas_dir_deleted(nas_path: str, suffix: str) -> str | None:
+    """Create a .nas-admin-deleted{suffix} marker file inside the NAS dir.
+    Fallback for root-level dirs that cannot be renamed."""
+    local = _nas_local_path(nas_path)
+    if local is None:
         return None
     marker = local / f".nas-admin-deleted{suffix}"
     if marker.exists():
-        return str(marker)  # already marked
+        return str(marker)
     try:
-        marker.write_text(f"marked by nas-admin\n")
+        marker.write_text("marked by nas-admin\n")
         return str(marker)
     except OSError:
         return None
@@ -324,20 +349,25 @@ async def delete_pvc(namespace: str, name: str, _=Depends(check_auth)):
         ]
 
         # Annotate the bound PV with deletion context so Released PVs stay identifiable
+        nas_path = ""
         if pv_name:
             try:
                 pv_obj = v1.read_persistent_volume(pv_name)
-                nas_path = ""
-                if pv_obj.spec.csi and pv_obj.spec.csi.volume_attributes:
-                    nas_path = pv_obj.spec.csi.volume_attributes.get("source", "")
+                attrs = pv_obj.spec.csi.volume_attributes if pv_obj.spec.csi else {}
+                source = (attrs or {}).get("source", "")
+                subdir = (attrs or {}).get("subdir", "")
+                nas_path = (source.rstrip("/") + "/" + subdir) if subdir else source
                 deleted_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                # Rename the NAS directory to mark it as deleted
-                marker_suffix = "_" + "_".join([
-                    _safe_name(sc),
-                    _safe_name(namespace),
-                    _safe_name(name),
-                ])
-                marker_path = _mark_nas_dir_deleted(nas_path, marker_suffix)
+                # New readable name: pvc-name_namespace_storageclass
+                readable_name = "_".join(filter(None, [_safe_name(name), _safe_name(namespace), _safe_name(sc)]))
+                new_nas_path = _rename_nas_dir(nas_path, readable_name)
+                if new_nas_path:
+                    nas_path = new_nas_path  # update path to post-rename location
+                    marked = new_nas_path
+                else:
+                    # rename blocked (root-level dir) — fall back to marker file inside
+                    suffix = "_" + "_".join(filter(None, [_safe_name(sc), _safe_name(namespace), _safe_name(name)]))
+                    marked = _mark_nas_dir_deleted(nas_path, suffix) or ""
                 v1.patch_persistent_volume(pv_name, {
                     "metadata": {"annotations": {
                         "nas-admin/deleted-at":       deleted_at,
@@ -345,7 +375,7 @@ async def delete_pvc(namespace: str, name: str, _=Depends(check_auth)):
                         "nas-admin/deleted-sc":       sc,
                         "nas-admin/deleted-pods":     ",".join(pod_names) if pod_names else "—",
                         "nas-admin/deleted-nas-path": nas_path,
-                        "nas-admin/nas-dir-marked":   marker_path or "",
+                        "nas-admin/nas-dir-marked":   marked,
                     }}
                 })
             except ApiException:
@@ -379,22 +409,25 @@ async def delete_pv(name: str, _=Depends(check_auth)):
 
         # Collect NAS path and deletion context from annotations or PV spec
         ann = pv.metadata.annotations or {}
-        nas_path = ann.get("nas-admin/deleted-nas-path") or (
-            (pv.spec.csi.volume_attributes or {}).get("source", "")
-            if pv.spec.csi else ""
-        )
+        attrs = pv.spec.csi.volume_attributes if pv.spec.csi else {}
+        _source = (attrs or {}).get("source", "")
+        _subdir = (attrs or {}).get("subdir", "")
+        _full = (_source.rstrip("/") + "/" + _subdir) if _subdir else _source
+        nas_path = ann.get("nas-admin/deleted-nas-path") or _full
         sc = ann.get("nas-admin/deleted-sc") or pv.spec.storage_class_name or ""
         orig_pvc = ann.get("nas-admin/deleted-pvc") or (
             f"{pv.spec.claim_ref.namespace}/{pv.spec.claim_ref.name}"
             if pv.spec.claim_ref else ""
         )
 
-        # Create a visible marker file inside the NAS directory before the K8s object is gone.
-        # Note: the LG N2R1 NAS blocks renaming root-level share directories (ACCESS_DENIED),
-        # so a marker file is the only automated way to tag orphaned NAS data.
+        # Try to rename the NAS directory to a readable name before deleting the K8s object.
+        # Rename works for subdirectories; root-level dirs are blocked by LG N2R1 firmware.
         if nas_path and not ann.get("nas-admin/nas-dir-marked"):
-            marker_suffix = "_" + "_".join(p for p in [_safe_name(sc), _safe_name(orig_pvc)] if p)
-            _mark_nas_dir_deleted(nas_path, marker_suffix)
+            pvc_ns, _, pvc_name = orig_pvc.partition("/")
+            readable_name = "_".join(filter(None, [_safe_name(pvc_name), _safe_name(pvc_ns), _safe_name(sc)]))
+            if not _rename_nas_dir(nas_path, readable_name):
+                suffix = "_" + "_".join(p for p in [_safe_name(sc), _safe_name(orig_pvc)] if p)
+                _mark_nas_dir_deleted(nas_path, suffix)
 
         v1.delete_persistent_volume(name=name)
     except ApiException as e:
