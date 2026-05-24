@@ -119,7 +119,7 @@
 # ─── Wait for rollout ─────────────────────────────────────────────────────────
 - name: Wait for OpenClaw deployment to be ready
   ansible.builtin.command:
-    cmd: kubectl rollout status deployment/openclaw -n {{ openclaw_namespace }} --timeout=180s
+    cmd: kubectl rollout status deployment/openclaw -n {{ openclaw_namespace }} --timeout={{ openclaw_rollout_timeout | default('180s') }}
   changed_when: false
   register: openclaw_rollout
   failed_when: openclaw_rollout.rc != 0

@@ -169,7 +169,19 @@ build-remote-nas: ## Compilar NAS Admin remotamente con GitHub Actions
 	fi; \
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags nas-admin-build-remote -e "github_pat=$$GITHUB_PAT"
 
-build-remote-all: build-remote-hermes build-remote-leloir build-remote-nas ## Compilar TODAS las imágenes remotamente
+build-remote-openclaw: ## Compilar OpenClaw (con Honcho) remotamente con GitHub Actions
+	@if [ -z "$(GITHUB_PAT)" ] && command -v gh >/dev/null 2>&1; then \
+		echo "GITHUB_PAT not provided, attempting to use local gh CLI token..."; \
+		GITHUB_PAT=$$(gh auth token); \
+	fi; \
+	if [ -z "$$GITHUB_PAT" ]; then \
+		echo "Error: GITHUB_PAT is not set and gh CLI is not authenticated. Run: make build-remote-openclaw GITHUB_PAT=ghp_xxx"; \
+		exit 1; \
+	fi; \
+	gh workflow run build-openclaw.yml --ref main -f image_tag=latest-honcho
+	@echo "OpenClaw remote build triggered. Check GitHub Actions UI."
+
+build-remote-all: build-remote-hermes build-remote-leloir build-remote-nas build-remote-openclaw ## Compilar TODAS las imágenes remotamente
 	@echo "All remote builds submitted."
 
 # Alias for backwards compatibility

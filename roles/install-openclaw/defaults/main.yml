@@ -6,7 +6,8 @@
 
 openclaw_version: "latest"
 openclaw_namespace: "openclaw"
-openclaw_image: "ghcr.io/openclaw/openclaw"
+openclaw_image: "ghcr.io/villadalmine/openclaw-honcho:latest-honcho"
+openclaw_rollout_timeout: "300s"
 openclaw_hostname: "openclaw.cluster.home"
 
 # ─── Honcho Memory ────────────────────────────────────────────────────────────
