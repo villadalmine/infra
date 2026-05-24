@@ -4,9 +4,9 @@
 # Image: ghcr.io/openclaw/openclaw (multi-arch, arm64 supported natively)
 # ─────────────────────────────────────────────────────────────────────────────
 
-openclaw_version: "latest"
+openclaw_version: "latest-honcho"
 openclaw_namespace: "openclaw"
-openclaw_image: "ghcr.io/villadalmine/openclaw-honcho:latest-honcho"
+openclaw_image: "ghcr.io/villadalmine/openclaw-honcho"
 openclaw_rollout_timeout: "300s"
 openclaw_hostname: "openclaw.cluster.home"
 

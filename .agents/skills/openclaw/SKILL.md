@@ -19,6 +19,7 @@ OpenClaw is a personal AI assistant and gateway that integrates directly into th
 OpenClaw can function as an autonomous agent processing webhooks.
 - **Endpoint**: `https://openclaw.cluster.home/hooks/agent` (for complex analysis) or `/hooks/wake` (for simple ping)
 - **Allowed Ingress**: Traffic is permitted from `gateway` (for external sources like GitHub Actions) and internal namespaces like `argocd`, `monitoring` (AlertManager), and `kaniko`.
+- **Note on Remote URLs**: Currently, `openclaw.cluster.home` is a private DNS. To receive GitHub Actions webhooks directly from public runners, OpenClaw needs to be exposed via a public URL (e.g. Cloudflare Tunnel) or integrated via ArgoCD Notifications (internal webhook).
 - **Behavior**:
   - Automatically parses payloads (e.g. `alertname`, `status`, `repo`).
   - If a job/workflow is successful (`severity=info`, `sync-success`), it notifies Telegram directly without polling Kubernetes.
