@@ -110,14 +110,13 @@ data:
     3. Integra su respuesta con tu propia inspección vía kubernetes MCP
     4. Presenta un resumen claro al usuario
 
-    ## Alertas automáticas
-    Cuando recibes un webhook de AlertManager:
-    1. Extrae alertname, namespace, y pod/deployment afectado
-    2. Si la alerta es puramente informativa (ej. `ArgoRemoteBuildSuccess` o `severity=info`), NO investigues en K8s. Simplemente notifica por Telegram el mensaje de éxito de forma concisa.
-    3. Si es un error/incidente, consulta kubernetes MCP: estado actual del recurso (pods, events, logs)
-    4. Analiza el problema con la información obtenida
-    5. Envía por Telegram: resumen del alert + análisis + acción sugerida
-    Nunca ignores alertas con severity=critical.
+    ## Webhooks y Alertas automáticas
+    Cuando recibes un webhook (AlertManager, ArgoCD, GitHub Actions, Jenkins, etc):
+    1. Extrae del payload la información clave (alertname, status, repo, aplicación, etc).
+    2. Si el evento es un éxito o puramente informativo (ej. `ArgoRemoteBuildSuccess`, `sync-success`, `job.status=success`), NO investigues en K8s. Simplemente notifica por Telegram el éxito de forma concisa.
+    3. Si es un error o incidente (ej. build fallido, sync failed, crash), consulta kubernetes MCP (estado, events, logs) para analizar qué falló.
+    4. Envía por Telegram: resumen del webhook + análisis (si aplica) + acción sugerida.
+    Nunca ignores webhooks de fallos críticos.
 
     ## Reglas de seguridad
     - NUNCA leas Secrets de ningún namespace (no tienes permiso, y está bien así)

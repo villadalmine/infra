@@ -45,7 +45,7 @@ spec:
     - Egress
     - Ingress
   ingress:
-    # AlertManager webhook (proactive alerts → OpenClaw → Telegram)
+    # Webhooks (AlertManager, ArgoCD, external via Gateway)
     - from:
         - namespaceSelector:
             matchLabels:
@@ -53,6 +53,12 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kaniko
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argocd
       ports:
         - port: {{ openclaw_gateway_port }}
           protocol: TCP

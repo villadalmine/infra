@@ -9,6 +9,9 @@ openclaw_namespace: "openclaw"
 openclaw_image: "ghcr.io/openclaw/openclaw"
 openclaw_hostname: "openclaw.cluster.home"
 
+# ─── Honcho Memory ────────────────────────────────────────────────────────────
+openclaw_honcho_workspace: "openclaw"
+
 # ─── Resource limits ──────────────────────────────────────────────────────────
 # Schedule on RK1 (32 GB RAM). See AGENTS.md for node table.
 openclaw_node_hostname: "srv-rk1-nvme-02"
