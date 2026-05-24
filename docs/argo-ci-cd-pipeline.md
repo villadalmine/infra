@@ -86,6 +86,7 @@ make argo-workflows
 | **Paso 8:** DiskPressure por PVCs acumulados | Build fallaba con exit code 137 + `ephemeral-storage` eviction en `srv-rk1-nvme-01`. PVCs de workspace de workflows fallidos + PVC orphanado del viejo Job (`leloir-kaniko-workspace`) acumularon espacio. | Borrar workflows fallidos/completados libera sus workspace PVCs (reclaim: Delete). PVC orphanada del Job viejo eliminada manualmente. TTL strategy previene acumulación futura. |
 | **Paso 9:** Notificaciones de Build (GitHub Actions) | Necesidad de notificar a OpenClaw cuando un build remoto en GitHub Actions termina (via webhook). | Se extendió `gh-trigger` en Argo Workflow (imagen `alpine/curl`) para hacer un `POST` al webhook de OpenClaw. NetworkPolicy actualizada para permitir tráfico Ingress desde `kaniko` a `openclaw`. |
 | **Paso 10:** Fallo de base de datos de agentes (Kagent PostgreSQL) | El pod `kagent-postgresql` estaba en `CrashLoopBackOff` (`FATAL: the database system is shutting down`). I/O SMB muy lento causaba timeout en livenessProbe durante pre-fsync. | Se parchearon permanentemente las sondas de `kagent-postgresql` vía Ansible (`initialDelaySeconds: 180`). Se recreó el PVC para limpiar los constraints `tool_pkey` corruptos. |
+| **Paso 11:** Validación end-to-end `make leloir-all` (2026-05-24) | — | Cadena completa ejecutada sin errores: `ai-registry → argo-workflows → leloir-build (Argo Workflow) → leloir (deploy rolling update)`. `failed=0` en todos los plays. Migración cerrada. |
 
 ---
 
