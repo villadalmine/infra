@@ -1,0 +1,76 @@
+---
+- name: Prepare NVMe storage on RK1 nodes
+  hosts: rk1_nodes
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Ensure nvme_tcp kernel module is loaded
+      community.general.modprobe:
+        name: nvme_tcp
+        state: present
+
+    - name: Persist nvme_tcp module across reboots
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/nvme-tcp.conf
+        content: "nvme_tcp\n"
+        mode: "0644"
+
+    - name: Check if /mnt/nvme is already mounted
+      ansible.builtin.command: findmnt --target /mnt/nvme --noheadings
+      register: nvme_mountpoint
+      changed_when: false
+      failed_when: false
+
+    - name: Check if NVMe device exists (only if not yet mounted)
+      ansible.builtin.stat:
+        path: /dev/nvme0n1
+      register: nvme_dev
+      when: nvme_mountpoint.rc != 0
+
+    - name: Fail if NVMe device missing and not mounted
+      ansible.builtin.fail:
+        msg: "No NVMe device /dev/nvme0n1 found on {{ inventory_hostname }}"
+      when: nvme_mountpoint.rc != 0 and not nvme_dev.stat.exists
+
+    - name: Check if raw NVMe device has a filesystem
+      ansible.builtin.command: blkid -s TYPE -o value /dev/nvme0n1
+      register: nvme_fs_check
+      changed_when: false
+      failed_when: false
+      when: nvme_mountpoint.rc != 0
+
+    - name: Format raw NVMe as ext4 if no filesystem found
+      community.general.filesystem:
+        fstype: ext4
+        dev: /dev/nvme0n1
+        force: false
+      when: nvme_mountpoint.rc != 0 and nvme_fs_check.stdout == ""
+
+    - name: Create /mnt/nvme mount point
+      ansible.builtin.file:
+        path: /mnt/nvme
+        state: directory
+        mode: "0755"
+
+    - name: Get NVMe device UUID
+      ansible.builtin.command: blkid -s UUID -o value /dev/nvme0n1
+      register: nvme_uuid
+      changed_when: false
+
+    # state: present = update fstab only (already mounted)
+    # state: mounted = update fstab + mount (first time)
+    - name: Persist /mnt/nvme in fstab
+      ansible.posix.mount:
+        path: /mnt/nvme
+        src: "UUID={{ nvme_uuid.stdout }}"
+        fstype: ext4
+        opts: defaults,noatime
+        state: "{{ 'present' if nvme_mountpoint.rc == 0 else 'mounted' }}"
+
+- name: Deploy Longhorn
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  tasks:
+    - include_role:
+        name: install-longhorn

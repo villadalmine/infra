@@ -62,3 +62,7 @@ curl -X POST https://openclaw.cluster.home/hooks/wake \
   -H "Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>" \
   -d '{"event": "test_ping", "status": "success"}'
 ```
+
+## Security Best Practices
+> [!IMPORTANT]
+> **NPM and CVE Prevention**: Whenever installing packages with `npm` or running tools via `npx` inside initContainers, GitHub Actions, or local scripts, always ensure you are using the latest stable packages (e.g. `npx @latest` or specifying exact pinned versions known to be secure). Periodically run `npm audit` on Node.js projects to prevent vulnerabilities and CVEs from being introduced into the cluster.

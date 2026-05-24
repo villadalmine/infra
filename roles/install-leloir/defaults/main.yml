@@ -8,7 +8,7 @@ leloir_hostname: "leloir.cluster.home"
 leloir_db_name: leloir
 leloir_db_user: leloir
 leloir_db_password: "{{ lookup('password', role_path + '/defaults/.leloir_db_password length=32 chars=ascii_letters,digits') }}"
-leloir_db_storage_class: "local-path"
+leloir_db_storage_class: "longhorn-nvme"
 leloir_db_storage_size: "5Gi"
 
 # HolmesGPT endpoint (in-cluster)

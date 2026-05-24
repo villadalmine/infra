@@ -1,0 +1,4 @@
+longhorn_namespace: "longhorn-system"
+longhorn_chart_version: "1.11.2"
+
+longhorn_run_benchmark: false

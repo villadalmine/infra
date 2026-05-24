@@ -45,7 +45,7 @@ spec:
     - Egress
     - Ingress
   ingress:
-    # Webhooks (AlertManager, ArgoCD, external via Gateway)
+    # Webhooks (AlertManager, ArgoCD, external via Gateway) + Smee.io Client (openclaw)
     - from:
         - namespaceSelector:
             matchLabels:
@@ -59,6 +59,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: argocd
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openclaw
       ports:
         - port: {{ openclaw_gateway_port }}
           protocol: TCP
@@ -68,6 +71,14 @@ spec:
         - port: 53
           protocol: UDP
         - port: 53
+          protocol: TCP
+    # OpenClaw Gateway (internal communication / CLI)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ openclaw_namespace }}
+      ports:
+        - port: {{ openclaw_gateway_port }}
           protocol: TCP
     # LiteLLM proxy (in-cluster — all LLM traffic)
     - to:

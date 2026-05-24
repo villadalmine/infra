@@ -13,7 +13,7 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |
-| Storage | `smb-nas` / `smb-nas-pg` (default for PVC-backed roles) + `local-path` (K3s built-in) |
+| Storage | `smb-nas` / `smb-nas-pg` (default for PVC-backed roles) + `local-path` (K3s built-in) + `longhorn-nvme` (NVMe replicado en RK1 nodes) |
 
 ## Key commands
 
@@ -143,6 +143,7 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 | Tempo | `grafana-community/tempo` | 1.26.7 | 2.10.1 |
 | Loki | `grafana/loki` | 6.55.0 | 3.x |
 | Alloy | `grafana/alloy` | 1.7.0 | v1.15.0 |
+| Longhorn | `longhorn/longhorn` | 1.11.2 | 1.11.2 — StorageClass `longhorn-nvme`, V1 engine, RK1 nodes |
 | NeuVector | `neuvector/core` | 2.8.12 | 5.5.0 |
 | Docker Registry | `registry:2` | 2 | 2.x |
 | LiteLLM proxy | `ghcr.io/berriai/litellm` | main-latest | in-cluster |
@@ -186,6 +187,7 @@ Read the relevant skill before working on a component.
 | `openclaw` | Personal AI gateway — Telegram bot, LiteLLM routing, RBAC levels, double `message_start` fix |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |
+| `longhorn` | Longhorn NVMe — V1 engine, benchmark, migración de servicios, gotchas TuringPi 2 |
 | `nas-admin` | NAS admin panel — FastAPI+HTMX+Helm, Kaniko build, auth options |
 | `ai-memory` | Guidelines for cross-session AI Memory persistence |
 

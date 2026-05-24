@@ -59,6 +59,17 @@ data:
           "enabled": {{ openclaw_telegram_enabled | lower }},
           "dmPolicy": "{{ openclaw_telegram_dm_policy }}"
         }
+      },
+      "plugins": {
+        "allow": ["openclaw-honcho"],
+        "entries": {
+          "openclaw-honcho": {
+            "enabled": true
+          }
+        },
+        "slots": {
+          "memory": "openclaw-honcho"
+        }
       }
     }
   AGENTS.md: |

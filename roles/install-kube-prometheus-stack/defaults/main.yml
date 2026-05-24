@@ -4,9 +4,8 @@ kube_prometheus_stack_hostname: grafana.cluster.home
 kube_prometheus_stack_admin_password: admin
 # Cluster default is local-path. This role overrides to smb-nas, so the
 # storage backend role must exist before installing/upgrading it.
-kube_prometheus_stack_storage_class: smb-nas
-kube_prometheus_stack_storage_size: "20Gi"
-kube_prometheus_stack_storage_role: "install-cifs-nas"
+kube_prometheus_stack_storage_class: longhorn-nvme
+kube_prometheus_stack_storage_size: "50Gi"
 
 # ─── AlertManager → Telegram notifications ───────────────────────────────────
 # Uses the same bot as OpenClaw (Telegram built-in receiver, AlertManager 0.24+).

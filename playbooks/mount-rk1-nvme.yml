@@ -1,0 +1,126 @@
+---
+- name: Migrate K3s storage to NVMe on RK1 nodes
+  hosts: rk1_nodes
+  become: yes
+  serial: 1
+  vars:
+    nvme_device: "/dev/nvme0n1"
+    nvme_partition: "/dev/nvme0n1p1"
+    k3s_dir: "/var/lib/rancher"
+    temp_mount: "/mnt/nvme-temp"
+
+  tasks:
+    - name: Get node information
+      set_fact:
+        kubernetes_node_name: "{{ inventory_hostname }}"
+
+    - name: Cordon and Drain node
+      delegate_to: localhost
+      become: no
+      command: >
+        kubectl drain {{ kubernetes_node_name }}
+        --ignore-daemonsets
+        --delete-emptydir-data
+        --force
+        --grace-period=30
+        --timeout=300s
+      ignore_errors: yes
+
+    - name: Stop k3s-agent service
+      systemd:
+        name: k3s-agent
+        state: stopped
+
+    - name: Run k3s-killall to unmount all container paths
+      command: /usr/local/bin/k3s-killall.sh
+      ignore_errors: yes
+
+    - name: Check if NVMe is already partitioned
+      stat:
+        path: "{{ nvme_partition }}"
+      register: nvme_part_stat
+
+    - name: Create GPT partition on NVMe
+      community.general.parted:
+        device: "{{ nvme_device }}"
+        number: 1
+        state: present
+        label: gpt
+        fs_type: ext4
+      when: not nvme_part_stat.stat.exists
+
+    - name: Format NVMe partition to ext4
+      filesystem:
+        fstype: ext4
+        dev: "{{ nvme_partition }}"
+        resizefs: yes
+
+    - name: Check if k3s_dir is already mounted to NVMe
+      command: "mountpoint -q {{ k3s_dir }}"
+      register: is_mounted
+      ignore_errors: yes
+      changed_when: false
+
+    - block:
+        - name: Ensure temp mount directory exists
+          file:
+            path: "{{ temp_mount }}"
+            state: directory
+
+        - name: Mount NVMe temporarily
+          mount:
+            path: "{{ temp_mount }}"
+            src: "{{ nvme_partition }}"
+            fstype: ext4
+            state: mounted
+
+        - name: Sync K3s data to NVMe
+          command: "rsync -aHAX --delete {{ k3s_dir }}/ {{ temp_mount }}/"
+          args:
+            removes: "{{ k3s_dir }}/k3s"
+
+        - name: Unmount temporary NVMe
+          mount:
+            path: "{{ temp_mount }}"
+            state: unmounted
+
+        - name: Backup old K3s directory
+          command: "mv {{ k3s_dir }} {{ k3s_dir }}.bak_{{ ansible_date_time.iso8601_basic_short }}"
+          args:
+            removes: "{{ k3s_dir }}/k3s"
+
+        - name: Recreate empty K3s directory
+          file:
+            path: "{{ k3s_dir }}"
+            state: directory
+            mode: '0755'
+
+        - name: Mount NVMe permanently via fstab
+          mount:
+            path: "{{ k3s_dir }}"
+            src: "{{ nvme_partition }}"
+            fstype: ext4
+            opts: defaults,noatime
+            state: mounted
+
+      when: is_mounted.rc != 0
+
+    - name: Start k3s-agent service
+      systemd:
+        name: k3s-agent
+        state: started
+        enabled: yes
+
+    - name: Uncordon node
+      delegate_to: localhost
+      become: no
+      command: "kubectl uncordon {{ kubernetes_node_name }}"
+
+    - name: Wait for node to be Ready
+      delegate_to: localhost
+      become: no
+      command: "kubectl get node {{ kubernetes_node_name }} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'"
+      register: node_status
+      until: node_status.stdout == "True"
+      retries: 20
+      delay: 10

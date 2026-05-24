@@ -123,8 +123,28 @@ spec:
           image: {{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}
           imagePullPolicy: IfNotPresent
           workingDir: /opt/data
-          command: ["hermes", "gateway", "run"]
-          args: ["--replace"]
+          command: ["python3", "-c"]
+          args:
+            - |
+              import sys
+              import asyncio
+              sys.path.append('/opt/hermes')
+              from mcp_serve import create_mcp_server, EventBridge
+
+              bridge = EventBridge()
+              bridge.start()
+              server = create_mcp_server(event_bridge=bridge)
+              server.settings.host = '0.0.0.0'
+              server.settings.port = 8000
+              server.settings.transport_security.enable_dns_rebinding_protection = False
+
+              async def main():
+                  try:
+                      await server.run_streamable_http_async()
+                  finally:
+                      bridge.stop()
+
+              asyncio.run(main())
           ports:
             - name: mcp
               containerPort: 8000

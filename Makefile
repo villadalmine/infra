@@ -12,7 +12,7 @@ SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 ARGO_NS      ?= kaniko
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-registry ai-hermes-build ai-hermes-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all longhorn longhorn-bench
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -120,6 +120,12 @@ services: ## Install ingress + services (ArgoCD, Argo Workflows, helm-dashboard,
 
 argo-workflows: ## Install Argo Workflows + expose UI at argo.cluster.home (idempotent)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags argo-workflows
+
+longhorn: ## Prepare NVMe mounts on RK1 nodes + deploy Longhorn (StorageClass: longhorn-nvme)
+	$(ANSIBLE) -i $(INVENTORY) playbooks/storage-longhorn.yml
+
+longhorn-bench: ## Run fio benchmark on a Longhorn NVMe PVC (deploys pod, prints results, cleans up)
+	$(ANSIBLE) -i $(INVENTORY) playbooks/storage-longhorn.yml -e longhorn_run_benchmark=true
 
 observability: ## Install networking + observability (Prometheus, Grafana, Tempo, Loki, Alloy)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags observability

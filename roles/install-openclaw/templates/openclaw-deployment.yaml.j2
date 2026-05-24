@@ -44,6 +44,23 @@ spec:
       # Copy operator/ConfigMap config into the writable PVC so the gateway finds
       # a complete openclaw.json (some existing PVs contain a stale partial file).
       initContainers:
+        - name: init-plugins
+          image: {{ openclaw_image }}:{{ openclaw_version }}
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+            - |
+              if [ -d /home/node/.openclaw/npm ]; then
+                echo "Copying plugins from image to emptyDir..."
+                # we copy contents because we are mounting the emptyDir directly over npm
+                cp -a /home/node/.openclaw/npm/. /mnt/npm-local/ || true
+                chown -R 1000:1000 /mnt/npm-local || true
+                chmod -R go-w /mnt/npm-local || true
+              fi
+          volumeMounts:
+            - name: npm-local
+              mountPath: /mnt/npm-local
         - name: init-config
           image: busybox:1.36
           imagePullPolicy: IfNotPresent
@@ -71,12 +88,23 @@ spec:
           image: {{ openclaw_image }}:{{ openclaw_version }}
           imagePullPolicy: Always
           command:
-            - node
-            - dist/index.js
-            - gateway
-            - --port
-            - "{{ openclaw_gateway_port }}"
+            - sh
+            - -c
+            - |
+              # Secure the agents directory (emptyDir mount)
+              chmod 700 /home/node/.openclaw/agents/main/agent || true
+              # Create symlinks for plugin-skills (required for internal discovery)
+              PLUGIN_DIR="/home/node/.openclaw/plugin-skills"
+              mkdir -p $PLUGIN_DIR
+              for p in /opt/openclaw/plugins/*; do
+                [ -e "$p" ] || continue
+                base=$(basename $p)
+                ln -sfn $p $PLUGIN_DIR/$base || true
+              done
+              exec node dist/index.js gateway --port "{{ openclaw_gateway_port }}"
           env:
+            - name: NODE_OPTIONS
+              value: "--dns-result-order=ipv4first"
             - name: HOME
               value: /home/node
             - name: OPENCLAW_CONFIG_DIR
@@ -155,6 +183,10 @@ spec:
           volumeMounts:
             - name: openclaw-data
               mountPath: /home/node/.openclaw
+            - name: npm-local
+              mountPath: /home/node/.openclaw/npm
+            - name: openclaw-secure-agent
+              mountPath: /home/node/.openclaw/agents/main
             - name: openclaw-config-json
               mountPath: /etc/openclaw/openclaw.json
               subPath: openclaw.json
@@ -216,10 +248,115 @@ spec:
             limits:
               cpu: 200m
               memory: 256Mi
+        # ── Smee Webhook Relay ────────────────────────────────────────────────
+        # Listens on smee.io SSE stream, formats build notifications,
+        # and forwards them natively using the openclaw CLI message send command.
+        - name: smee-client
+          image: {{ openclaw_image }}:{{ openclaw_version }}
+          imagePullPolicy: Always
+          command: ["sh", "-c"]
+          args:
+            - |
+              cat << 'EOF' > /tmp/adapter.js
+              const http = require('http');
+              const { execFile } = require('child_process');
+
+              const server = http.createServer((req, res) => {
+                let body = '';
+                req.on('data', chunk => { body += chunk; });
+                req.on('end', () => {
+                  try {
+                    const data = JSON.parse(body);
+                    console.log('Received Smee webhook:', data);
+                    
+                    let msg = '';
+                    if (data.event === 'github_action') {
+                      const statusIcon = data.status === 'success' ? '✅' : '❌';
+                      msg = `📢 *GitHub Action Build*\n• *Repositorio:* ${data.repo}\n• *Workflow:* ${data.workflow}\n• *Estado:* ${data.status} ${statusIcon}`;
+                    } else {
+                      msg = `📢 *Smee Webhook Recibido*\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\`;`;
+                    }
+                    
+                    const args = [
+                      '/app/openclaw.mjs',
+                      'message',
+                      'send',
+                      '--channel', 'telegram',
+                      '--target', process.env.TELEGRAM_TARGET,
+                      '--message', msg,
+                      '--url', 'ws://127.0.0.1:18789',
+                      '--token', process.env.OPENCLAW_GATEWAY_TOKEN
+                    ];
+                    console.log('Executing execFile node with args:', args);
+                    
+                    execFile('node', args, { env: { ...process.env, HOME: '/home/node' } }, (err, stdout, stderr) => {
+                      if (err) {
+                        console.error('Failed to send message via CLI:', err, stderr);
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Failed');
+                      } else {
+                        console.log('CLI output:', stdout);
+                        res.writeHead(200, { 'Content-Type': 'text/plain' });
+                        res.end('OK');
+                      }
+                    });
+                  } catch (e) {
+                    console.error('Error processing body:', e);
+                    res.writeHead(400, { 'Content-Type': 'text/plain' });
+                    res.end('Bad Request');
+                  }
+                });
+              });
+
+              server.listen(18000, '0.0.0.0', () => {
+                console.log('Smee adapter listening on port 18000...');
+              });
+              EOF
+
+              node /tmp/adapter.js &
+              npx -y smee-client --url "{{ openclaw_smee_url }}" --target http://127.0.0.1:18000
+          env:
+            - name: TELEGRAM_TARGET
+              value: "{{ openclaw_telegram_allowed_users.split(',')[0] }}"
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENCLAW_GATEWAY_TOKEN
+            - name: OPENCLAW_CONFIG_DIR
+              value: /etc/openclaw
+            - name: HOME
+              value: /home/node
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "512Mi"
+            requests:
+              cpu: "50m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: openclaw-data
+              mountPath: /home/node/.openclaw
+            - name: npm-local
+              mountPath: /home/node/.openclaw/npm
+            - name: openclaw-config-json
+              mountPath: /etc/openclaw/openclaw.json
+              subPath: openclaw.json
+
       volumes:
         - name: openclaw-data
           persistentVolumeClaim:
             claimName: openclaw-data
+        - name: npm-local
+          emptyDir: {}
+        - name: openclaw-secure-agent
+          emptyDir: {}
         - name: openclaw-config-json
           configMap:
             name: openclaw-config

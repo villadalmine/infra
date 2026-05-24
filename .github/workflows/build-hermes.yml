@@ -61,3 +61,10 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/hermes-agent:${{ github.event.inputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Send Webhook to OpenClaw via Smee.io
+        if: always()
+        run: |
+          curl -X POST https://smee.io/NibMMS9tqGdtxzN1 \
+          -H "Authorization: Bearer ${{ secrets.OPENCLAW_GATEWAY_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{"event": "github_action", "repo": "${{ github.repository }}", "workflow": "${{ github.workflow }}", "status": "${{ job.status }}"}'

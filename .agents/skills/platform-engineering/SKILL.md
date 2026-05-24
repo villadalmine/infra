@@ -27,6 +27,11 @@ You are an expert platform engineer. When helping with infrastructure tasks:
 - Use `helm diff upgrade` (helm-diff plugin) before upgrading releases
 - Pin chart versions explicitly in helmfile entries
 - Keep `values.yaml` minimal — only override what differs from defaults
+- **CRITICAL**: Always deploy the latest chart versions (check ArtifactHub or mainstream sources) to avoid CVEs and ensure stability. Never deploy old versions without validation.
+
+## NodeJS / npm
+- **CRITICAL**: Always verify that the latest packages are used when working with npm to avoid CVEs. Security must always be checked and highlighted.
+
 
 ## ArgoCD
 - Prefer ApplicationSet over multiple Application resources

@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: longhorn-nvme-bench-pvc
+  namespace: default
+spec:
+  storageClassName: longhorn-nvme
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: longhorn-nvme-bench
+  namespace: default
+spec:
+  nodeSelector:
+    storage: rk1-longhorn
+  tolerations:
+    - operator: Exists
+  restartPolicy: Never
+  containers:
+    - name: fio
+      image: alpine:latest
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          apk add --no-cache fio python3 >/dev/null 2>&1
+          echo "=== Longhorn NVMe Benchmark ==="
+          echo "(qd=1: DB latency | qd=16: mixed workload | seq: throughput)"
+          echo ""
+          echo "--- 4K Random Read  (qd=1, DB latency) ---"
+          fio --name=randread-qd1 --ioengine=libaio --rw=randread --bs=4k \
+              --numjobs=1 --iodepth=1 --size=2G --runtime=30 --time_based \
+              --filename=/data/testfile --direct=1 \
+              --output-format=json | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          j=d['jobs'][0]
+          print(f'  IOPS={j[\"read\"][\"iops\"]:.0f}  BW={j[\"read\"][\"bw_bytes\"]/1024/1024:.1f} MiB/s  Lat={j[\"read\"][\"lat_ns\"][\"mean\"]/1000:.0f}us')
+          "
+          echo "--- 4K Random Write (qd=1, DB latency) ---"
+          fio --name=randwrite-qd1 --ioengine=libaio --rw=randwrite --bs=4k \
+              --numjobs=1 --iodepth=1 --size=2G --runtime=30 --time_based \
+              --filename=/data/testfile --direct=1 \
+              --output-format=json | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          j=d['jobs'][0]
+          print(f'  IOPS={j[\"write\"][\"iops\"]:.0f}  BW={j[\"write\"][\"bw_bytes\"]/1024/1024:.1f} MiB/s  Lat={j[\"write\"][\"lat_ns\"][\"mean\"]/1000:.0f}us')
+          "
+          echo "--- 4K Random Read  (qd=16, mixed workload) ---"
+          fio --name=randread-qd16 --ioengine=libaio --rw=randread --bs=4k \
+              --numjobs=1 --iodepth=16 --size=2G --runtime=30 --time_based \
+              --filename=/data/testfile --direct=1 \
+              --output-format=json | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          j=d['jobs'][0]
+          print(f'  IOPS={j[\"read\"][\"iops\"]:.0f}  BW={j[\"read\"][\"bw_bytes\"]/1024/1024:.1f} MiB/s  Lat={j[\"read\"][\"lat_ns\"][\"mean\"]/1000:.0f}us')
+          "
+          echo "--- Sequential 128K Read (throughput) ---"
+          fio --name=seqread --ioengine=libaio --rw=read --bs=128k \
+              --numjobs=1 --iodepth=8 --size=2G --runtime=30 --time_based \
+              --filename=/data/testfile --direct=1 \
+              --output-format=json | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          j=d['jobs'][0]
+          print(f'  BW={j[\"read\"][\"bw_bytes\"]/1024/1024:.1f} MiB/s')
+          "
+          echo ""
+          echo "=== Benchmark Complete ==="
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: longhorn-nvme-bench-pvc

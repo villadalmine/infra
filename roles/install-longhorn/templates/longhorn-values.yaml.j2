@@ -1,0 +1,25 @@
+global:
+  nodeSelector:
+    storage: rk1-longhorn
+  tolerations:
+    - operator: Exists
+
+enableV2DataEngine: false
+
+persistence:
+  defaultClassReplicaCount: 3
+  defaultDataLocality: disabled
+  reclaimPolicy: Delete
+  migratable: false
+
+defaultSettings:
+  backupTarget: ""
+
+longhornUI:
+  replicas: 1
+
+ingress:
+  enabled: false
+
+csi:
+  kubeletRootDir: /var/lib/kubelet

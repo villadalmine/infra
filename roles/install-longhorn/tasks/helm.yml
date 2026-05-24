@@ -1,0 +1,139 @@
+---
+- name: Label RK1 nodes for Longhorn
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Node
+      metadata:
+        name: "{{ item }}"
+        labels:
+          storage: rk1-longhorn
+          node.longhorn.io/create-default-disk: "config"
+        annotations:
+          node.longhorn.io/default-disks-config: '[{"name":"nvme-fs","path":"/mnt/nvme","allowScheduling":true,"tags":["nvme"],"diskType":"filesystem"}]'
+  loop: "{{ groups['rk1_nodes'] | default([]) }}"
+
+- name: Wait for Longhorn to register nodes after Helm install
+  kubernetes.core.k8s_info:
+    api_version: longhorn.io/v1beta2
+    kind: Node
+    namespace: "{{ longhorn_namespace }}"
+    name: "{{ item }}"
+  register: lh_node_check
+  until: lh_node_check.resources | length > 0
+  retries: 20
+  delay: 10
+  loop: "{{ groups['rk1_nodes'] | default([]) }}"
+
+- name: Ensure nvme-fs disk is registered on each Longhorn node
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: longhorn.io/v1beta2
+      kind: Node
+      metadata:
+        name: "{{ item }}"
+        namespace: "{{ longhorn_namespace }}"
+      spec:
+        disks:
+          nvme-fs:
+            allowScheduling: true
+            diskDriver: ""
+            diskType: filesystem
+            evictionRequested: false
+            path: /mnt/nvme
+            storageReserved: 0
+            tags:
+              - nvme
+  loop: "{{ groups['rk1_nodes'] | default([]) }}"
+
+- name: Add Longhorn Helm repository
+  kubernetes.core.helm_repository:
+    name: longhorn
+    repo_url: "https://charts.longhorn.io"
+
+- name: Render Longhorn values
+  template:
+    src: longhorn-values.yaml.j2
+    dest: /tmp/longhorn-values.yaml
+
+- name: Install or upgrade Longhorn
+  kubernetes.core.helm:
+    name: longhorn
+    chart_ref: longhorn/longhorn
+    release_namespace: "{{ longhorn_namespace }}"
+    values_files:
+      - /tmp/longhorn-values.yaml
+    chart_version: "{{ longhorn_chart_version }}"
+    wait: true
+    timeout: 600s
+
+- name: Remove old longhorn-v2 StorageClass if it exists
+  kubernetes.core.k8s:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+    name: longhorn-v2
+    state: absent
+
+- name: Ensure V2 data engine is disabled (Helm upgrades do not overwrite Settings)
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: longhorn.io/v1beta2
+      kind: Setting
+      metadata:
+        name: v2-data-engine
+        namespace: "{{ longhorn_namespace }}"
+      value: "false"
+
+- name: Render Longhorn StorageClass
+  template:
+    src: storageclass-v2.yaml.j2
+    dest: /tmp/longhorn-storageclass.yaml
+
+- name: Apply Longhorn StorageClass
+  kubernetes.core.k8s:
+    state: present
+    src: /tmp/longhorn-storageclass.yaml
+
+- name: Render fio benchmark pod
+  template:
+    src: fio-benchmark.yaml.j2
+    dest: /tmp/longhorn-benchmark.yaml
+  when: longhorn_run_benchmark | bool
+
+- name: Apply fio benchmark pod and PVC
+  kubernetes.core.k8s:
+    state: present
+    src: /tmp/longhorn-benchmark.yaml
+  when: longhorn_run_benchmark | bool
+
+- name: Wait for benchmark pod to complete
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    name: longhorn-nvme-bench
+    namespace: default
+  register: bench_pod
+  until: bench_pod.resources[0].status.phase in ['Succeeded', 'Failed']
+  retries: 40
+  delay: 15
+  when: longhorn_run_benchmark | bool
+
+- name: Print benchmark results
+  ansible.builtin.command: kubectl logs -n default longhorn-nvme-bench
+  register: bench_logs
+  changed_when: false
+  when: longhorn_run_benchmark | bool
+
+- name: Show benchmark output
+  ansible.builtin.debug:
+    msg: "{{ bench_logs.stdout_lines }}"
+  when: longhorn_run_benchmark | bool
+
+- name: Delete benchmark pod and PVC
+  kubernetes.core.k8s:
+    state: absent
+    src: /tmp/longhorn-benchmark.yaml
+  when: longhorn_run_benchmark | bool

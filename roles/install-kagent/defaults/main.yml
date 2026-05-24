@@ -11,11 +11,8 @@ kagent_llm_base_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
 kagent_llm_api_key: "sk-hermes-internal"
 
 # Storage for bundled PostgreSQL
-# Changed to local-path to avoid extreme I/O latency from SMB NAS which causes CrashLoopBackOff
-# and schema corruption during initialization.
-kagent_db_storage_class: local-path
+kagent_db_storage_class: longhorn-nvme
 kagent_db_storage_size: 5Gi
-kagent_storage_role: "install-cifs-nas"
 
 # Namespaces to create with tenant RBAC (kagent writer + getter RoleBindings)
 kagent_tenant_namespaces:
