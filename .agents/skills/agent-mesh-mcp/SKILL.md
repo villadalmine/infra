@@ -78,6 +78,10 @@ Tienes disponibles tres niveles de modelos de IA en LiteLLM:
 3. `claude-sonnet` (Premium/OpenRouter): Claude 3.5 Sonnet. Úsalo únicamente para refactorizaciones complejas de red o debugging arquitectónico de alto nivel si hay presupuesto suficiente en Prometheus.
 ```
 
+### Inercia de Memoria Conversacional (Nota de Depuración para Agentes)
+Al interactuar en una homelab multi-agente, ten en cuenta que otros agentes conversacionales (como OpenClaw/Tito) pueden experimentar **inercia en su memoria conversacional** tras un despliegue en caliente y seguir informando que el recurso está pendiente debido a su contexto histórico del chat.
+* **Acción sugerida**: Solicita explícitamente al agente que vuelva a evaluar e invoque de nuevo la consulta en Prometheus. Las queries directas de PromQL como `sum(litellm_spend_metric_total)` devolverán los datos en caliente inmediatamente tras su aprovisionamiento (ej. devolviendo un spend real de `$1.32 USD`), demostrando que el scraping del ServiceMonitor ya está activo a pesar del reporte histórico.
+
 ---
 
 ## 3. Despliegues Desacoplados y Granulares (Ansible / Makefile)
