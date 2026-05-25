@@ -164,6 +164,11 @@ impacto) y luego la integración Radar como segunda fase.
 - [x] LiteLLM confirmado recibiendo requests desde browser (CORS ok)
 - [x] Guía completa en `docs/headlamp-setup.md`
 
+### Plataforma Hermes Agent & Almacenamiento — FUNCIONANDO (Mayo 2026)
+- [x] **Bot de Telegram Restablecido**: Implementamos un punto de entrada híbrido asíncrono (`asyncio.gather`) para correr concurrentemente el servidor MCP y los adaptadores de mensajería (bot de Telegram) en el mismo proceso de Hermes.
+- [x] **Persistencia de Estado Real**: Migramos `hermes-home` de un `emptyDir` volátil a un **`PersistentVolumeClaim`** dinámico respaldado por **`longhorn-nvme`** (10Gi), asegurando la persistencia de perfiles y memoria de SQLite sin riesgos de bloqueos de red (ex-SMB1).
+- [x] **Independencia en OpenClaw**: Migramos también OpenClaw a la clase `longhorn-nvme` para mayor velocidad de base de datos e inmunidad ante caídas del NAS externo.
+
 ### OpenClaw & Hermes Storage & Webhook Integration — FUNCIONANDO (2026-05-25)
 - [x] **Honcho Memory Auth:** Reparada la autenticación de Honcho para OpenClaw (reemplazo de API key obsoleta).
 - [x] **Asignación RK1 & Límites:** Recursos elevados a 1Gi/4Gi y anclado estricto de OpenClaw al nodo `srv-rk1-nvme-02` (32GB RAM).
