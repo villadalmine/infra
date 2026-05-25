@@ -150,6 +150,33 @@ spec:
               server.settings.port = 8000
               server.settings.transport_security.enable_dns_rebinding_protection = False
 
+              @server.tool(name="ask_hermes_agent", description="Pregunta conversacional de cerebro a cerebro a Hermes Agent. Permite hablar directamente con el bucle de razonamiento autónomo de Hermes y sus herramientas locales (kagent, kubernetes read-only, etc.).")
+              def ask_hermes_agent(question: str) -> str:
+                  """Pregunta conversacional a Hermes Agent.
+
+                  Args:
+                      question: Consulta o instrucción detallada para Hermes.
+                  """
+                  import os
+                  from run_agent import AIAgent
+
+                  agent = AIAgent(
+                      model=os.environ.get("HERMES_MODEL", "hermes-qwen"),
+                      base_url=os.environ.get("OPENAI_API_BASE"),
+                      api_key=os.environ.get("OPENAI_API_KEY"),
+                      max_iterations=90,
+                      quiet_mode=True,
+                      verbose_logging=False
+                  )
+                  try:
+                      res = agent.run_conversation(user_message=question)
+                      response = res.get("final_response", "") if res else ""
+                      if not response and res and res.get("error"):
+                          response = f"Error: {res['error']}"
+                      return response
+                  except Exception as e:
+                      return f"Error executing Hermes conversation: {e}"
+
               async def run_gateway():
                   try:
                       from gateway.run import start_gateway
