@@ -198,8 +198,14 @@ ai-hermes-build-remote: build-remote-hermes
 ai-kubernetes-mcp-build: ## Build Kubernetes MCP server ARM64 image with kaniko
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-kubernetes-mcp-build
 
-ai-hermes-deploy: ## Deploy Hermes Agent (requires ai-hermes-build to complete first)
+ai-hermes-deploy: ## Deploy Hermes Agent + LiteLLM proxy
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-deploy
+
+ai-litellm-proxy-deploy: ## Deploy/Upgrade LiteLLM proxy only (no Hermes Agent restart)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-litellm-proxy
+
+ai-hermes-agent-deploy: ## Deploy/Upgrade Hermes Agent pod only (no LiteLLM restart)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-agent
 
 ai-holmes: ## Deploy HolmesGPT + Holmes UI (OpenAI-compatible backend via LiteLLM)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-holmes

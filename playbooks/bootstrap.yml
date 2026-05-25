@@ -75,13 +75,13 @@
     - role: install-gateway
       tags: [ingress]
     - role: install-pihole
-      tags: [dns-metrics]
+      tags: [dns-metrics, pihole]
     - role: install-argo-workflows
       tags: [services, argo-workflows]
     - role: install-argocd
-      tags: [services]
+      tags: [services, argocd]
     - role: install-helm-dashboard
-      tags: [services]
+      tags: [services, helm-dashboard]
     - role: install-kube-prometheus-stack
       tags: [observability]
     - role: install-tempo
@@ -136,7 +136,7 @@
     - role: install-kubernetes-mcp-server-image
       tags: [ai, ai-kubernetes-mcp-build]
     - role: install-litellm-proxy
-      tags: [ai, ai-hermes-deploy]
+      tags: [ai, ai-hermes-deploy, ai-litellm-proxy]
     - role: install-hermes-agent
       tags: [ai, ai-hermes-deploy, ai-hermes-agent]
     - role: install-holmes
