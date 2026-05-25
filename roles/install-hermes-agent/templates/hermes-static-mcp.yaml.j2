@@ -138,9 +138,20 @@ spec:
               server.settings.port = 8000
               server.settings.transport_security.enable_dns_rebinding_protection = False
 
+              async def run_gateway():
+                  try:
+                      from gateway.run import start_gateway
+                      await start_gateway()
+                  except Exception as e:
+                      import logging
+                      logging.getLogger("hermes.gateway").error("Gateway failed: %s", e)
+
               async def main():
                   try:
-                      await server.run_streamable_http_async()
+                      await asyncio.gather(
+                          server.run_streamable_http_async(),
+                          run_gateway()
+                      )
                   finally:
                       bridge.stop()
 
