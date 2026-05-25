@@ -19,9 +19,9 @@ hermes_memory_request: "128Mi"
 hermes_node_hostname: "srv-rk1-nvme-01"
 
 # Storage for ~/.hermes
-hermes_storage_size: "100Gi"
-hermes_storage_class: "smb-nas"
-hermes_storage_role: "install-cifs-nas"
+hermes_storage_size: "10Gi"
+hermes_storage_class: "longhorn-nvme"
+hermes_storage_role: ""
 
 # Platform integrations
 # Telegram disabled: OpenClaw uses the same bot token → conflict if both run.

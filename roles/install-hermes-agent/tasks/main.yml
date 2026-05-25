@@ -24,7 +24,8 @@
 - name: Ensure custom Storage backend is installed before deploying Hermes Agent
   ansible.builtin.include_role:
     name: "{{ hermes_storage_role }}"
-  when: hermes_storage_class != 'local-path' and hermes_storage_role is defined
+  when: hermes_storage_class != 'local-path' and hermes_storage_role is defined and hermes_storage_role != ''
+
 
 - name: Apply Hermes gateway ConfigMap
   kubernetes.core.k8s:

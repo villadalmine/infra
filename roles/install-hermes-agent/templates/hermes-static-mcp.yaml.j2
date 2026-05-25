@@ -264,7 +264,8 @@ spec:
         - name: hermes-data
           emptyDir: {}
         - name: hermes-home
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: hermes-home-pvc
         - name: tmp
           emptyDir:
             sizeLimit: 128Mi
@@ -287,3 +288,16 @@ spec:
   endpoints:
     - port: mcp
       path: /metrics
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-home-pvc
+  namespace: {{ hermes_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ hermes_storage_class }}
+  resources:
+    requests:
+      storage: {{ hermes_storage_size }}

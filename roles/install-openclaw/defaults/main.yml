@@ -28,8 +28,9 @@ openclaw_smee_url: "https://smee.io/NibMMS9tqGdtxzN1"
 # smb-nas StorageClass (default). Override to local-path for no-NAS testing.
 # The storage backend role is auto-installed first (idempotent include_role).
 openclaw_storage_size: "10Gi"
-openclaw_storage_class: "smb-nas"
-openclaw_storage_role: "install-cifs-nas"
+openclaw_storage_class: "longhorn-nvme"
+openclaw_storage_role: ""
+
 
 # ─── LiteLLM backend (shared in-cluster proxy) ───────────────────────────────
 # Uses the shared LiteLLM proxy already in namespace 'ai'.
