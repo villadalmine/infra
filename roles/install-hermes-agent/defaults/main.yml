@@ -9,11 +9,10 @@ hermes_inference_provider: "openai"
 hermes_openai_api_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
 hermes_openai_api_key: "sk-hermes-internal"
 
-# Resource limits (CM4-friendly)
-hermes_cpu_limit: "500m"
-hermes_cpu_request: "100m"
-hermes_memory_limit: "512Mi"
-hermes_memory_request: "128Mi"
+hermes_cpu_limit: "4000m"
+hermes_cpu_request: "1000m"
+hermes_memory_limit: "8Gi"
+hermes_memory_request: "2Gi"
 
 # Schedule Hermes on the high-resource node.
 hermes_node_hostname: "srv-rk1-nvme-01"

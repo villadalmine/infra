@@ -199,6 +199,13 @@ spec:
             - name: mcp
               containerPort: 8000
               protocol: TCP
+          resources:
+            requests:
+              cpu: {{ hermes_cpu_request }}
+              memory: {{ hermes_memory_request }}
+            limits:
+              cpu: {{ hermes_cpu_limit }}
+              memory: {{ hermes_memory_limit }}
           env:
             - name: HOME
               value: /opt/data

@@ -86,6 +86,7 @@
           cpu: "{{ holmes_cpu_request }}"
           memory: "{{ holmes_memory_request }}"
         limits:
+          cpu: "{{ holmes_cpu_limit }}"
           memory: "{{ holmes_memory_limit }}"
 
 - name: Create AG-UI combined server ConfigMap

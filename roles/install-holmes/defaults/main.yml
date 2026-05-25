@@ -15,8 +15,9 @@ holmes_additional_env:
   - name: HOLMES_CONFIGPATH_DIR
     value: "/tmp/.holmes"
 
-holmes_cpu_request: "100m"
-holmes_memory_request: "512Mi"
-holmes_memory_limit: "3Gi"
+holmes_cpu_limit: "4000m"
+holmes_cpu_request: "1000m"
+holmes_memory_limit: "8Gi"
+holmes_memory_request: "2Gi"
 
 holmes_node_hostname: "srv-rk1-nvme-01"

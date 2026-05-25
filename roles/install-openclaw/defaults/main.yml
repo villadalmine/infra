@@ -16,10 +16,10 @@ openclaw_honcho_workspace: "openclaw"
 # ─── Resource limits ──────────────────────────────────────────────────────────
 # Schedule on RK1 (32 GB RAM). See AGENTS.md for node table.
 openclaw_node_hostname: "srv-rk1-nvme-02"
-openclaw_cpu_request: "200m"
-openclaw_cpu_limit: "2000m"
-openclaw_memory_request: "1Gi"
-openclaw_memory_limit: "4Gi"
+openclaw_cpu_request: "500m"
+openclaw_cpu_limit: "3000m"
+openclaw_memory_request: "2Gi"
+openclaw_memory_limit: "6Gi"
 
 # Smee.io Webhook Relay URL
 openclaw_smee_url: "https://smee.io/NibMMS9tqGdtxzN1"
