@@ -2,16 +2,16 @@ cifs_nas_ip: "192.168.178.102"         # NAS LG N2R1 IP (tested)
 cifs_nas_mac: "00:e0:91:80:fb:f0"      # MAC para Wake-on-LAN
 cifs_nas_share: "service"           # share raíz en el NAS (subcarpeta Torrent existe dentro)
 cifs_nas_user: "admin"
-cifs_nas_pass: "changeme"
+cifs_nas_pass: "changeme"            # real value in defaults/secrets.yml (gitignored)
 cifs_pv_size: "5Gi"
 cifs_pv_name: "smb-nas-pv"
 cifs_pvc_name: "smb-nas-pvc"
-cifs_enable_static: true
+cifs_enable_static: false            # set true to create static PV/PVC + write test
 cifs_storage_class_name: "smb-nas"
 cifs_storage_class_source: "//192.168.178.102/service/Torrent"
 cifs_dynamic_pvc_name: "smb-nas-dynamic-pvc"
 cifs_dynamic_pod_name: "smb-dynamic-test-pod"
-cifs_enable_dynamic_test: true
+cifs_enable_dynamic_test: false      # set true to create StorageClass + dynamic PVC test pod
 cifs_namespace: "default"
 cifs_uid: 1000
 cifs_gid: 1000

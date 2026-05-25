@@ -95,8 +95,6 @@
       tags: [storage]
 
     # AI stack (ARM64 build required)
-    - role: install-cifs-nas
-      tags: [ai, ai-registry]
     - role: install-registry
       tags: [ai, ai-registry]
     - role: install-hermes-agent-image
@@ -137,6 +135,8 @@
       tags: [ai, ai-kubernetes-mcp-build]
     - role: install-litellm-proxy
       tags: [ai, ai-hermes-deploy, ai-litellm-proxy]
+    - role: install-honcho
+      tags: [ai, ai-honcho]
     - role: install-hermes-agent
       tags: [ai, ai-hermes-deploy, ai-hermes-agent]
     - role: install-holmes
