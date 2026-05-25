@@ -65,6 +65,8 @@
     kind: Job
     name: build-nas-admin
     namespace: "{{ nas_admin_build_namespace }}"
+    delete_options:
+      propagationPolicy: Background
 
 - name: Create Kaniko Job — build nas-admin ARM64 image
   kubernetes.core.k8s:
@@ -76,6 +78,7 @@
         name: build-nas-admin
         namespace: "{{ nas_admin_build_namespace }}"
       spec:
+        ttlSecondsAfterFinished: 300
         template:
           spec:
             initContainers:
