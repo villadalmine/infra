@@ -1,0 +1,47 @@
+# defaults/main.yml for install-rknpu-pool
+rknpu_namespace: "ai"
+
+# rkllama server image (Ollama-compatible API for RK3588 NPU)
+rknpu_image_name: "ghcr.io/notpunchnox/rkllama"
+rknpu_image_tag: "main"
+rknpu_port: 8080
+
+# NPU device: kernel 6.1 vendor exposes RKNPU via DRI (renderD129), not /dev/rknpu0
+# librkllmrt.so auto-detects renderD129 (DRIVER=RKNPU) via fallback scan of /dev/dri/
+rknpu_dri_path: "/dev/dri"
+
+# Model to auto-download on first boot via InitContainer
+# Format: <hf_owner>/<hf_repo>/<filename.rkllm>
+# Llama-3.1-8B w8a8 = 8.63 GB on disk, ~12-13 GB in NPU RAM — fits on 32 GB RK1
+rknpu_model_hf_repo: "jamescallander/Llama-3.1-8B-Instruct_w8a8_g128_rk3588.rkllm"
+rknpu_model_hf_file: "Llama-3.1-8B-Instruct_w8a8_g128_rk3588.rkllm"
+# Local name inside /opt/rkllama/models/ (rkllama uses the filename as model ID)
+rknpu_model_name: "llama-3.1-8b-instruct"
+
+# PVC size per node: 8.63 GB model + KV prompt cache on disk + headroom
+rknpu_pvc_size: "30Gi"
+
+# rkllama server config (env vars: RKLLAMA_<SECTION>_<KEY>)
+# num_ctx: KV cache size in tokens. 8192 = ~2x default, uses more NPU RAM but handles longer convos
+# RK3588S has 32 GB LPDDR4X shared between CPU+NPU — safe up to ~20 GB total pod usage
+rknpu_num_ctx: "8192"
+rknpu_max_new_tokens: "4096"
+
+# Pod resource limits — allow the pod to use up to 20 GB RAM
+# NPU inference itself lives in NPU SRAM + LPDDR4X, counted against the node total
+# requests low so Kubernetes schedules it; limit high to not OOM during inference
+rknpu_memory_request: "2Gi"
+rknpu_memory_limit: "20Gi"
+rknpu_cpu_request: "2000m"
+rknpu_cpu_limit: "8000m"
+
+# List of TuringPi 2 RK1 physical hosts in the cluster
+rknpu_nodes:
+  - name: "rk1-npu-01"
+    host: "srv-rk1-nvme-01"
+  - name: "rk1-npu-02"
+    host: "srv-rk1-nvme-02"
+  - name: "rk1-npu-03"
+    host: "srv-rk1-nvme-03"
+  - name: "rk1-npu-04"
+    host: "srv-rk1-nvme-04"

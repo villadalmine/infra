@@ -1,0 +1,152 @@
+{% for node in rknpu_nodes %}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ node.name }}-pvc
+  namespace: {{ rknpu_namespace }}
+  labels:
+    app: {{ node.name }}
+    app.kubernetes.io/component: npu-model-storage
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: "longhorn-nvme"
+  resources:
+    requests:
+      storage: {{ rknpu_pvc_size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ node.name }}
+  namespace: {{ rknpu_namespace }}
+  labels:
+    app: {{ node.name }}
+    app.kubernetes.io/component: npu-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ node.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ node.name }}
+    spec:
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/hostname: {{ node.host }}
+      # rkllama config via env vars (override default.ini values)
+      # num_ctx controls KV cache size in tokens (more = more RAM usage by NPU)
+      # max_new_tokens controls max output length
+      # Download model on first boot — idempotent: skips if .rkllm already exists
+      initContainers:
+        - name: model-downloader
+          image: "{{ rknpu_image_name }}:{{ rknpu_image_tag }}"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              MODEL_DIR="/opt/rkllama/models/{{ rknpu_model_name }}"
+              MODEL_FILE="${MODEL_DIR}/{{ rknpu_model_hf_file }}"
+              if [ -f "${MODEL_FILE}" ]; then
+                echo "Model already present at ${MODEL_FILE}, skipping download."
+                exit 0
+              fi
+              echo "Downloading {{ rknpu_model_hf_file }} from {{ rknpu_model_hf_repo }}..."
+              mkdir -p "${MODEL_DIR}"
+              /opt/venv/bin/python3 -c "
+              from huggingface_hub import hf_hub_url
+              import requests, os, sys
+              repo = '{{ rknpu_model_hf_repo }}'
+              filename = '{{ rknpu_model_hf_file }}'
+              dest = '${MODEL_FILE}'
+              url = hf_hub_url(repo_id=repo, filename=filename)
+              print(f'URL: {url}', flush=True)
+              with requests.get(url, stream=True) as r:
+                  r.raise_for_status()
+                  total = int(r.headers.get('content-length', 0))
+                  done = 0
+                  with open(dest, 'wb') as f:
+                      for chunk in r.iter_content(chunk_size=8*1024*1024):
+                          if chunk:
+                              f.write(chunk)
+                              done += len(chunk)
+                              if total:
+                                  pct = int(done * 100 / total)
+                                  print(f'Progress: {pct}% ({done/1024/1024/1024:.2f}/{total/1024/1024/1024:.2f} GB)', flush=True)
+              print('Download complete.', flush=True)
+              "
+          volumeMounts:
+            - name: npu-model-data
+              mountPath: /opt/rkllama/models
+      containers:
+        - name: rkllm-inference
+          image: "{{ rknpu_image_name }}:{{ rknpu_image_tag }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: {{ rknpu_port }}
+              name: http-api
+          env:
+            # Override rkllama default.ini — pattern: RKLLAMA_<SECTION>_<KEY>
+            # Section=model, so: RKLLAMA_MODEL_DEFAULT_NUM_CTX etc.
+            - name: RKLLAMA_MODEL_DEFAULT_NUM_CTX
+              value: "{{ rknpu_num_ctx }}"
+            - name: RKLLAMA_MODEL_DEFAULT_MAX_NEW_TOKENS
+              value: "{{ rknpu_max_new_tokens }}"
+          resources:
+            requests:
+              memory: "{{ rknpu_memory_request }}"
+              cpu: "{{ rknpu_cpu_request }}"
+            limits:
+              memory: "{{ rknpu_memory_limit }}"
+              cpu: "{{ rknpu_cpu_limit }}"
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: {{ rknpu_port }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: {{ rknpu_port }}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: dev-dri
+              mountPath: /dev/dri
+            - name: npu-model-data
+              mountPath: /opt/rkllama/models
+      volumes:
+        - name: dev-dri
+          hostPath:
+            # kernel 6.1 vendor: RKNPU exposed as renderD129 (DRM interface)
+            # librkllmrt.so scans /dev/dri/ and auto-selects renderD129 (DRIVER=RKNPU)
+            path: {{ rknpu_dri_path }}
+        - name: npu-model-data
+          persistentVolumeClaim:
+            claimName: {{ node.name }}-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ node.name }}
+  namespace: {{ rknpu_namespace }}
+  labels:
+    app: {{ node.name }}
+spec:
+  selector:
+    app: {{ node.name }}
+  ports:
+    - port: {{ rknpu_port }}
+      targetPort: {{ rknpu_port }}
+      protocol: TCP
+      name: http-api
+---
+{% endfor %}
