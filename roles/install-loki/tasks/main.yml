@@ -92,6 +92,8 @@
       deploymentMode: "{{ loki_deployment_mode }}"
 
       loki:
+        nodeSelector:
+          storage: rk1-longhorn
         commonConfig:
           replication_factor: 1
         schemaConfig:
@@ -113,12 +115,16 @@
 
       minio:
         enabled: "{{ loki_minio_enabled }}"
+        nodeSelector:
+          storage: rk1-longhorn
         persistence:
           storageClass: "{{ loki_storage_class }}"
           size: "{{ loki_minio_persistence_size }}"
 
       singleBinary:
         replicas: "{{ loki_replicas }}"
+        nodeSelector:
+          storage: rk1-longhorn
         persistence:
           storageClass: "{{ loki_storage_class }}"
           size: "{{ loki_storage_size }}"

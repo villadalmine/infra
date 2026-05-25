@@ -150,6 +150,8 @@
 
       prometheus:
         prometheusSpec:
+          nodeSelector:
+            storage: rk1-longhorn
           storageSpec:
             volumeClaimTemplate:
               spec:

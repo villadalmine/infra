@@ -19,6 +19,8 @@
     values:
       dashboard:
         allowWriteActions: "{{ helm_dashboard_allow_write }}"
+        persistence:
+          enabled: false
       extraArgs:
         - "--no-browser"
         - "--bind=0.0.0.0"

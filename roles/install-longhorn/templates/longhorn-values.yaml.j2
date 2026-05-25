@@ -1,6 +1,4 @@
 global:
-  nodeSelector:
-    storage: rk1-longhorn
   tolerations:
     - operator: Exists
 
@@ -14,9 +12,18 @@ persistence:
 
 defaultSettings:
   backupTarget: ""
+  # Keep replicas on RK1 NVMe nodes only
+  systemManagedComponentsNodeSelector: "storage:rk1-longhorn"
+
+# Manager (stores replica data) stays on RK1 nodes
+longhornManager:
+  nodeSelector:
+    storage: rk1-longhorn
 
 longhornUI:
   replicas: 1
+  nodeSelector:
+    storage: rk1-longhorn
 
 ingress:
   enabled: false

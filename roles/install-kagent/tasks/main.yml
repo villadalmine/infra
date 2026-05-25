@@ -217,6 +217,8 @@
           spec:
             securityContext:
               fsGroup: 999
+            nodeSelector:
+              storage: rk1-longhorn
     merge_type: strategic-merge
     state: present
 

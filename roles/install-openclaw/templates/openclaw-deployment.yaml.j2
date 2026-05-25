@@ -283,13 +283,11 @@ spec:
                       'send',
                       '--channel', 'telegram',
                       '--target', process.env.TELEGRAM_TARGET,
-                      '--message', msg,
-                      '--url', 'ws://127.0.0.1:18789',
-                      '--token', process.env.OPENCLAW_GATEWAY_TOKEN
+                      '--message', msg
                     ];
                     console.log('Executing execFile node with args:', args);
                     
-                    execFile('node', args, { env: { ...process.env, HOME: '/home/node' } }, (err, stdout, stderr) => {
+                    execFile('node', args, { cwd: '/app', env: { ...process.env, HOME: '/home/node' } }, (err, stdout, stderr) => {
                       if (err) {
                         console.error('Failed to send message via CLI:', err, stderr);
                         res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -327,13 +325,48 @@ spec:
               value: /etc/openclaw
             - name: HOME
               value: /home/node
+            - name: NODE_OPTIONS
+              value: "--dns-result-order=ipv4first"
+            - name: OPENCLAW_WORKSPACE_DIR
+              value: "/home/node/.openclaw/workspace"
+            - name: HONCHO_WORKSPACE
+              value: "{{ openclaw_honcho_workspace }}"
+            - name: HONCHO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: HONCHO_API_KEY
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: TELEGRAM_BOT_TOKEN
+                  optional: true
+            - name: TELEGRAM_ALLOWED_USERS
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: TELEGRAM_ALLOWED_USERS
+                  optional: true
+{% if openclaw_llm_backend == 'litellm' %}
+            - name: OPENAI_API_BASE
+              value: "{{ openclaw_litellm_url }}/v1"
+            - name: OPENAI_API_KEY
+              value: "{{ openclaw_litellm_master_key }}"
+{% else %}
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENROUTER_API_KEY
+{% endif %}
           resources:
             limits:
+              cpu: "2000m"
+              memory: "2Gi"
+            requests:
               cpu: "200m"
               memory: "512Mi"
-            requests:
-              cpu: "50m"
-              memory: "256Mi"
           securityContext:
             allowPrivilegeEscalation: false
             runAsNonRoot: true
@@ -345,6 +378,8 @@ spec:
               mountPath: /home/node/.openclaw
             - name: npm-local
               mountPath: /home/node/.openclaw/npm
+            - name: openclaw-secure-agent
+              mountPath: /home/node/.openclaw/agents/main
             - name: openclaw-config-json
               mountPath: /etc/openclaw/openclaw.json
               subPath: openclaw.json
