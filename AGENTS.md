@@ -116,6 +116,7 @@ make services         # + Pi-hole, ArgoCD, helm-dashboard
 make storage          # SMB CSI driver (required before services/observability PVCs)
 make observability    # + Prometheus, Grafana, Tempo, Loki, Alloy
 make ai               # Full AI stack (registry + hermes build + deploy)
+make openclaw         # Deploy OpenClaw personal AI gateway
 make kagent           # kagent + kmcp AI agent platform
 make security         # NeuVector core
 make full             # All roles
@@ -143,7 +144,7 @@ install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-cifs-nas (storage — must precede PVC-backed services)
 → install-registry → install-hermes-agent-image
 → install-litellm-proxy → install-hermes-agent
-→ install-holmes → install-kagent
+→ install-holmes → install-kagent → install-openclaw
 ```
 
 **Storage dependency**: `install-cifs-nas` must run before any role that uses `smb-nas` PVCs
@@ -161,8 +162,9 @@ Bootstrap tags:
 | `storage` | cifs-nas (SMB CSI driver) | `networking` |
 | `observability` | prometheus + tempo + loki + alloy + version-checker | `networking` |
 | `security` | neuvector | `services`, `storage` |
-| `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking`, `storage` |
-| `kagent` | kagent + kmcp | `networking`, LiteLLM deployed |
+| ai | registry + hermes-image + litellm-proxy + hermes-agent | networking, storage |
+| kagent | kagent + kmcp | networking, LiteLLM deployed |
+| openclaw | openclaw | networking, LiteLLM deployed |
 
 ---
 
@@ -238,12 +240,13 @@ ansible -i inventory/hosts.ini all -m shell -a "hostname; hostname -I | awk '{pr
 - **HTTP services**: always `ClusterIP` + `HTTPRoute`. Never `LoadBalancer`. Never `Ingress`.
   Exception: NeuVector (self-signed HTTPS backend) → dedicated LoadBalancer at `.204`
 - Never kubectl-apply resources manually that Ansible manages — it will diverge
-- **Storage dependency pattern**: every role that uses `smb-nas` (or `smb-nas-pg`) declares
-  `<role>_storage_role: "install-cifs-nas"` in its defaults and calls `include_role` as its
-  **first task** guarded by `when: <role>_storage_class != 'local-path' and <role>_storage_role is defined`.
+- **Storage dependency pattern**: every role that uses `smb-nas` (or `smb-nas-pg` / `longhorn-nvme` if it has NAS integrations) declares
+  `<role>_storage_role: "install-cifs-nas"` (or `""` if local/Longhorn only) in its defaults and calls `include_role` as its
+  **first task** guarded by `when: <role>_storage_class != 'local-path' and <role>_storage_role is defined and <role>_storage_role != ''`.
   `install-cifs-nas` is idempotent — safe to call from multiple roles in the same playbook run.
   Roles: pihole, kube-prometheus-stack, loki, tempo, registry, neuvector, hermes-agent,
-  hermes-agent-image, kagent, kubernetes-mcp-server-image.
+  hermes-agent-image, kagent, kubernetes-mcp-server-image, openclaw.
+  *Note: OpenClaw and Hermes-Agent are migrated to use `longhorn-nvme` block storage on RK1 nodes.*
 - **Never commit before running the playbook and verifying it passes.** Write → deploy → fix → commit.
 - `k3s_token` in `roles/install-k3s/defaults/main.yml` is a placeholder — use Ansible Vault for production
 - **Built-in `metrics-server`**: K3s bundles and automatically deploys `metrics-server` in the `kube-system` namespace. **DO NOT** attempt to install `metrics-server` via Helm or Ansible, as it will cause APIService registration conflicts and fail liveness probes. Use `kubectl top nodes` out of the box.

@@ -164,6 +164,14 @@ impacto) y luego la integración Radar como segunda fase.
 - [x] LiteLLM confirmado recibiendo requests desde browser (CORS ok)
 - [x] Guía completa en `docs/headlamp-setup.md`
 
+### OpenClaw & Hermes Storage & Webhook Integration — FUNCIONANDO (2026-05-25)
+- [x] **Honcho Memory Auth:** Reparada la autenticación de Honcho para OpenClaw (reemplazo de API key obsoleta).
+- [x] **Asignación RK1 & Límites:** Recursos elevados a 1Gi/4Gi y anclado estricto de OpenClaw al nodo `srv-rk1-nvme-02` (32GB RAM).
+- [x] **Bypass de Bloqueo SMB1:** Resuelto el cuelgue indefinido de permisos CIFS en `smee-client` montando `openclaw-secure-agent` como `emptyDir`.
+- [x] **Flujo de Webhooks y Telegram:** Integrado el paso de webhook de Smee.io en todos los pipelines de compilación (`build-openclaw.yml`, `build-hermes.yml`, `build-nas-admin.yml` y `build-leloir.yml`). Los mensajes fluyen por completo en menos de 2 segundos.
+- [x] **Migración Total a Longhorn NVMe:** Migrados los PVCs de **OpenClaw** y **Hermes Agent** desde el share `smb-nas` (SMB1 CIFS) hacia la clase `longhorn-nvme` de bloque local rápido, resolviendo para siempre los cuelgues por base de datos bloqueada (`database is locked` en SQLite).
+
+
 ### Pendiente
 - [ ] Deploy Headlamp in-cluster con plugins pre-instalados (`make headlamp`)
 - [ ] Conectar `ai-assistant` a HolmesGPT cuando esté deployado (`make ai-holmes`)
