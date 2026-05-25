@@ -176,6 +176,11 @@ impacto) y luego la integración Radar como segunda fase.
 - [x] **Flujo de Webhooks y Telegram:** Integrado el paso de webhook de Smee.io en todos los pipelines de compilación (`build-openclaw.yml`, `build-hermes.yml`, `build-nas-admin.yml` y `build-leloir.yml`). Los mensajes fluyen por completo en menos de 2 segundos.
 - [x] **Migración Total a Longhorn NVMe:** Migrados los PVCs de **OpenClaw** y **Hermes Agent** desde el share `smb-nas` (SMB1 CIFS) hacia la clase `longhorn-nvme` de bloque local rápido, resolviendo para siempre los cuelgues por base de datos bloqueada (`database is locked` en SQLite).
 
+### Colaboración Conversacional A2A (Agent-to-Agent) — FUNCIONANDO (2026-05-25)
+- [x] **Puente Conversacional de Cerebro a Cerebro**: Implementamos la colaboración directa entre OpenClaw (Tito) y Hermes Agent registrando dinámicamente el tool de MCP `ask_hermes_agent` en el arranque del servidor FastMCP.
+- [x] **Ejecución del Bucle de Razonamiento**: El tool instancia localmente un objeto `AIAgent` con acceso total al contexto del clúster (a través de kubernetes-mcp-server y kagent), permitiendo que Tito delegue tareas diagnósticas conversacionales a Hermes de forma totalmente autónoma.
+- [x] **Heredabilidad de Seguridad de Solo Lectura**: Respetando el principio de seguridad ("Ilusión de Permiso"), garantizamos que todas las consultas A2A heredan los permisos estrictos de solo lectura del ServiceAccount del pod (`hermes-agent-mcp-readonly`), de modo que Tito puede consultar el diagnóstico pero no puede realizar escrituras destructivas sin aprobación explícita.
+
 
 ### Pendiente
 - [ ] Deploy Headlamp in-cluster con plugins pre-instalados (`make headlamp`)

@@ -47,6 +47,12 @@ En la homelab, la interacción entre agentes sigue un patrón de **delegación u
 * **El Falso Amigo de la Bidireccionalidad**: El puerto `8080` expuesto en el pod de OpenClaw **no es un servidor MCP del agente**, sino un contenedor sidecar genérico `kubernetes-mcp-server` de solo lectura. Intentar conectar a Hermes hacia `openclaw:8080/mcp` es redundante y erróneo.
 * **Restricción de Escritura y la "Ilusión de Permiso" (Hermes & OpenClaw)**: Tanto Hermes (`hermes-agent-mcp`) como OpenClaw (`openclaw`) se ejecutan dentro del clúster bajo ServiceAccounts asociadas a roles de **solo lectura** (ej: `hermes-agent-mcp-readonly` / `readonly`). Aunque debido a sus prompts del sistema a menudo *ofrecen* aplicar cambios de infraestructura, cualquier intento de escritura (apply/create/delete) será bloqueado por el API Server de Kubernetes con un error `403 Forbidden`. El único agente con capacidades reales de modificar el repositorio Git/Ansible y aplicar recursos estructurados es el **Workstation Agent (Antigravity)**.
 
+### 1.1 Puente Conversacional A2A (Cerebro-a-Cerebro)
+
+Para posibilitar una verdadera colaboración conversacional de agente a agente, inyectamos dinámicamente una herramienta MCP llamada `ask_hermes_agent(question: str) -> str` en el arranque del pod de Hermes.
+* **Mecanismo Autónomo**: El tool utiliza la biblioteca interna de Hermes en Python (`AIAgent`) para ejecutar un bucle de razonamiento autónomo (`run_conversation()`) de forma sincrónica y segura dentro del propio pod, sin llamadas externas circulares redundantes.
+* **Heredabilidad de Seguridad de Solo Lectura**: Todas las consultas ejecutadas a través de `ask_hermes_agent` heredan estrictamente el contexto de seguridad del pod `hermes-agent-mcp`, el cual está limitado a solo lectura mediante la ServiceAccount `hermes-agent-mcp-readonly`. Esto garantiza que Tito (OpenClaw) puede solicitarle diagnósticos complejos a Hermes sin que este último pueda realizar operaciones destructivas involuntarias en el clúster.
+
 ---
 
 ## 2. Monitoreo Financiero y Auto-Regulación (Cost-Awareness)
