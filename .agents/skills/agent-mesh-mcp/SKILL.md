@@ -45,6 +45,7 @@ En la homelab, la interacción entre agentes sigue un patrón de **delegación u
 * **OpenClaw como Front-End conversacional**: Recibe las peticiones del usuario por Telegram. Actúa exclusivamente como **Cliente MCP**.
 * **Hermes como Especialista de Código**: Expone un **Servidor MCP** en el puerto `8000` (`http://hermes-agent-mcp.ai.svc.cluster.local:8000/mcp`). OpenClaw le delega las tareas multi-paso complejas.
 * **El Falso Amigo de la Bidireccionalidad**: El puerto `8080` expuesto en el pod de OpenClaw **no es un servidor MCP del agente**, sino un contenedor sidecar genérico `kubernetes-mcp-server` de solo lectura. Intentar conectar a Hermes hacia `openclaw:8080/mcp` es redundante y erróneo.
+* **Restricción de Escritura y la "Ilusión de Permiso" (Hermes & OpenClaw)**: Tanto Hermes (`hermes-agent-mcp`) como OpenClaw (`openclaw`) se ejecutan dentro del clúster bajo ServiceAccounts asociadas a roles de **solo lectura** (ej: `hermes-agent-mcp-readonly` / `readonly`). Aunque debido a sus prompts del sistema a menudo *ofrecen* aplicar cambios de infraestructura, cualquier intento de escritura (apply/create/delete) será bloqueado por el API Server de Kubernetes con un error `403 Forbidden`. El único agente con capacidades reales de modificar el repositorio Git/Ansible y aplicar recursos estructurados es el **Workstation Agent (Antigravity)**.
 
 ---
 
