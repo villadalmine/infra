@@ -115,9 +115,21 @@ spec:
               OPENAI_API_BASE={{ hermes_openai_api_base }}
               EOF
               chmod 644 /opt/data/.env
+
+              # Initialize and symlink gateway.json to PVC for persistence
+              mkdir -p /opt/data/.hermes
+              if [ ! -f /opt/data/.hermes/gateway.json ]; then
+                cp /etc/hermes/gateway.json /opt/data/.hermes/gateway.json
+                chown -R 1000:1000 /opt/data/.hermes/gateway.json || true
+              fi
+              ln -sf /opt/data/.hermes/gateway.json /opt/data/gateway.json
           volumeMounts:
             - name: hermes-data
               mountPath: /opt/data
+            - name: hermes-home
+              mountPath: /opt/data/.hermes
+            - name: hermes-gateway-config
+              mountPath: /etc/hermes
       containers:
         - name: hermes-agent
           image: {{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}
@@ -208,9 +220,6 @@ spec:
               mountPath: /opt/data/.hermes
             - name: tmp
               mountPath: /tmp
-            - name: hermes-gateway-config
-              mountPath: /opt/data/gateway.json
-              subPath: gateway.json
             - name: hermes-config
               mountPath: /opt/data/config.yaml
               subPath: config.yaml
