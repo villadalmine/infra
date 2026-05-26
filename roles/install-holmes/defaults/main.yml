@@ -3,7 +3,7 @@ holmes_namespace: ai
 holmes_hostname: holmes.cluster.home
 
 holmes_release_name: holmesgpt
-holmes_model_name: local-reason
+holmes_model_name: "openai/rk1-npu-local"
 holmes_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
 holmes_openai_key: "sk-hermes-internal"
 
