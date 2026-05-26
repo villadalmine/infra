@@ -181,6 +181,11 @@ impacto) y luego la integración Radar como segunda fase.
 - [x] **Ejecución del Bucle de Razonamiento**: El tool instancia localmente un objeto `AIAgent` con acceso total al contexto del clúster (a través de kubernetes-mcp-server y kagent), permitiendo que Tito delegue tareas diagnósticas conversacionales a Hermes de forma totalmente autónoma.
 - [x] **Heredabilidad de Seguridad de Solo Lectura**: Respetando el principio de seguridad ("Ilusión de Permiso"), garantizamos que todas las consultas A2A heredan los permisos estrictos de solo lectura del ServiceAccount del pod (`hermes-agent-mcp-readonly`), de modo que Tito puede consultar el diagnóstico pero no puede realizar escrituras destructivas sin aprobación explícita.
 
+### Seguridad & Colaboración Multi-Agente Avanzada — FUNCIONANDO (2026-05-26)
+- [x] **Elevación de Permisos RBAC de Hermes a Admin**: Modificamos y desplegamos la ServiceAccount del pod `hermes-agent-mcp` elevando su nivel de RBAC a `admin` (vinculado a `cluster-admin`). Esto le otorga al agente Hermes capacidades irrestrictas de escritura y modificación a nivel de clúster para solucionar de forma proactiva incidentes complejos.
+- [x] **Debate Colaborativo Mandatorio OpenClaw ↔ Hermes**: Rediseñamos los system prompts de ambos agentes (Tito y Hermes). Ahora, antes de proponer o solicitar aprobación para cualquier operación de escritura/modificación destructiva (apply, scale, delete, shell), deben debatir técnica y preventivamente los riesgos y consensuar qué alternativa es mejor.
+- [x] **Estabilización de Event-Loop en OpenClaw**: Identificamos y corregimos un lag en el event loop de Tito que bloqueaba la cola de interacción en Telegram. Se solucionó mediante un rollout de saneamiento y refresco de sockets.
+
 
 ### Pendiente
 - [ ] Deploy Headlamp in-cluster con plugins pre-instalados (`make headlamp`)
