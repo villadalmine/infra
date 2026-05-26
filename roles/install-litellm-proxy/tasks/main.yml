@@ -232,19 +232,19 @@
               allowed_fails: 3
               cooldown_time: 30
             fallbacks:
-              - {"hermes-qwen": ["qwen-pro", "free2", "cheap"]}
+              - {"hermes-qwen": ["qwen-pro", "free2", "cheap", "rk1-npu-local"]}
               # Holmes: GPU → NPU Pool → OpenRouter free → OpenRouter cheap → paid (qwen-pro)
               - {"holmes-llama": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
               - {"gpt-5.4": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
               # local-reason = Holmes default model (Headlamp AG-UI) — same fallback chain
               - {"local-reason": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
               # Other GPU models — fallback to Hermes OpenRouter chain (+ paid last resort)
-              - {"local-fast": ["free2", "cheap", "qwen-pro"]}
+              - {"local-fast": ["free2", "cheap", "qwen-pro", "rk1-npu-local"]}
               - {"local-llama": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
               - {"rk1-npu-local": ["free2", "cheap", "qwen-pro"]}
-              - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap"]}
-              - {"gpt-4o": ["gemini-free2", "openclaw-cheap"]}
-              - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap"]}
+              - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap", "rk1-npu-local"]}
+              - {"gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local"]}
+              - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local"]}
               - {"kagent-orchestrator": ["cheap"]}
               - {"free": ["free2", "cheap"]}
               - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap"]}
