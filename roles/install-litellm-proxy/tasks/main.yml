@@ -253,27 +253,27 @@
               allowed_fails: 3
               cooldown_time: 30
             fallbacks:
-              - {"hermes-qwen": ["qwen-pro", "free2", "cheap", "rk1-npu-local"]}
-              # Holmes: GPU → NPU Pool → OpenRouter free → OpenRouter cheap → paid (qwen-pro)
-              - {"holmes-llama": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
-              - {"gpt-5.4": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
-              # local-reason = Holmes default model (Headlamp AG-UI) — same fallback chain
-              - {"local-reason": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
-              # Other GPU models — fallback to Hermes OpenRouter chain (+ paid last resort)
-              - {"local-fast": ["free2", "cheap", "qwen-pro", "rk1-npu-local"]}
-              - {"local-llama": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
-              - {"rk1-npu-local": ["free2", "cheap", "qwen-pro"]}
-              - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap", "rk1-npu-local", "deepseek-pro", "deepseek-free"]}
-              - {"gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local", "deepseek-pro", "deepseek-free"]}
-              - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local", "deepseek-pro", "deepseek-free"]}
+              - {"hermes-qwen": ["rk1-npu-local", "local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              # Holmes: NPU Pool → GPU → DeepSeek free → Nemotron free → DeepSeek Pro → Qwen Pro
+              - {"holmes-llama": ["rk1-npu-local", "local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"gpt-5.4": ["rk1-npu-local", "local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              # local-reason = Holmes default model (Headlamp AG-UI)
+              - {"local-reason": ["rk1-npu-local", "local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              # Other GPU models
+              - {"local-fast": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"local-llama": ["rk1-npu-local", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"rk1-npu-local": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"openclaw-gemini": ["rk1-npu-local", "local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"gpt-4o": ["rk1-npu-local", "local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openai/gpt-4o": ["rk1-npu-local", "local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
               - {"kagent-orchestrator": ["cheap"]}
               - {"free": ["free2", "cheap"]}
               - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap", "deepseek-pro", "deepseek-free"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
-              - {"rk1-npu-local": ["local-fast", "gemini-free2", "free2", "deepseek-pro", "deepseek-free"]}
-            set_verbose: false
+              - {"rk1-npu-local": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+            set_verbose: true
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]
 
