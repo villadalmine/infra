@@ -136,8 +136,11 @@ storage-smb: ## Install CSI SMB driver + smb-nas StorageClass (optional NAS back
 storage-rclone: ## Install csi-driver-rclone + rclone-webdav StorageClass (optional WebDAV/Nextcloud backend — only if you need it)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags storage-rclone
 
-ai: ## Install full AI stack (registry + hermes-agent-image + kubernetes-mcp + hermes-agent)
+ai: ## Deploy core AI stack (litellm, hermes, npu-pool). Skips image builds!
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai
+
+ai-build: ## Build all local ARM64 images for the AI stack via kaniko
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build,ai-kubernetes-mcp-build
 
 ai-all: ai ai-holmes openclaw kagent ## Deploy the ENTIRE AI Stack (Hermes + HolmesGPT + OpenClaw + Kagent)
 

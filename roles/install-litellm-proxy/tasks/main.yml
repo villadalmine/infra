@@ -223,6 +223,15 @@
                 model: openai/qwen/qwen-turbo
                 api_base: https://openrouter.ai/api/v1
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            # ── Free DeepSeek fallback ──────────────────────────────────────
+            - model_name: deepseek-free
+              litellm_params:
+                model: openrouter/deepseek/deepseek-v4-flash:free
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            - model_name: deepseek-pro
+              litellm_params:
+                model: openrouter/deepseek/deepseek-v4-pro
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
 
             # ── Premium models ──────────────────────────────────────────────
             - model_name: claude-sonnet
@@ -254,16 +263,16 @@
               - {"local-fast": ["free2", "cheap", "qwen-pro", "rk1-npu-local"]}
               - {"local-llama": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
               - {"rk1-npu-local": ["free2", "cheap", "qwen-pro"]}
-              - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap", "rk1-npu-local"]}
-              - {"gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local"]}
-              - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local"]}
+              - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap", "rk1-npu-local", "deepseek-pro", "deepseek-free"]}
+              - {"gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local", "deepseek-pro", "deepseek-free"]}
+              - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap", "rk1-npu-local", "deepseek-pro", "deepseek-free"]}
               - {"kagent-orchestrator": ["cheap"]}
               - {"free": ["free2", "cheap"]}
-              - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap"]}
+              - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap", "deepseek-pro", "deepseek-free"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
-              - {"rk1-npu-local": ["local-fast", "gemini-free2", "free2"]}
+              - {"rk1-npu-local": ["local-fast", "gemini-free2", "free2", "deepseek-pro", "deepseek-free"]}
             set_verbose: false
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]

@@ -101,7 +101,7 @@
     - role: install-registry
       tags: [ai, ai-registry]
     - role: install-hermes-agent-image
-      tags: [ai, ai-hermes-build]
+      tags: [ai-hermes-build]
     - role: run-remote-build
       tags: [ai-hermes-build-remote]
       vars:
@@ -135,7 +135,10 @@
         remote_local_registry: "registry.registry:5000"
         remote_local_image_name: "admin/nas-admin"
     - role: install-kubernetes-mcp-server-image
-      tags: [ai, ai-kubernetes-mcp-build]
+
+      tags: [headlamp, ai]
+    - role: install-headlamp
+      tags: [ai-kubernetes-mcp-build]
     - role: install-rknpu-pool
       tags: [ai, ai-npu-pool]
     - role: install-litellm-proxy
