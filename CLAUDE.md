@@ -13,7 +13,7 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |
-| Storage | `smb-nas` / `smb-nas-pg` (default for PVC-backed roles) + `local-path` (K3s built-in) + `longhorn-nvme` (NVMe replicado en RK1 nodes) |
+| Storage | `local-path` (K3s built-in, default) + `longhorn-nvme` (NVMe replicado en RK1 nodes) + `smb-nas` (opt-in, `make storage-smb`) + `rclone-webdav` (opt-in, `make storage-rclone`) |
 
 ## Key commands
 
@@ -62,6 +62,8 @@ all tags up to the layer you need.
 | `services` | pihole + argocd + helm-dashboard | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy | `networking` |
 | `security` | neuvector | `services` |
+| `storage-smb` | csi-driver-smb + smb-nas StorageClass (opt-in) | `networking` |
+| `storage-rclone` | csi-driver-rclone + rclone-webdav StorageClass (opt-in) | `networking` |
 | `ai` | registry + hermes-image + litellm-proxy + hermes-agent | `networking` |
 | `ai-registry` | registry only | `networking` |
 | `ai-hermes-build` | kaniko ARM64 build (~60 min) | `ai-registry` |
@@ -124,8 +126,8 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 1. `helm install` manually on cluster → verify working
 2. `helm uninstall` to clean up
 3. Write Ansible role (`roles/<name>/`) + defaults (`defaults/main.yml`)
-   - If the role uses a PVC: add `<role>_storage_class: "smb-nas"` and `<role>_storage_role: "install-cifs-nas"` to defaults
-   - Add `include_role: install-cifs-nas` as first task, guarded by `when: <role>_storage_class != 'local-path' and <role>_storage_role is defined`
+   - If the role uses a PVC: add `<role>_storage_class: "longhorn-nvme"` (default) or `"local-path"` to defaults
+   - If you need SMB NAS: set `<role>_storage_class: "smb-nas"` and `<role>_storage_role: "install-cifs-nas"`, then guard with `when: <role>_storage_class != 'local-path' and <role>_storage_role is defined and <role>_storage_role != ''`
    - See `skills/storage/SKILL.md` for the full pattern
 4. Add role to `playbooks/bootstrap.yml`
 5. `ansible-playbook playbooks/bootstrap.yml` → must pass `failed=0`

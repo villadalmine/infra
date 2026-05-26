@@ -15,10 +15,11 @@
 #   dns-metrics        → pihole                                    (requires ingress + storage for Pi-hole)
 #   services           → argocd + helm-dashboard                   (requires ingress)
 #   observability      → prometheus + tempo + loki + alloy         (requires networking + storage for Prometheus/Loki)
-#   storage            → storage backends / PVC backends             (requires networking)
-#   ai                 → registry + hermes-image + litellm-proxy + hermes-agent  (requires services + storage)
+#   storage-smb        → csi-driver-smb + smb-nas StorageClass (opt-in, only if you need SMB NAS)
+#   storage-rclone     → csi-driver-rclone + rclone-webdav StorageClass (opt-in, only if you need WebDAV/Nextcloud)
+#   ai                 → registry + hermes-image + litellm-proxy + hermes-agent  (requires services)
 #   openclaw           → OpenClaw personal AI gateway (Telegram + LiteLLM + modular RBAC)
-#   ai-registry        → registry only (requires storage)
+#   ai-registry        → registry only
 #   security           → neuvector                                   (requires networking + storage)
 #   ai-hermes-build    → kaniko ARM64 image build only
 #   ai-hermes-deploy   → LiteLLM proxy + Hermes Agent deploy
@@ -92,7 +93,9 @@
       tags: [observability]
 
     - role: install-csi-rclone
-      tags: [storage]
+      tags: [storage-rclone]
+    - role: install-cifs-nas
+      tags: [storage-smb]
 
     # AI stack (ARM64 build required)
     - role: install-registry

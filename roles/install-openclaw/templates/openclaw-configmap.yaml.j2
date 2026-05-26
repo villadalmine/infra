@@ -67,10 +67,14 @@ data:
         "entries": {
           "openclaw-honcho": {
             "enabled": true,
-            "baseUrl": "{{ openclaw_honcho_url | default('https://api.honcho.dev') }}",
-            "timeoutMs": {{ openclaw_honcho_timeout_ms | default(30000) }},
             "hooks": {
               "allowConversationAccess": true
+            },
+            "config": {
+              "baseUrl": "{{ openclaw_honcho_url | default('https://api.honcho.dev') }}",
+              "apiKey": "{{ openclaw_honcho_api_key }}",
+              "workspaceId": "{{ openclaw_honcho_workspace | default('openclaw') }}",
+              "timeoutMs": {{ openclaw_honcho_timeout_ms | default(30000) }}
             }
           }
         },

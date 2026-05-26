@@ -23,6 +23,10 @@ spec:
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: wait-for-api
+          image: "busybox:latest"
+          command: ['sh', '-c', 'until wget -qO- http://{{ include "honcho.fullname" . }}-api/health > /dev/null 2>&1; do echo "waiting for honcho-api..."; sleep 5; done']
       containers:
         - name: honcho-worker
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

@@ -12,7 +12,7 @@ SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 ARGO_NS      ?= kaniko
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-all ai-registry ai-hermes-build ai-hermes-deploy ai-litellm-proxy-deploy ai-hermes-agent-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac hermes-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all longhorn longhorn-bench
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage-smb storage-rclone ai ai-all ai-registry ai-hermes-build ai-hermes-deploy ai-litellm-proxy-deploy ai-hermes-agent-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm honcho openclaw openclaw-rbac hermes-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all longhorn longhorn-bench
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -130,8 +130,11 @@ longhorn-bench: ## Run fio benchmark on a Longhorn NVMe PVC (deploys pod, prints
 observability: ## Install networking + observability (Prometheus, Grafana, Tempo, Loki, Alloy)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags observability
 
-storage: ## Install networking + storage (CSI SMB driver + PV/PVC test)
-	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags storage
+storage-smb: ## Install CSI SMB driver + smb-nas StorageClass (optional NAS backend — only if you need it)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags storage-smb
+
+storage-rclone: ## Install csi-driver-rclone + rclone-webdav StorageClass (optional WebDAV/Nextcloud backend — only if you need it)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags storage-rclone
 
 ai: ## Install full AI stack (registry + hermes-agent-image + kubernetes-mcp + hermes-agent)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai
@@ -237,6 +240,9 @@ leloir-oidc: ## Enable OIDC on Leloir (deploy Dex + reconfigure Leloir — requi
 
 kagent: ## Deploy kagent + kmcp AI agent platform (multi-tenant, LiteLLM backend)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags kagent
+
+honcho: ## Deploy self-hosted Honcho memory platform (Postgres + Redis + API + Worker)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-honcho
 
 openclaw: ## Deploy OpenClaw personal AI gateway (Telegram + LiteLLM + modular RBAC)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags openclaw

@@ -23,6 +23,15 @@ spec:
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: migrate-db
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "scripts/provision_db.py"]
+          workingDir: /app
+          envFrom:
+            - secretRef:
+                name: {{ include "honcho.fullname" . }}-secrets
       containers:
         - name: honcho-api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

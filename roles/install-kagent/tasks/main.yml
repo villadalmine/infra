@@ -28,37 +28,6 @@
     state: present
   loop: "{{ kagent_tenant_namespaces }}"
 
-# ── Create StorageClass for postgres: smb-nas but with uid=999 ───────────
-# The default smb-nas uses uid=1000 but postgres runs as uid=999 and
-# requires the data directory to be owned by its own UID.
-- name: Create smb-nas-pg StorageClass (uid=999 for postgres)
-  kubernetes.core.k8s:
-    definition:
-      apiVersion: storage.k8s.io/v1
-      kind: StorageClass
-      metadata:
-        name: smb-nas-pg
-      provisioner: smb.csi.k8s.io
-      reclaimPolicy: Retain
-      volumeBindingMode: Immediate
-      mountOptions:
-        - vers=1.0
-        - uid=999
-        - gid=999
-        - file_mode=0700
-        - dir_mode=0700
-        - noperm
-        - mfsymlinks
-        - cache=strict
-        - noserverino
-      parameters:
-        csi.storage.k8s.io/node-stage-secret-name: smbcreds
-        csi.storage.k8s.io/node-stage-secret-namespace: default
-        csi.storage.k8s.io/provisioner-secret-name: smbcreds
-        csi.storage.k8s.io/provisioner-secret-namespace: default
-        source: "//192.168.178.102/service/Torrent"
-    state: present
-
 # ── Step 1: install CRDs chart first (required before main chart) ─────────
 - name: Install or upgrade kagent-crds
   kubernetes.core.helm:
@@ -139,7 +108,7 @@
         tolerations:
           - operator: Exists
 
-      # ── Database: bundled PostgreSQL on smb-nas ───────────────────────────
+      # ── Database: bundled PostgreSQL ─────────────────────────────────────
       database:
         postgres:
           bundled:

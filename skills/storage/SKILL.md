@@ -1,9 +1,9 @@
 ---
 name: storage
 description: >
-  Storage on K3s. Default is longhorn-nvme (NVMe NAS-free block storage on RK1 nodes).
-  smb-nas is legacy/opt-in for RWX workloads. Covers StorageClasses, dependency pattern,
-  PVC migration, and the cifs-nas role.
+  Storage on K3s. Default is longhorn-nvme (NVMe block storage on RK1 nodes).
+  smb-nas and rclone-webdav are opt-in only — no role depends on them by default.
+  Covers StorageClasses, dependency pattern, and PVC migration.
 license: MIT
 compatibility:
   - opencode
@@ -14,15 +14,17 @@ metadata:
 
 # Storage Skill
 
-## StorageClasses in use (2026-05-25)
+## StorageClasses in use (2026-05-26)
 
 | StorageClass | Driver | Access | Use |
 |---|---|---|---|
 | `longhorn-nvme` | driver.longhorn.io | RWO | **Default for all new PVCs** — NVMe-backed, 3 replicas on RK1 nodes |
-| `local-path` | rancher.io/local-path | RWO | K3s built-in, node-local. Used only for pihole (SQLite, SMB-incompatible) and build workspaces |
-| `smb-nas` | smb.csi.k8s.io | RWX | Legacy. NAS LG N2R1 (192.168.178.102, SMBv1). No active PVCs as of 2026-05-25. Opt-in. |
+| `local-path` | rancher.io/local-path | RWO | K3s built-in, node-local. Used only for pihole (SQLite) and build workspaces |
+| `smb-nas` | smb.csi.k8s.io | RWX | **Opt-in only** (`make storage-smb`). NAS LG N2R1 (192.168.178.102, SMBv1). Not installed by default. |
+| `rclone-webdav` | rclone.csi.veloxpack.io | RWO | **Opt-in only** (`make storage-rclone`). Nextcloud WebDAV. Not installed by default. |
 
-**All service PVCs are on `longhorn-nvme`.** Zero smb-nas PVs remain.
+**No role depends on `smb-nas` or `rclone-webdav` by default.**
+All service PVCs use `longhorn-nvme` or `local-path`.
 
 ---
 
@@ -34,11 +36,11 @@ This makes each role independently deployable.
 ### Role defaults
 
 ```yaml
-# For longhorn-nvme (default — no storage_role needed):
+# Default — longhorn-nvme (no storage_role needed):
 <role>_storage_class: "longhorn-nvme"
 # storage_role is NOT defined → guard skips automatically
 
-# For smb-nas (legacy opt-in):
+# Opt-in SMB NAS:
 <role>_storage_class: "smb-nas"
 <role>_storage_role: "install-cifs-nas"
 ```
@@ -49,13 +51,13 @@ This makes each role independently deployable.
 - name: Ensure custom Storage backend is installed before deploying <Service>
   ansible.builtin.include_role:
     name: "{{ <role>_storage_role }}"
-  when: <role>_storage_class != 'local-path' and <role>_storage_role is defined
+  when: <role>_storage_class != 'local-path' and <role>_storage_role is defined and <role>_storage_role != ''
 ```
 
 The `when` condition:
 - `local-path` → skip (K3s built-in)
-- `storage_role` undefined (longhorn-nvme default) → skip (Longhorn is always installed)
-- `storage_role` defined (smb-nas) → run `install-cifs-nas`
+- `storage_role` undefined or empty (longhorn-nvme default) → skip (Longhorn is always installed)
+- `storage_role` set (smb-nas opt-in) → run `install-cifs-nas`
 
 ### Current role storage classes
 
@@ -65,7 +67,6 @@ The `when` condition:
 | `install-hermes-agent-image` | `longhorn-nvme` | — |
 | `install-hermes-agent` | `longhorn-nvme` | — |
 | `install-kubernetes-mcp-server-image` | `longhorn-nvme` | — |
-| `run-remote-build` | `longhorn-nvme` | — |
 | `install-kube-prometheus-stack` | `longhorn-nvme` | — |
 | `install-loki` | `longhorn-nvme` | — |
 | `install-tempo` | `longhorn-nvme` | — |
@@ -73,8 +74,8 @@ The `when` condition:
 | `install-leloir` | `longhorn-nvme` | — |
 | `install-honcho` | `longhorn-nvme` | — |
 | `install-openclaw` | `longhorn-nvme` | — |
+| `install-neuvector` | `local-path` | — |
 | `install-pihole` | `local-path` (FORCED) | — |
-| `install-neuvector` | `smb-nas` | `install-cifs-nas` |
 
 ### How to add longhorn-nvme to a new role
 
@@ -89,59 +90,58 @@ The `when` condition:
    - name: Ensure custom Storage backend is installed before deploying <Service>
      ansible.builtin.include_role:
        name: "{{ <role>_storage_role }}"
-     when: <role>_storage_class != 'local-path' and <role>_storage_role is defined
+     when: <role>_storage_class != 'local-path' and <role>_storage_role is defined and <role>_storage_role != ''
    ```
 
 3. Reference `{{ <role>_storage_class }}` in PVC definition.
 
 ---
 
-## install-cifs-nas role
+## Optional NAS backends
+
+### SMB NAS (smb-nas)
 
 Role: `roles/install-cifs-nas/`
-Tag in bootstrap: **none** (removed 2026-05-25 — no AI role needs NAS anymore)
+Bootstrap tag: `storage-smb` (opt-in, not in default flow)
+Make target: `make storage-smb`
 
-### What it does
+**When to use:** Only for RWX (ReadWriteMany) — multiple pods writing the same volume.
 
-1. Wake-on-LAN → wait for port 445 → apply CIFS Secret → install csi-driver-smb Helm chart
-2. **Always creates** StorageClass `smb-nas` (decoupled from tests since 2026-05-25)
-3. Optional static PV/PVC + write test: `cifs_enable_static: true`
-4. Optional dynamic StorageClass test pod: `cifs_enable_dynamic_test: true`
+To opt a role into smb-nas:
+```yaml
+# In roles/<name>/defaults/main.yml:
+<role>_storage_class: "smb-nas"
+<role>_storage_role: "install-cifs-nas"
+```
 
-### Key defaults
-
+Key defaults:
 ```yaml
 cifs_nas_ip: "192.168.178.102"
 cifs_nas_mac: "00:e0:91:80:fb:f0"     # Wake-on-LAN
 cifs_nas_share: "service"
-cifs_nas_user: "admin"
-cifs_nas_pass: "changeme"              # real value in defaults/secrets.yml (gitignored)
 cifs_enable_static: false              # opt-in: static PV/PVC + write test
-cifs_enable_dynamic_test: false        # opt-in: dynamic test pod (StorageClass always created)
+cifs_enable_dynamic_test: false        # opt-in: dynamic test pod
 cifs_storage_class_name: "smb-nas"
-cifs_storage_class_source: "//192.168.178.102/service/Torrent"
 ```
 
-### When to use smb-nas
+### WebDAV / Nextcloud (rclone-webdav)
 
-Only if you need **RWX** (ReadWriteMany) access — multiple pods writing to the same volume simultaneously. Longhorn V1 supports RWX via NFS share mode but at lower performance. smb-nas is simpler for RWX if the NAS is available.
+Role: `roles/install-csi-rclone/`
+Bootstrap tag: `storage-rclone` (opt-in, not in default flow)
+Make target: `make storage-rclone`
 
-### To install cifs-nas manually
-
-```bash
-# Install SMB CSI driver + StorageClass only (no test pods)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags storage
-
-# Install + run dynamic test (verifies NAS write access)
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags storage \
-  -e cifs_enable_dynamic_test=true
+Credentials go in `roles/install-csi-rclone/defaults/secrets.yml` (gitignored):
+```yaml
+csi_rclone_webdav_url: "https://your-nextcloud/remote.php/dav/files/user/"
+csi_rclone_webdav_user: "user"
+csi_rclone_webdav_pass: "app-password"
 ```
 
 ---
 
-## PVC Migration (smb-nas → longhorn-nvme)
+## PVC Migration history (smb-nas → longhorn-nvme, 2026-05-25/26)
 
-Pattern used to migrate all services in 2026-05-25:
+All services migrated from smb-nas to longhorn-nvme. Pattern used:
 
 ```bash
 # StatefulSet (Prometheus, Loki, Tempo): volumeClaimTemplates are immutable
@@ -166,7 +166,7 @@ make <service>
 ### PVC stuck Pending on longhorn-nvme
 1. `kubectl get events -n <ns> --sort-by=.lastTimestamp`
 2. Check CSI plugin runs on the target node: `kubectl get pods -n longhorn-system -l app=longhorn-csi-plugin`
-3. CSI plugin must run on ALL nodes (not just RK1): `kubectl get ds longhorn-csi-plugin -n longhorn-system`
+3. CSI plugin must run on ALL nodes: `kubectl get ds longhorn-csi-plugin -n longhorn-system`
 
 ### CSINode stale after csi-plugin deploy
 Pod stays in `AttachVolume.Attach failed — CSINode does not contain driver`:
@@ -175,9 +175,5 @@ kubectl delete pod <stuck-pod>   # force reschedule; CSINode refreshes on next a
 ```
 
 ### smb-nas mount error 111 (Connection refused)
-Port 445 closed — NAS SMB service is down or NAS is sleeping.
-The `install-cifs-nas` role sends WoL automatically; wait ~60s after the WoL for SMB to start.
-
-### PostgreSQL `wrong ownership` on smb-nas
-Use `smb-nas-pg` StorageClass (uid=999) instead of `smb-nas` (uid=1000).
-This SC is defined inline in `install-kagent` tasks, not by `install-cifs-nas`.
+Port 445 closed — NAS SMB service is down or sleeping.
+The `install-cifs-nas` role sends WoL automatically; wait ~60s after WoL for SMB to start.

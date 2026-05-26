@@ -6,8 +6,6 @@
   failed_when: false  # graceful: empty vars if file missing
 
 # ─── Storage dependency guard ─────────────────────────────────────────────────
-# Pattern: auto-install smb-nas before first PVC-backed resource.
-# install-cifs-nas is idempotent — safe to call multiple times per run.
 - name: Ensure storage backend is installed before OpenClaw
   ansible.builtin.include_role:
     name: "{{ openclaw_storage_role }}"

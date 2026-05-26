@@ -39,6 +39,9 @@
       llm:
         baseUrl: "{{ honcho_litellm_url }}"
         apiKey: "{{ honcho_litellm_key }}"
+      auth:
+        useAuth: "{{ honcho_use_auth }}"
+        jwtSecret: "{{ honcho_jwt_secret | default('') }}"
 
 # ─── Wait for Rollout Status ──────────────────────────────────────────────────
 - name: Wait for PostgreSQL rollout

@@ -25,8 +25,6 @@ openclaw_memory_limit: "6Gi"
 openclaw_smee_url: "https://smee.io/NibMMS9tqGdtxzN1"
 
 # ─── Storage ──────────────────────────────────────────────────────────────────
-# smb-nas StorageClass (default). Override to local-path for no-NAS testing.
-# The storage backend role is auto-installed first (idempotent include_role).
 openclaw_storage_size: "10Gi"
 openclaw_storage_class: "longhorn-nvme"
 openclaw_storage_role: ""
@@ -68,7 +66,8 @@ openclaw_mcp_hermes_timeout: 600
 openclaw_agent_timeout_seconds: 600
 
 # ─── Honcho Memory Configuration ──────────────────────────────────────────────
-openclaw_honcho_url: "https://api.honcho.dev"
+# Self-hosted Honcho in-cluster. AUTH_USE_AUTH=false → any API key is accepted (admin).
+openclaw_honcho_url: "http://honcho-api.honcho.svc.cluster.local"
 openclaw_honcho_timeout_ms: 30000
 
 # ─── Subagent endpoints (for NetworkPolicy + AGENTS.md) ──────────────────────

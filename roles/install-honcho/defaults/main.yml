@@ -27,6 +27,12 @@ honcho_node_hostname: "srv-rk1-nvme-02"
 honcho_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
 honcho_litellm_key: "sk-hermes-internal"
 
+# ─── Auth (JWT — workspace-scoped keys per agent) ───────────────────────────
+# honcho_jwt_secret and honcho_admin_key are in secrets.yml (gitignored).
+# Generate workspace keys: python3 -c "import jwt; print(jwt.encode({'t':'','w':'openclaw'}, SECRET, 'HS256'))"
+honcho_use_auth: "true"
+
 # ─── Secrets (loaded from secrets.yml — gitignored) ─────────────────────────
-# Copy roles/install-honcho/defaults/secrets.yml.example → secrets.yml and fill values.
 # honcho_db_password: "CHANGEME"
+# honcho_jwt_secret: "CHANGEME"   ← 64-char hex, generated once
+# honcho_admin_key: "CHANGEME"    ← admin JWT for /v3/keys endpoint

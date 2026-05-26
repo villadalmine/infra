@@ -52,6 +52,8 @@ hermes_rbac_level: "admin"
 # Hermes memory and learning loop settings
 hermes_memory_provider: "honcho"
 hermes_honcho_workspace: "hermes"
+# Self-hosted Honcho in-cluster. AUTH_USE_AUTH=false → any API key is accepted (admin).
+hermes_honcho_url: "http://honcho-api.honcho.svc.cluster.local"
 hermes_memory_enabled: true
 hermes_user_profile_enabled: true
 

@@ -271,6 +271,17 @@ spec:
                   key: GROQ_API_KEY
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://alloy.observability.svc.cluster.local:4318"
+            - name: HONCHO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-secrets
+                  key: HONCHO_API_KEY
+            - name: HONCHO_WORKSPACE
+              value: "{{ hermes_honcho_workspace }}"
+            - name: HONCHO_BASE_URL
+              value: "{{ hermes_honcho_url }}"
+            - name: HONCHO_API_BASE
+              value: "{{ hermes_honcho_url }}"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

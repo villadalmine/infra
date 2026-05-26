@@ -34,7 +34,6 @@ make core && make networking    # K3s + Cilium (required pair — core alone is 
 make ingress                    # cert-manager + Gateway API
 make dns                        # Pi-hole wildcard DNS
 make gitops                     # ArgoCD
-make storage                    # SMB/CIFS CSI (MUST come before observability/ai/security)
 make observability              # Prometheus + Grafana + Tempo + Loki + Alloy
 make ai && make ai-holmes && make kagent   # Full AI stack
 make leloir-all            # Leloir agentic incident analysis (Postgres + control plane)

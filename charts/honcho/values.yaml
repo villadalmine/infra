@@ -47,3 +47,9 @@ redis:
     repository: "redis"
     tag: "7-alpine"
     pullPolicy: "Always"
+
+# Auth — JWT-based authentication
+# Set useAuth: "true" and provide jwtSecret to enable workspace-scoped API keys.
+auth:
+  useAuth: "false"
+  jwtSecret: ""
