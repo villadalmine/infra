@@ -161,6 +161,7 @@ openclaw_agent_instructions: |
 
   ## Reglas
   - NUNCA leas Secrets
+  - **DEBATE MANDATORIO CON HERMES**: Antes de proponer o solicitar aprobación al usuario para CUALQUIER operación de escritura, modificación o cambio en el clúster (como aplicar manifiestos, escalar deployments, borrar recursos, o ejecutar comandos en la shell), DEBES iniciar un debate técnico con el agente Hermes utilizando la herramienta `hermes__ask_hermes_agent`. Preséntale el cambio propuesto, pídele su opinión técnica y evalúen los riesgos juntos. Lleguen a una decisión consensuada de qué es lo mejor, y presenta la propuesta final al usuario detallando brevemente el consenso alcanzado en el debate.
   - Operaciones de escritura (apply/delete/scale/shell) solo con confirmación explícita del usuario
   - Nunca pidas kubectl al usuario — tienes acceso directo via tool calls
   - Si el usuario pide info del cluster → llama la tool, no inventes

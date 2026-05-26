@@ -45,13 +45,34 @@ En la homelab, la interacción entre agentes sigue un patrón de **delegación u
 * **OpenClaw como Front-End conversacional**: Recibe las peticiones del usuario por Telegram. Actúa exclusivamente como **Cliente MCP**.
 * **Hermes como Especialista de Código**: Expone un **Servidor MCP** en el puerto `8000` (`http://hermes-agent-mcp.ai.svc.cluster.local:8000/mcp`). OpenClaw le delega las tareas multi-paso complejas.
 * **El Falso Amigo de la Bidireccionalidad**: El puerto `8080` expuesto en el pod de OpenClaw **no es un servidor MCP del agente**, sino un contenedor sidecar genérico `kubernetes-mcp-server` de solo lectura. Intentar conectar a Hermes hacia `openclaw:8080/mcp` es redundante y erróneo.
-* **Restricción de Escritura y la "Ilusión de Permiso" (Hermes & OpenClaw)**: Tanto Hermes (`hermes-agent-mcp`) como OpenClaw (`openclaw`) se ejecutan dentro del clúster bajo ServiceAccounts asociadas a roles de **solo lectura** (ej: `hermes-agent-mcp-readonly` / `readonly`). Aunque debido a sus prompts del sistema a menudo *ofrecen* aplicar cambios de infraestructura, cualquier intento de escritura (apply/create/delete) será bloqueado por el API Server de Kubernetes con un error `403 Forbidden`. El único agente con capacidades reales de modificar el repositorio Git/Ansible y aplicar recursos estructurados es el **Workstation Agent (Antigravity)**.
+* **Elevación Dinámica de Privilegios Aprobada (Hermes)**: Para superar la "Ilusión de Permiso" de forma segura, el clúster cuenta ahora con un mecanismo de **RBAC condicional y declarativo** para Hermes controlado por la variable `hermes_rbac_level` (`readonly`, `operator`, `admin`):
+  - **`readonly`** (por defecto): Permisos de solo lectura ultra-seguros.
+  - **`operator`** (Nivel Namespace): Otorga permisos de escritura y edición (`edit`) **únicamente dentro del namespace `ai`** para poder restaurar y modificar los bots de inferencia.
+  - **`admin`** (Nivel Clúster): Otorga permisos globales de `cluster-admin` para poder modificar RBACs y recursos en todo el clúster.
+  - **Comando de Aprobación Manual**: La elevación requiere confirmación del usuario mediante el comando:
+    ```bash
+    make hermes-rbac LEVEL=admin|operator|readonly
+    ```
 
 ### 1.1 Puente Conversacional A2A (Cerebro-a-Cerebro)
 
 Para posibilitar una verdadera colaboración conversacional de agente a agente, inyectamos dinámicamente una herramienta MCP llamada `ask_hermes_agent(question: str) -> str` en el arranque del pod de Hermes.
 * **Mecanismo Autónomo**: El tool utiliza la biblioteca interna de Hermes en Python (`AIAgent`) para ejecutar un bucle de razonamiento autónomo (`run_conversation()`) de forma sincrónica y segura dentro del propio pod, sin llamadas externas circulares redundantes.
-* **Heredabilidad de Seguridad de Solo Lectura**: Todas las consultas ejecutadas a través de `ask_hermes_agent` heredan estrictamente el contexto de seguridad del pod `hermes-agent-mcp`, el cual está limitado a solo lectura mediante la ServiceAccount `hermes-agent-mcp-readonly`. Esto garantiza que Tito (OpenClaw) puede solicitarle diagnósticos complejos a Hermes sin que este último pueda realizar operaciones destructivas involuntarias en el clúster.
+* **Heredabilidad de Seguridad**: Todas las consultas ejecutadas a través de `ask_hermes_agent` heredan estrictamente el contexto de seguridad configurado para la ServiceAccount de Hermes (`hermes-agent-mcp`).
+
+### 1.2 Debates Técnicos Interactivos Multi-Agente (Tito ⚔️ Hermes)
+
+Hemos diseñado e integrado una herramienta de debate estructurado para que Tito (OpenClaw) y Hermes contrasten enfoques técnicos opuestos antes de ejecutar cambios complejos en el clúster.
+* **El Script de Debate (`scripts/agent-debate.py`)**: Coordina un debate automatizado de 4 turnos consultando los modelos correspondientes de cada agente a través del proxy de LiteLLM:
+  1. **Apertura de Tito (OpenClaw)**: Propuesta pragmática, enfocada en la simplicidad, estabilidad y bajo riesgo (utiliza `openai/gpt-4o`).
+  2. **Contrapropuesta de Hermes**: Enfoque de vanguardia, altamente automatizado, escalable y optimizado (utiliza `hermes-qwen`).
+  3. **Réplica de Tito**: Defensa del pragmatismo frente a la complejidad.
+  4. **Defensa Final de Hermes**: Conclusión y argumentos finales.
+* **Aprobación del Usuario**: El debate concluye presentando un resumen estructurado de las dos opciones para que el usuario ingrese la opción que aprueba (`A` o `B`).
+* **Uso**:
+  ```bash
+  python3 scripts/agent-debate.py "¿Debemos migrar a almacenamiento NFS para los PVCs?"
+  ```
 
 ---
 
