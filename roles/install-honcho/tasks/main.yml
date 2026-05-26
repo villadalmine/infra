@@ -2,6 +2,11 @@
 # Install/upgrade self-hosted Honcho using local Helm Chart
 # Uses internal LiteLLM proxy as OpenAI compatible backend.
 
+# ─── Load secrets (db password, JWT secret) ───────────────────────────────────
+- name: Load Honcho secrets
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+
 # ─── Storage Dependency Guard ─────────────────────────────────────────────────
 - name: Ensure storage backend is installed before Honcho
   ansible.builtin.include_role:

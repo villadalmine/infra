@@ -65,6 +65,14 @@ openclaw_mcp_kagent_timeout: 300
 openclaw_mcp_hermes_timeout: 600
 openclaw_agent_timeout_seconds: 600
 
+# ─── MCP Bridge sidecar (reverse A2A: Hermes → OpenClaw) ─────────────────────
+# Wraps `openclaw mcp serve` (stdio) as streamable-http via supergateway.
+# Exposes the same 11 messaging-bridge tools that Hermes exposes, but on
+# the OpenClaw side — so Hermes can call OpenClaw's conversations/events.
+# NetworkPolicy: allow hermes-agent-mcp (ai ns) → openclaw :18790
+openclaw_mcp_bridge_enabled: true
+openclaw_mcp_bridge_port: 18790
+
 # ─── Honcho Memory Configuration ──────────────────────────────────────────────
 # Self-hosted Honcho in-cluster. Workspace-scoped JWT key in secrets.yml (workspace: openclaw).
 openclaw_honcho_url: "http://honcho-api.honcho.svc.cluster.local"
@@ -124,10 +132,47 @@ openclaw_agent_instructions: |
   - `resources_get` (apiVersion, kind, name, namespace?) — recurso específico
   - `events_list` (namespace?) — eventos del cluster
 
-  ## MCP "hermes" — agente de código y operaciones complejas
-  Úsalo para: tareas de código, análisis profundo, operaciones que requieren varios pasos.
-  Es un agente autónomo con acceso al cluster K8s. Delégale tareas complejas.
-  Tools: usa las herramientas que exponga hermes directamente.
+  ## MCP "hermes" — messaging bridge + agente autónomo
+  Hermes tiene su propio bot de Telegram y loop de razonamiento autónomo.
+  Sus tools son un bridge de mensajería real — no ejecutan funciones simples,
+  hacen que Hermes razone con su LLM + kubernetes MCP + kagent MCP.
+
+  Tools disponibles:
+  - `conversations_list` (platform?) → lista conversaciones activas de Hermes
+  - `messages_send` (target, message) → envía mensaje al canal de Hermes; target="telegram:CHAT_ID"
+  - `messages_read` (session_key, limit?) → lee historial de una conversación
+  - `events_poll` (session_key, cursor, limit?) → eventos nuevos desde cursor (= message_id)
+  - `events_wait` (session_key, timeout?) → espera bloqueante hasta nueva respuesta (max 90s)
+  - `ask_hermes_agent` (question) → delega al AIAgent completo de Hermes (respuesta directa)
+
+  Úsalo para:
+  - Tareas de código, análisis profundo, investigación multi-paso → `ask_hermes_agent`
+  - Debate técnico multi-turno → protocolo messages_send + events_wait (ver abajo)
+  - Leer el historial de conversación de Hermes con el usuario → `messages_read`
+
+  ## PROTOCOLO DE DEBATE CON HERMES
+  Cuando el usuario pida "debatan sobre X", "consulta a Hermes sobre X", o antes de
+  cualquier operación de escritura en el cluster:
+
+  1. Forma tu posición inicial (2-3 oraciones, técnico y directo)
+  2. `ask_hermes_agent("DEBATE T1/N — Tema: [X]\nMi posición (OpenClaw): [tu_posición]\nAnalizá pros/contras y dame tu contrapropuesta.")`
+     → Hermes corre su AIAgent completo con sus MCPs y responde
+  3. Lee la respuesta de Hermes
+  4. Forma tu réplica integrando sus argumentos
+  5. `ask_hermes_agent("DEBATE T2/N — Historial:\nOpenClaw T1: [tu_pos]\nHermes T1: [respuesta]\nMi réplica: [tu_réplica]\n¿Contraargumento?")`
+  6. Repite pasando el historial acumulado, para N turnos (default 3, máximo 5)
+  7. Sintetiza: posición consensuada o desacuerdo documentado → presenta al usuario
+
+  OPCIONAL — mostrar debate al usuario en tiempo real:
+  Después de cada turno: `messages_send(target="telegram:CHAT_ID", message="[Hermes dice] " + respuesta_hermes)`
+  — esto muestra la respuesta de Hermes en su propio chat de Telegram para que el usuario lo siga en vivo.
+  CHAT_ID: llama `conversations_list(platform="telegram")` y extrae el chat_id del session_key.
+
+  Reglas del debate:
+  - Pasá siempre el historial completo en cada turno para que Hermes tenga contexto
+  - El debate es técnico: fundamentá con datos del cluster cuando sea relevante
+  - Si Hermes tarda (ask_hermes_agent puede tardar hasta 60s) → esperá, no abortes
+  - La síntesis final incluye quién argumentó qué y cuál fue el consenso
 
   ## MCP "kagent" — operaciones avanzadas (kubectl, helm, Cilium, Prometheus)
   Úsalo para: helm, métricas, debugging Cilium, operaciones kubectl complejas.

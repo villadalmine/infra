@@ -74,6 +74,7 @@ all tags up to the layer you need.
 | `leloir` | Postgres StatefulSet + leloir-controlplane deploy + HTTPRoute | `ai-registry` + `leloir-build` |
 | `kagent` | kagent + kmcp operator (multi-tenant agent platform) | `networking` + LiteLLM |
 | `openclaw` | OpenClaw personal AI gateway (Telegram + LiteLLM + RBAC) | `networking` + LiteLLM |
+| `ai-honcho` | Self-hosted Honcho memory platform (Postgres + Redis + API + Worker) | `networking` |
 | `ai-npu-pool` | install-rknpu-pool (4× rkllama NPU servers) | `networking`, `longhorn` |
 
 ```bash
@@ -155,6 +156,7 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 | Holmes UI | `nginx:alpine` | — | ConfigMap-mounted static UI |
 | kagent | `oci://ghcr.io/kagent-dev/kagent/helm/kagent` | 0.8.5 | 0.8.5 (multi-arch) |
 | OpenClaw | `registry.registry:5000/ai/openclaw` (custom build) | — | ARM64, namespace `openclaw` |
+| Honcho | `charts/honcho` (local chart) | v3 API | Postgres+Redis+API+Worker, namespace `honcho`, JWT HS256 auth |
 | NAS Admin | `registry.registry:5000/ai/nas-admin` (custom build) | 0.1.0 | ARM64, namespace `storage` |
 | RK1 NPU Pool | `install-rknpu-pool` (custom role) | — | rkllama `ghcr.io/notpunchnox/rkllama:main`, Llama-3.1-8B w8a8, 4× nodes |
 
@@ -190,6 +192,8 @@ Read the relevant skill before working on a component.
 | `kagent` | kagent + kmcp — multi-tenant AI agent platform, CRDs, RBAC, LiteLLM integration |
 | `rknpu` | RK1 NPU pool — rkllama server, device mapping, model download, LiteLLM routing |
 | `openclaw` | Personal AI gateway — Telegram bot, LiteLLM routing, RBAC levels, double `message_start` fix |
+| `a2a` | Agent-to-Agent entre OpenClaw y Hermes — messaging bridge MCP, messages_send, events_poll, Honcho compartido, roadmap bidireccional |
+| `honcho` | Self-hosted Honcho memory — JWT HS256 auth, workspace isolation, Alembic init container, Cilium DNAT gotcha (port 8000 not 80) |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |
 | `longhorn` | Longhorn NVMe — V1 engine, benchmark, migración de servicios, gotchas TuringPi 2 |

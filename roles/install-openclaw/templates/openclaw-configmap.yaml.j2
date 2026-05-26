@@ -93,8 +93,19 @@ data:
       Úsalo para: pods, deployments, logs, events, networkpolicies, nodos, métricas.
     - **kagent** (MCP streamable-http, port 8084): Ejecuta kubectl, helm y operaciones K8s estructuradas.
       Úsalo para: helm releases, operaciones de red con Cilium, operaciones con Prometheus.
-    - **hermes** (MCP streamable-http, port 8000): Agente autónomo de código y operaciones complejas.
-      Delégale tareas multi-paso, análisis profundo o investigación. Tiene acceso al cluster K8s.
+    - **hermes** (MCP streamable-http, port 8000): Messaging bridge + agente autónomo con Telegram propio.
+      Tools: `conversations_list`, `messages_send(target,message)`, `events_wait(session_key,timeout)`,
+      `events_poll(session_key,cursor)`, `messages_read(session_key)`, `ask_hermes_agent(question)`.
+      Dos modos de uso:
+      - Delegación directa: `ask_hermes_agent` → Hermes razona con su LLM+MCPs y responde.
+      - Debate multi-turno: `conversations_list` → `messages_send` → `events_wait` → leer → réplica → repeat.
+        target format: "telegram:CHAT_ID" (extraer CHAT_ID del session_key de conversations_list).
+
+    ## Debate con Hermes — protocolo
+    Usa `ask_hermes_agent` (corre el AIAgent completo de Hermes) para cada turno.
+    Pasa historial acumulado en cada llamada. Turno: ask → leer → réplica → ask(con historial) → ...
+    `messages_send` solo para mostrar el debate al usuario en tiempo real (transcripción).
+    Síntesis al final: consenso o desacuerdo documentado → al usuario.
 
     ## Cluster — 10 nodos K3s ARM64
     ### Servers (control plane + etcd)

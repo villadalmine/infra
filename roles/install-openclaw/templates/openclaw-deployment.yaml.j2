@@ -384,6 +384,65 @@ spec:
               mountPath: /etc/openclaw/openclaw.json
               subPath: openclaw.json
 
+{% if openclaw_mcp_bridge_enabled | default(false) %}
+        # ── OpenClaw MCP Bridge ───────────────────────────────────────────────
+        # Wraps `openclaw mcp serve` (stdio-only) as streamable-http on port
+        # {{ openclaw_mcp_bridge_port }} via supergateway, enabling Hermes to call
+        # OpenClaw's messaging-bridge tools (reverse A2A direction).
+        # Endpoint for Hermes: http://openclaw.openclaw.svc.cluster.local:{{ openclaw_mcp_bridge_port }}/mcp
+        - name: openclaw-mcp-bridge
+          image: {{ openclaw_image }}:{{ openclaw_version }}
+          imagePullPolicy: Always
+          command: ["sh", "-c"]
+          args:
+            - |
+              npx -y supergateway \
+                --port {{ openclaw_mcp_bridge_port }} \
+                --outputTransport streamableHttp \
+                --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
+          env:
+            - name: HOME
+              value: /home/node
+            - name: NODE_OPTIONS
+              value: "--dns-result-order=ipv4first"
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENCLAW_GATEWAY_TOKEN
+            - name: OPENCLAW_CONFIG_DIR
+              value: /etc/openclaw
+            - name: OPENCLAW_WORKSPACE_DIR
+              value: /home/node/.openclaw/workspace
+          ports:
+            - name: mcp-bridge
+              containerPort: {{ openclaw_mcp_bridge_port }}
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: openclaw-data
+              mountPath: /home/node/.openclaw
+            - name: npm-local
+              mountPath: /home/node/.openclaw/npm
+            - name: openclaw-config-json
+              mountPath: /etc/openclaw/openclaw.json
+              subPath: openclaw.json
+            - name: tmp
+              mountPath: /tmp
+{% endif %}
       volumes:
         - name: openclaw-data
           persistentVolumeClaim:

@@ -171,7 +171,7 @@ kubectl auth can-i list networkpolicies \
 | `kagent` | `http://kagent-tools.kagent.svc.cluster.local:8084/mcp` | `streamable-http` | kubectl/helm via kagent-tools |
 
 **holmes fue eliminado** — holmesgpt solo expone REST (`/api/chat`, `/api/model`), no MCP.
-**hermes** — offline (pendiente token propio). Cuando esté listo: puerto 8644.
+**hermes** — activo en puerto 8000 (messaging bridge MCP). Ver `skills/a2a/SKILL.md`.
 
 Transport confirmado:
 - `kubernetes-mcp-server`: responde a POST `/mcp` con `Content-Type: application/json` → **streamable-http**
@@ -185,17 +185,32 @@ Transport confirmado:
 | Destino | Puerto | Propósito |
 |---------|--------|-----------|
 | DNS | 53 UDP/TCP | Resolución de nombres |
-| `ai/litellm-proxy` | 4000 TCP | Todo el tráfico LLM |
-| `kagent/*` | 8084 TCP | kagent-tools MCP (targetPort real) |
-| `ai/hermes-agent-mcp` | 8644 TCP | Hermes MCP cuando vuelva (targetPort real) |
+| `ai/litellm-proxy` | 4000 TCP | Todo el tráfico LLM (service=targetPort) |
+| `kagent/*` | 8084 TCP | kagent-tools MCP (service=targetPort) |
+| `ai/hermes-agent-mcp` | 8000 TCP | Hermes MCP (service=targetPort) |
+| `honcho/*` | **8000** TCP | Honcho memory API (service port 80 → pod targetPort 8000) |
 | `monitoring/*` | 9090 TCP | Prometheus queries |
 | External HTTPS | 443 TCP | Telegram API |
 | K8s API server | 6443 TCP | RBAC / kubectl via SA |
 | `192.168.178.0/24` | 80,443,8080,554 TCP | Red home (análisis read-only) |
 
 **Cilium DNAT — regla crítica:** Cilium evalúa NetworkPolicy DESPUÉS del DNAT.
-Usar siempre el **targetPort** del pod, no el port del Service.
-Ejemplo: `holmesgpt-holmes` Service port 80 → targetPort 5050 → NetworkPolicy necesita 5050.
+Siempre usar el **targetPort del pod**, no el port del Service.
+
+- Honcho: Service `80` → targetPort **`8000`** → NetworkPolicy usa `8000`
+- LiteLLM / Kagent / Hermes: service port = targetPort → no hay diferencia
+
+**Trampa con debug pods:** un pod sin `app=openclaw` label no tiene la NetworkPolicy
+aplicada y puede conectar aunque el pod real no pueda. Siempre testear la conectividad
+con `--labels="app=openclaw"` para simular el entorno real:
+
+```bash
+kubectl run -n openclaw nw-test --restart=Never --image=curlimages/curl \
+  --labels="app=openclaw" \
+  --command -- sh -c 'curl -s --max-time 8 http://honcho-api.honcho.svc.cluster.local/health; echo EXIT:$?'
+sleep 12; kubectl logs -n openclaw nw-test; kubectl delete pod -n openclaw nw-test
+# EXIT:0 = OK, EXIT:28 = NetworkPolicy bloqueando
+```
 
 NetworkPolicy también tiene **ingress** desde `monitoring` en port 18789 para
 recibir webhooks de AlertManager.
@@ -234,6 +249,55 @@ spec:
 
 **Trampa:** añadir una NetworkPolicy con podSelector activa enforcement en ese pod.
 Si solo permites openclaw, el `kagent-controller` queda bloqueado → falla reconciliación de MCPServer CRDs cada 2 min.
+
+---
+
+## Honcho — Memoria persistente
+
+OpenClaw usa el plugin `openclaw-honcho` para memoria de conversación persistente.
+La memoria está en el **workspace `openclaw`** del Honcho self-hosted en namespace `honcho`.
+
+### Configuración en `openclaw.json` (ConfigMap)
+
+```json
+"plugins": {
+  "allow": ["openclaw-honcho"],
+  "entries": {
+    "openclaw-honcho": {
+      "enabled": true,
+      "config": {
+        "baseUrl": "http://honcho-api.honcho.svc.cluster.local",
+        "apiKey": "<workspace-scoped-jwt>",
+        "workspaceId": "openclaw",
+        "timeoutMs": 30000
+      }
+    }
+  },
+  "slots": {"memory": "openclaw-honcho"}
+}
+```
+
+### Variables Ansible relevantes
+
+| Variable | Valor default | Descripción |
+|----------|--------------|-------------|
+| `openclaw_honcho_url` | `http://honcho-api.honcho.svc.cluster.local` | URL del API |
+| `openclaw_honcho_workspace` | `openclaw` | Workspace ID |
+| `openclaw_honcho_timeout_ms` | `30000` | Timeout en ms |
+| `openclaw_honcho_api_key` | en `secrets.yml` | JWT workspace-scoped |
+
+### Verificación
+
+```bash
+# Honcho memory cargó correctamente
+kubectl logs -n openclaw deploy/openclaw -c openclaw-gateway | grep -i honcho
+# → "Honcho memory ready — peer map: /home/node/.honcho/openclaw-peers.json (N known senders)"
+
+# Si falla: "Failed to initialize Honcho: ConnectionError"
+# → Verificar NetworkPolicy (port 8000, no 80) y que honcho-api esté Running
+```
+
+Ver `skills/honcho/SKILL.md` para arquitectura completa, JWT auth y troubleshooting.
 
 ---
 
@@ -449,20 +513,35 @@ curl http://localhost:4000/spend/logs \
 
 ---
 
-## Arquitectura multi-agente (roadmap activo)
-
-OpenClaw es el orquestador. Los otros bots son sus minions internos:
+## Arquitectura multi-agente (estado actual)
 
 ```
 Usuario (Telegram)
     │
     ▼
 OpenClaw (orquestador)
-    ├── kubernetes MCP (sidecar)  → cluster inspection
-    ├── Holmes  MCP               → investiga alertas/incidentes
-    ├── Kagent  MCP               → ejecuta agentes K8s
-    └── Hermes  MCP (offline)     → código y ops (cuando tenga token propio)
+    ├── kubernetes MCP (sidecar :8080)  → cluster inspection (read-only)
+    ├── Kagent  MCP (:8084)             → kubectl, helm, Cilium, Prometheus
+    └── Hermes  MCP (:8000) ✅ ONLINE  → messaging bridge + agente autónomo
 ```
+
+### Canal A2A con Hermes — messaging bridge (probado 2026-05-26)
+
+Hermes expone un **messaging bridge MCP completo** en puerto 8000. OpenClaw puede:
+- `conversations_list` → ver qué conversaciones Telegram tiene Hermes activas
+- `messages_send(target, message)` → enviar un mensaje real al chat de Hermes
+- `events_poll(session_key, cursor)` → leer respuestas de Hermes
+- `ask_hermes_agent(question)` → delegar al loop autónomo completo de Hermes
+
+**Diferencia vs tool calling clásico:** `messages_send` hace que Hermes reciba el mensaje
+como si fuera del usuario — procesa con su LLM + kubernetes MCP + kagent MCP y responde
+autónomamente. No es una función, es un agente razonando.
+
+Ver `skills/a2a/SKILL.md` para tests completos, schemas y roadmap.
+
+**Lo que falta para bidireccional:**
+OpenClaw no expone MCP server (`/mcp` → 404). Hermes no puede iniciar contacto.
+Opciones: habilitar MCP server en OpenClaw, o usar Honcho workspace compartido.
 
 ### AlertManager → OpenClaw (pendiente)
 ```yaml
