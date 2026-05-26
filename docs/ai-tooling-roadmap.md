@@ -185,6 +185,7 @@ impacto) y luego la integración Radar como segunda fase.
 - [x] **Elevación de Permisos RBAC de Hermes a Admin**: Modificamos y desplegamos la ServiceAccount del pod `hermes-agent-mcp` elevando su nivel de RBAC a `admin` (vinculado a `cluster-admin`). Esto le otorga al agente Hermes capacidades irrestrictas de escritura y modificación a nivel de clúster para solucionar de forma proactiva incidentes complejos.
 - [x] **Debate Colaborativo Mandatorio OpenClaw ↔ Hermes**: Rediseñamos los system prompts de ambos agentes (Tito y Hermes). Ahora, antes de proponer o solicitar aprobación para cualquier operación de escritura/modificación destructiva (apply, scale, delete, shell), deben debatir técnica y preventivamente los riesgos y consensuar qué alternativa es mejor.
 - [x] **Estabilización de Event-Loop en OpenClaw**: Identificamos y corregimos un lag en el event loop de Tito que bloqueaba la cola de interacción en Telegram. Se solucionó mediante un rollout de saneamiento y refresco de sockets.
+- [x] **Validación de la Comunicación Activa A2A (Tito ↔ Hermes)**: Se ejecutó con éxito un test en vivo donde Tito interceptó un comando del usuario, invocó a la herramienta `hermes__ask_hermes_agent` para solicitarle a Hermes un saludo corto de exactamente 3 palabras, y Hermes devolvió con éxito `"Hola, ¿cómo estás?"` que luego fue entregado exitosamente a Telegram.
 
 
 ### Pendiente

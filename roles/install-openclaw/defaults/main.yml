@@ -61,6 +61,16 @@ openclaw_model_fallback2: "openrouter/google/gemini-2.0-flash-exp:free"
 openclaw_mcp_k8s_image: "registry.registry:5000/ai/kubernetes-mcp-server"
 openclaw_mcp_k8s_tag: "v0.0.60"
 
+# ─── MCP Client & Agent timeouts (seconds) ───────────────────────────────────
+openclaw_mcp_kubernetes_timeout: 120
+openclaw_mcp_kagent_timeout: 300
+openclaw_mcp_hermes_timeout: 600
+openclaw_agent_timeout_seconds: 600
+
+# ─── Honcho Memory Configuration ──────────────────────────────────────────────
+openclaw_honcho_url: "https://api.honcho.dev"
+openclaw_honcho_timeout_ms: 30000
+
 # ─── Subagent endpoints (for NetworkPolicy + AGENTS.md) ──────────────────────
 openclaw_holmes_url: "http://holmesgpt-holmes.ai.svc.cluster.local"
 openclaw_kagent_url: "http://k8s-agent.kagent.svc.cluster.local:8080"

@@ -21,7 +21,8 @@ data:
             "apiKey": "{{ openclaw_litellm_master_key }}",
             "models": [
               { "id": "gpt-4o",      "name": "Default (via LiteLLM)" },
-              { "id": "gpt-4o-mini", "name": "Fast (via LiteLLM)" }
+              { "id": "gpt-4o-mini", "name": "Fast (via LiteLLM)" },
+              { "id": "rk1-npu-local", "name": "TuringPi RK1 NPU Pool (Local)" }
             ]
           }
         }
@@ -31,17 +32,17 @@ data:
           "kubernetes": {
             "url": "http://127.0.0.1:8080/mcp",
             "transport": "streamable-http",
-            "timeout": 120
+            "timeout": {{ openclaw_mcp_kubernetes_timeout | default(120) }}
           },
           "kagent": {
             "url": "http://kagent-tools.kagent.svc.cluster.local:8084/mcp",
             "transport": "streamable-http",
-            "timeout": 60
+            "timeout": {{ openclaw_mcp_kagent_timeout | default(300) }}
           },
           "hermes": {
             "url": "{{ openclaw_hermes_url }}/mcp",
             "transport": "streamable-http",
-            "timeout": 120
+            "timeout": {{ openclaw_mcp_hermes_timeout | default(600) }}
           }
         }
       },
@@ -52,7 +53,7 @@ data:
           },
           "model": "{{ openclaw_model_primary }}",
           "systemPromptOverride": {{ openclaw_agent_instructions | to_json }},
-          "timeoutSeconds": 180
+          "timeoutSeconds": {{ openclaw_agent_timeout_seconds | default(600) }}
         }
       },
       "channels": {
@@ -66,6 +67,8 @@ data:
         "entries": {
           "openclaw-honcho": {
             "enabled": true,
+            "baseUrl": "{{ openclaw_honcho_url | default('https://api.honcho.dev') }}",
+            "timeoutMs": {{ openclaw_honcho_timeout_ms | default(30000) }},
             "hooks": {
               "allowConversationAccess": true
             }
