@@ -358,6 +358,11 @@ RK1 NPU:  rk1-npu-01..04 (least_busy routing via LiteLLM)
 Holmes:   GPU Ollama → holmes-free2 (cloud free) → holmes-cheap (cloud cheap) → qwen-pro (paid)
 Headlamp: local-reason (GPU) → same Holmes chain ↑
 OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap
+
+**Context Window Limits & Fallbacks:**
+- The RK1 NPU (`rk1-npu-local`) has a hard context limit of **4096 tokens**.
+- LiteLLM is configured with `max_input_tokens: 4096` for the NPU models to prevent crashing the runtime (`rkllama` worker).
+- If a prompt exceeds 4096 tokens, it triggers a `context_window_fallback` and is routed to `local-fast` (GPU) -> `gemini-free2` -> `free2`.
 ```
 
 ## Pi-hole — Critical Knowledge
@@ -445,7 +450,7 @@ rk1-npu-04.ai.svc.cluster.local:8080
 | Memory limit | 20Gi | NPU inference uses LPDDR4X (32 GB total per node) |
 | CPU request | 2000m | 2 guaranteed cores |
 | CPU limit | 8000m | All 8 cores of RK3588S available |
-| num_ctx | 8192 tokens | 2× default KV cache |
+| num_ctx | 4096 tokens | Max supported by NPU RKLLM runtime |
 | max_new_tokens | 4096 | Long responses |
 
 ---
