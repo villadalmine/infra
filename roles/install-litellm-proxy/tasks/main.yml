@@ -151,21 +151,29 @@
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
                 api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
                 api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
                 api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
                 api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
 
             # ── Legacy Aliases & Tool Defaults ──────────────────────────────
             - model_name: free
@@ -254,6 +262,8 @@
               - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap"]}
             request_timeout: 120
             num_retries: 1
+            context_window_fallbacks:
+              - {"rk1-npu-local": ["local-fast", "gemini-free2", "free2"]}
             set_verbose: false
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]
