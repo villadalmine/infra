@@ -349,3 +349,6 @@ logs: ## Show logs of failing pods
 	@echo ""
 	@echo "=== Logs ==="
 	@kubectl logs -A --field-selector=status.phase!=Running,status.phase!=Succeeded --tail=10 2>/dev/null || echo "No failing pods"
+
+headlamp: ## Deploy Headlamp UI with AI plugins
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags headlamp

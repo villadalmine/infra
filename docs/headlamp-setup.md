@@ -6,16 +6,30 @@ apuntando al LiteLLM interno del cluster.
 
 ---
 
+> **ACTUALIZACIÓN 2026-05-26**: Headlamp ahora está integrado nativamente en el cluster.
+> Ya no hace falta instalarlo localmente.
+> Para desplegarlo usá: `make headlamp` (que llama al rol `install-headlamp`).
+> Headlamp estará disponible en `http://headlamp.cluster.home`.
+
 ## Requisitos previos
 
 - Cluster K3s corriendo (`make core` completado)
 - `~/.kube/config` apuntando al cluster (`kubectl get nodes` funciona)
-- LiteLLM corriendo en `192.168.178.90:4000` (parte de la GPU workstation `t7910`)
-- `curl` disponible
+- LiteLLM configurado y corriendo en el clúster.
 
 ---
 
-## 1. Instalar Headlamp (binary local)
+## 1. Desplegar Headlamp en el cluster (Nuevo método)
+
+Solamente corré:
+```bash
+make headlamp
+```
+Esto desplegará el Helm chart oficial, inyectará el plugin oficial `ai-assistant`, inyectará el plugin customizado `headlamp-holmes` (compilado vía ConfigMap) y creará la ruta en `headlamp.cluster.home`.
+
+---
+
+## 2. (Deprecado) Instalar Headlamp localmente
 
 Headlamp no necesita estar deployado en el cluster para desarrollo/testing local.
 Se corre el binary en la workstation y se le pasa el kubeconfig.

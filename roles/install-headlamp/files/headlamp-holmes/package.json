@@ -1,0 +1,13 @@
+{
+  "name": "headlamp-holmes",
+  "version": "0.1.0",
+  "description": "Diagnose Kubernetes resources with AI via LiteLLM",
+  "scripts": {
+    "build": "headlamp-plugin build",
+    "start": "headlamp-plugin start"
+  },
+  "keywords": ["headlamp", "headlamp-plugin", "kubernetes", "ai"],
+  "devDependencies": {
+    "@kinvolk/headlamp-plugin": "^0.14.0"
+  }
+}

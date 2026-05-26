@@ -1,0 +1,8 @@
+---
+headlamp_namespace: headlamp
+headlamp_helm_chart_version: 0.24.0 # Typical version, will ensure it works
+headlamp_holmes_model: rk1-npu-local
+headlamp_holmes_url: http://litellm-proxy.ai.svc.cluster.local:4000/v1/chat/completions
+headlamp_service_port: 80
+headlamp_ai_assistant_version: "0.2.0-alpha"
+headlamp_ai_assistant_url: "https://github.com/headlamp-k8s/plugins/releases/download/ai-assistant-{{ headlamp_ai_assistant_version }}/headlamp-k8s-ai-assistant-{{ headlamp_ai_assistant_version }}.tar.gz"

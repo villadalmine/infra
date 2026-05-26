@@ -1,0 +1,85 @@
+---
+- name: Create Headlamp namespace
+  kubernetes.core.k8s:
+    name: "{{ headlamp_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Create headlamp-holmes plugin ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: headlamp-holmes-plugin
+        namespace: "{{ headlamp_namespace }}"
+      data:
+        main.js: "{{ lookup('file', role_path + '/files/headlamp-holmes/dist/main.js') | string }}"
+        package.json: "{{ lookup('file', role_path + '/files/headlamp-holmes/package.json') | string }}"
+
+- name: Add Headlamp Helm repository
+  kubernetes.core.helm_repository:
+    name: headlamp
+    repo_url: "https://kubernetes-sigs.github.io/headlamp/"
+
+- name: Deploy Headlamp via Helm
+  kubernetes.core.helm:
+    name: headlamp
+    chart_ref: headlamp/headlamp
+    release_namespace: "{{ headlamp_namespace }}"
+    update_repo_cache: yes
+    values:
+      # Use in-cluster ServiceAccount to access the API
+      serviceAccount:
+        create: true
+      clusterRoleBinding:
+        create: true
+        clusterRoleName: cluster-admin
+      
+      # Configure plugins via initContainer
+      initContainers:
+        - name: setup-plugins
+          image: curlimages/curl:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # 1. Download official ai-assistant plugin
+              mkdir -p /build/plugins/ai-assistant
+              curl -sL {{ headlamp_ai_assistant_url }} | tar -xz -C /build/plugins/
+              
+              # 2. Patch ai-assistant to point to 'ai' namespace instead of 'default'
+              sed -i 's/"holmesgpt-holmes",dB=80,fB="default"/"holmesgpt-holmes",dB=80,fB="ai"/' /build/plugins/ai-assistant/main.js
+              
+              # 3. Copy custom headlamp-holmes plugin from configmap
+              mkdir -p /build/plugins/headlamp-holmes
+              cp /tmp/headlamp-holmes-config/main.js /build/plugins/headlamp-holmes/
+              cp /tmp/headlamp-holmes-config/package.json /build/plugins/headlamp-holmes/
+              
+              # 4. Patch the custom plugin with ansible variables
+              sed -i 's|http://192.168.178.90:4000/v1/chat/completions|{{ headlamp_holmes_url }}|g' /build/plugins/headlamp-holmes/main.js
+              sed -i 's|local-fast|{{ headlamp_holmes_model }}|g' /build/plugins/headlamp-holmes/main.js
+          volumeMounts:
+            - name: headlamp-plugins
+              mountPath: /build/plugins
+            - name: headlamp-holmes-config
+              mountPath: /tmp/headlamp-holmes-config
+      
+      # Mount the plugins volume into the main container
+      volumeMounts:
+        - name: headlamp-plugins
+          mountPath: /build/plugins
+      
+      # Define the volumes
+      volumes:
+        - name: headlamp-plugins
+          emptyDir: {}
+        - name: headlamp-holmes-config
+          configMap:
+            name: headlamp-holmes-plugin
+
+- name: Expose Headlamp via Gateway API (HTTPRoute)
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'httproute.yaml.j2') }}"

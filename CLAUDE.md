@@ -59,7 +59,7 @@ all tags up to the layer you need.
 | `networking` | gateway-api-crds + cilium + cilium-pools | `core` |
 | `networking-observability` | cilium-hubble-monitoring (ServiceMonitor) | `networking` + `observability` |
 | `ingress` | cert-manager + gateway | `networking` |
-| `services` | pihole + argocd + helm-dashboard | `ingress` |
+| `services` | argocd + helm-dashboard + headlamp | `ingress` |
 | `observability` | prometheus + tempo + loki + alloy | `networking` |
 | `security` | neuvector | `services` |
 | `storage-smb` | csi-driver-smb + smb-nas StorageClass (opt-in) | `networking` |
@@ -150,7 +150,7 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 | Longhorn | `longhorn/longhorn` | 1.11.2 | 1.11.2 — StorageClass `longhorn-nvme`, V1 engine, RK1 nodes |
 | NeuVector | `neuvector/core` | 2.8.12 | 5.5.0 |
 | Docker Registry | `registry:2` | 2 | 2.x |
-| LiteLLM proxy | `ghcr.io/berriai/litellm` | main-latest | in-cluster |
+| Headlamp | `install-headlamp` (Helm) | `v0.24.0` | In-cluster UI + `headlamp-holmes` (AI plugin) |
 | Hermes Agent | `registry.registry:5000/ai/hermes-agent` | 0.7.0 | ARM64 custom build |
 | HolmesGPT | `robusta/holmes` | 0.24.0 | 0.24.0 |
 | Holmes UI | `nginx:alpine` | — | ConfigMap-mounted static UI |

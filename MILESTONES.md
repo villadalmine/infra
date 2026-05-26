@@ -10,3 +10,4 @@
 ## April 2026
 - **Gateway API & Cilium Migration:** Removed MetalLB, fully migrated to Cilium L2 Announcements and Gateway API.
 - **Storage:** Migrated cluster storage to Longhorn NVMe for performance-intensive AI tasks and kept SMB NAS for persistent logs/metrics.
+- **Headlamp Native UI Integration:** Migrated Headlamp from a local workstation binary to a fully automated in-cluster Helm deployment (`make headlamp`). Created a dynamic initContainer pipeline to inject both the official `ai-assistant` plugin and our custom `headlamp-holmes` plugin, binding it directly to the cluster's Holmes/LiteLLM AI stack.
