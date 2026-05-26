@@ -22,9 +22,9 @@ rknpu_model_name: "llama-3.1-8b-instruct"
 rknpu_pvc_size: "30Gi"
 
 # rkllama server config (env vars: RKLLAMA_<SECTION>_<KEY>)
-# num_ctx: KV cache size in tokens. 8192 = ~2x default, uses more NPU RAM but handles longer convos
+# num_ctx: KV cache size in tokens. 4096 is the maximum context length supported by this compiled .rkllm model.
 # RK3588S has 32 GB LPDDR4X shared between CPU+NPU — safe up to ~20 GB total pod usage
-rknpu_num_ctx: "8192"
+rknpu_num_ctx: "4096"
 rknpu_max_new_tokens: "4096"
 
 # Pod resource limits — allow the pod to use up to 20 GB RAM

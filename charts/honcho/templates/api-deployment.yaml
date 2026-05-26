@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "honcho.fullname" . }}-api
+  labels:
+    {{- include "honcho.labels" . | nindent 4 }}
+    app: {{ include "honcho.fullname" . }}-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "honcho.selectorLabels" . | nindent 6 }}
+      app: {{ include "honcho.fullname" . }}-api
+  template:
+    metadata:
+      labels:
+        {{- include "honcho.selectorLabels" . | nindent 8 }}
+        app: {{ include "honcho.fullname" . }}-api
+    spec:
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: honcho-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ include "honcho.fullname" . }}-secrets
+          # Liveness and readiness probes to ensure the FastAPI app is listening
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10

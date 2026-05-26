@@ -1,0 +1,62 @@
+---
+# Install/upgrade self-hosted Honcho using local Helm Chart
+# Uses internal LiteLLM proxy as OpenAI compatible backend.
+
+# ─── Storage Dependency Guard ─────────────────────────────────────────────────
+- name: Ensure storage backend is installed before Honcho
+  ansible.builtin.include_role:
+    name: "{{ honcho_storage_role }}"
+  when: honcho_storage_class != 'local-path' and honcho_storage_role is defined and honcho_storage_role != ''
+
+# ─── Namespace ────────────────────────────────────────────────────────────────
+- name: Create honcho namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ honcho_namespace }}"
+    state: present
+
+# ─── Helm Chart Deploy ────────────────────────────────────────────────────────
+# Use wait:false + kubectl rollout status to avoid Helm timeouts on slow ARM64 pulls.
+- name: Install or upgrade Honcho
+  kubernetes.core.helm:
+    name: "{{ honcho_release_name }}"
+    chart_ref: "{{ role_path }}/../../charts/honcho"
+    release_namespace: "{{ honcho_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      hostname: "{{ honcho_hostname }}"
+      nodeSelector:
+        kubernetes.io/hostname: "{{ honcho_node_hostname }}"
+      postgresql:
+        persistence:
+          storageClass: "{{ honcho_storage_class }}"
+          size: "{{ honcho_storage_size }}"
+        dbPassword: "{{ honcho_db_password }}"
+      llm:
+        baseUrl: "{{ honcho_litellm_url }}"
+        apiKey: "{{ honcho_litellm_key }}"
+
+# ─── Wait for Rollout Status ──────────────────────────────────────────────────
+- name: Wait for PostgreSQL rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/{{ honcho_release_name }}-postgres -n {{ honcho_namespace }} --timeout=180s
+  changed_when: false
+
+- name: Wait for Redis rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/{{ honcho_release_name }}-redis -n {{ honcho_namespace }} --timeout=180s
+  changed_when: false
+
+- name: Wait for Honcho API rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/{{ honcho_release_name }}-api -n {{ honcho_namespace }} --timeout=180s
+  changed_when: false
+
+- name: Wait for Honcho Worker rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/{{ honcho_release_name }}-worker -n {{ honcho_namespace }} --timeout=180s
+  changed_when: false

@@ -41,6 +41,14 @@ hermes_image_tag: "v2026.5.16-telegram"
 hermes_mcp_image_name: "ai/kubernetes-mcp-server"
 hermes_mcp_image_tag: "v0.0.60"
 
+# RBAC Elevation level for cluster operations:
+# Options:
+#   - readonly: read-only access (default, highly secure)
+#   - operator: read/write/edit inside the 'ai' namespace (allow bot restarts)
+#   - admin: read/write/edit across all cluster namespaces (allow fixing everything)
+# Elevate dynamically using: make hermes-rbac LEVEL=admin
+hermes_rbac_level: "readonly"
+
 # Hermes memory and learning loop settings
 hermes_memory_provider: "honcho"
 hermes_honcho_workspace: "hermes"

@@ -145,6 +145,24 @@
                 model: openrouter/qwen/qwen-turbo
                 api_key: os.environ/KAGENT_OPENROUTER_API_KEY
 
+            # ── Local TuringPi 2 RK1 NPU Pool ────────────────────────────────
+            - model_name: rk1-npu-local
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+            - model_name: rk1-npu-local
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+            - model_name: rk1-npu-local
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+            - model_name: rk1-npu-local
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+
             # ── Legacy Aliases & Tool Defaults ──────────────────────────────
             - model_name: free
               litellm_params:
@@ -209,16 +227,21 @@
                 api_key: os.environ/OPENROUTER_API_KEY
 
           litellm_settings:
+            router_settings:
+              routing_strategy: least_busy
+              allowed_fails: 3
+              cooldown_time: 30
             fallbacks:
               - {"hermes-qwen": ["qwen-pro", "free2", "cheap"]}
-              # Holmes: GPU → OpenRouter free → OpenRouter cheap → paid (qwen-pro)
-              - {"holmes-llama": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
-              - {"gpt-5.4": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
+              # Holmes: GPU → NPU Pool → OpenRouter free → OpenRouter cheap → paid (qwen-pro)
+              - {"holmes-llama": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
+              - {"gpt-5.4": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
               # local-reason = Holmes default model (Headlamp AG-UI) — same fallback chain
-              - {"local-reason": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
+              - {"local-reason": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
               # Other GPU models — fallback to Hermes OpenRouter chain (+ paid last resort)
               - {"local-fast": ["free2", "cheap", "qwen-pro"]}
-              - {"local-llama": ["holmes-free2", "holmes-cheap", "qwen-pro"]}
+              - {"local-llama": ["rk1-npu-local", "holmes-free2", "holmes-cheap", "qwen-pro"]}
+              - {"rk1-npu-local": ["free2", "cheap", "qwen-pro"]}
               - {"openclaw-gemini": ["gemini-free2", "openclaw-cheap"]}
               - {"gpt-4o": ["gemini-free2", "openclaw-cheap"]}
               - {"openai/gpt-4o": ["gemini-free2", "openclaw-cheap"]}

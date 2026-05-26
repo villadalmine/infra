@@ -1,0 +1,49 @@
+# Default values for honcho.
+# This is a YAML-formatted file.
+
+# Global settings
+hostname: "honcho.cluster.home"
+nodeSelector:
+  kubernetes.io/hostname: "srv-rk1-nvme-02"
+tolerations:
+  - operator: Exists
+
+# API Server and Deriver Worker configuration
+image:
+  repository: "ghcr.io/plastic-labs/honcho"
+  tag: "v3.0.6"
+  pullPolicy: "IfNotPresent"
+
+# LiteLLM Integration parameters (OpenAI compatible)
+# All Honcho components (Deriver, Summary, Dream, Dialectic, Embedding)
+# are forced to openai transport routed through in-cluster LiteLLM.
+llm:
+  baseUrl: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+  apiKey: "sk-hermes-internal"
+  # Model for text generation (must support tool calling / function calling)
+  # Maps to a LiteLLM model alias in your litellm config
+  model: "hermes-qwen"
+  # Embeddings are disabled (EMBED_MESSAGES=false) — no embedding model needed in LiteLLM.
+  # To enable: add an embedding model to LiteLLM and set embeddingModel here.
+  embeddingModel: ""
+  embedMessages: "false"
+
+# Database config (pgvector)
+postgresql:
+  image:
+    repository: "pgvector/pgvector"
+    tag: "pg16"
+    pullPolicy: "Always"
+  persistence:
+    storageClass: "longhorn-nvme"
+    size: "10Gi"
+  dbName: "honcho"
+  dbUser: "honcho"
+  dbPassword: "honchosecretpassword"
+
+# Redis Cache config (fast queues)
+redis:
+  image:
+    repository: "redis"
+    tag: "7-alpine"
+    pullPolicy: "Always"

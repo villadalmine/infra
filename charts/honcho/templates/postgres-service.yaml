@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "honcho.fullname" . }}-postgres
+  labels:
+    {{- include "honcho.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "honcho.selectorLabels" . | nindent 4 }}
+    app: {{ include "honcho.fullname" . }}-postgres
+  type: ClusterIP

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "honcho.fullname" . }}-redis
+  labels:
+    {{- include "honcho.labels" . | nindent 4 }}
+    app: {{ include "honcho.fullname" . }}-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "honcho.selectorLabels" . | nindent 6 }}
+      app: {{ include "honcho.fullname" . }}-redis
+  template:
+    metadata:
+      labels:
+        {{- include "honcho.selectorLabels" . | nindent 8 }}
+        app: {{ include "honcho.fullname" . }}-redis
+    spec:
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          ports:
+            - containerPort: 6379
+              name: redis

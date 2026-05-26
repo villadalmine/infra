@@ -12,7 +12,7 @@ SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 ARGO_NS      ?= kaniko
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-all ai-registry ai-hermes-build ai-hermes-deploy ai-litellm-proxy-deploy ai-hermes-agent-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all longhorn longhorn-bench
+.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage ai ai-all ai-registry ai-hermes-build ai-hermes-deploy ai-litellm-proxy-deploy ai-hermes-agent-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent security full clean healthcheck node-identity node-stats survey litellm openclaw openclaw-rbac hermes-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all longhorn longhorn-bench
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -204,6 +204,9 @@ ai-hermes-deploy: ## Deploy Hermes Agent + LiteLLM proxy
 ai-litellm-proxy-deploy: ## Deploy/Upgrade LiteLLM proxy only (no Hermes Agent restart)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-litellm-proxy
 
+ai-npu-pool: ## Deploy/Upgrade TuringPi 2 RK1 NPU pool and Services
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-npu-pool
+
 ai-hermes-agent-deploy: ## Deploy/Upgrade Hermes Agent pod only (no LiteLLM restart)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-agent
 
@@ -240,6 +243,9 @@ openclaw: ## Deploy OpenClaw personal AI gateway (Telegram + LiteLLM + modular R
 
 openclaw-rbac: ## Change OpenClaw RBAC level — LEVEL=readonly|operator|admin|cluster-admin
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags openclaw -e "openclaw_rbac_level=$(LEVEL)"
+
+hermes-rbac: ## Change Hermes RBAC level — LEVEL=readonly|operator|admin
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-agent -e "hermes_rbac_level=$(LEVEL)"
 
 security: ## Install NeuVector core (controller, enforcer, manager, scanner)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags security

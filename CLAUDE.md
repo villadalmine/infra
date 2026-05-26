@@ -45,7 +45,7 @@ install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
 → install-registry → install-hermes-agent-image
 → install-litellm-proxy → install-hermes-agent
-→ install-holmes → install-holmes-ui → install-kagent → install-openclaw
+→ install-holmes → install-holmes-ui → install-kagent → install-openclaw → install-rknpu-pool
 ```
 
 ## Bootstrap Tags
@@ -72,6 +72,7 @@ all tags up to the layer you need.
 | `leloir` | Postgres StatefulSet + leloir-controlplane deploy + HTTPRoute | `ai-registry` + `leloir-build` |
 | `kagent` | kagent + kmcp operator (multi-tenant agent platform) | `networking` + LiteLLM |
 | `openclaw` | OpenClaw personal AI gateway (Telegram + LiteLLM + RBAC) | `networking` + LiteLLM |
+| `ai-npu-pool` | install-rknpu-pool (4× rkllama NPU servers) | `networking`, `longhorn` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -153,6 +154,7 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 | kagent | `oci://ghcr.io/kagent-dev/kagent/helm/kagent` | 0.8.5 | 0.8.5 (multi-arch) |
 | OpenClaw | `registry.registry:5000/ai/openclaw` (custom build) | — | ARM64, namespace `openclaw` |
 | NAS Admin | `registry.registry:5000/ai/nas-admin` (custom build) | 0.1.0 | ARM64, namespace `storage` |
+| RK1 NPU Pool | `install-rknpu-pool` (custom role) | — | rkllama `ghcr.io/notpunchnox/rkllama:main`, Llama-3.1-8B w8a8, 4× nodes |
 
 Hermes is deployed as a persistent gateway on the high-resource node with a
 mounted `gateway.json` so the webhook platform stays enabled and the pod does
@@ -184,6 +186,7 @@ Read the relevant skill before working on a component.
 | `monitoring` | Prometheus, Grafana, Tempo, Alloy — full observability stack |
 | `ai` | Registry + LiteLLM proxy + Hermes + HolmesGPT + Holmes UI — full ARM64 AI stack |
 | `kagent` | kagent + kmcp — multi-tenant AI agent platform, CRDs, RBAC, LiteLLM integration |
+| `rknpu` | RK1 NPU pool — rkllama server, device mapping, model download, LiteLLM routing |
 | `openclaw` | Personal AI gateway — Telegram bot, LiteLLM routing, RBAC levels, double `message_start` fix |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |

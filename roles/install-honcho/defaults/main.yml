@@ -1,0 +1,32 @@
+# Defaults for the install-honcho Ansible role
+# Plugs into the K3s clúster with standard resources.
+
+honcho_namespace: "honcho"
+honcho_chart_version: "0.1.0"
+honcho_release_name: "honcho"
+
+# ─── Storage Configuration ────────────────────────────────────────────────────
+# Standard StorageClass: longhorn-nvme (fast local NVMe block storage).
+# Can be overridden to "smb-nas-pg" if wishing to run database on the NAS share.
+# In case of NAS storage, set storage role to "install-cifs-nas" so the SMB driver
+# is guaranteed to be installed before deployment.
+honcho_storage_class: "longhorn-nvme"
+honcho_storage_size: "10Gi"
+honcho_storage_role: ""
+
+# ─── Network Exposure ──────────────────────────────────────────────────────────
+# Exposed at this URL through Gateway API HTTPRoute on the shared gateway.
+honcho_hostname: "honcho.cluster.home"
+
+# ─── Workload Scheduling ──────────────────────────────────────────────────────
+# Scheduled on TuringPi 2 RK1 agent node (.48, srv-rk1-nvme-02) for heavy agent tasks.
+# Can be overridden to run without node placement.
+honcho_node_hostname: "srv-rk1-nvme-02"
+
+# ─── LLM integration (LiteLLM internal proxy) ───────────────────────────────
+honcho_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+honcho_litellm_key: "sk-hermes-internal"
+
+# ─── Secrets (loaded from secrets.yml — gitignored) ─────────────────────────
+# Copy roles/install-honcho/defaults/secrets.yml.example → secrets.yml and fill values.
+# honcho_db_password: "CHANGEME"

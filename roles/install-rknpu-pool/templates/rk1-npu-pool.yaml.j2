@@ -14,6 +14,18 @@ spec:
     requests:
       storage: {{ rknpu_pvc_size }}
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ node.name }}-modelfile
+  namespace: {{ rknpu_namespace }}
+  labels:
+    app: {{ node.name }}
+data:
+  Modelfile: |
+    FROM={{ rknpu_model_hf_file }}
+    HUGGINGFACE_PATH=unsloth/llama-3.1-8b-instruct
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,6 +36,9 @@ metadata:
     app.kubernetes.io/component: npu-inference
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels:
       app: {{ node.name }}
@@ -55,7 +70,6 @@ spec:
                 exit 0
               fi
               echo "Downloading {{ rknpu_model_hf_file }} from {{ rknpu_model_hf_repo }}..."
-              mkdir -p "${MODEL_DIR}"
               /opt/venv/bin/python3 -c "
               from huggingface_hub import hf_hub_url
               import requests, os, sys
@@ -123,6 +137,9 @@ spec:
               mountPath: /dev/dri
             - name: npu-model-data
               mountPath: /opt/rkllama/models
+            - name: modelfile-volume
+              mountPath: /opt/rkllama/models/{{ rknpu_model_name }}/Modelfile
+              subPath: Modelfile
       volumes:
         - name: dev-dri
           hostPath:
@@ -132,6 +149,9 @@ spec:
         - name: npu-model-data
           persistentVolumeClaim:
             claimName: {{ node.name }}-pvc
+        - name: modelfile-volume
+          configMap:
+            name: {{ node.name }}-modelfile
 ---
 apiVersion: v1
 kind: Service

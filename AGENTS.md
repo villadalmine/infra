@@ -98,6 +98,7 @@ infra/
     ├── install-hermes-agent/          ← Hermes Agent + LiteLLM proxy
     ├── install-holmes/                ← HolmesGPT SRE assistant
     ├── install-kagent/                ← kagent + kmcp AI agent platform
+    ├── install-rknpu-pool/            ← RK1 NPU pool: rkllama server + Llama-3.1-8B InitContainer download
     ├── fix-mac-address/               ← fix MAC rotation on RK1 nodes (TuringPi 2)
     ├── healthcheck-nodes/             ← identity asserts + resource stats
     └── uninstall/                     ← K3s uninstall + cleanup + reboot
@@ -118,6 +119,7 @@ make observability    # + Prometheus, Grafana, Tempo, Loki, Alloy
 make ai               # Full AI stack (registry + hermes build + deploy)
 make openclaw         # Deploy OpenClaw personal AI gateway
 make kagent           # kagent + kmcp AI agent platform
+make ai-npu-pool      # RK1 NPU inference pool (4× rkllama servers, Llama-3.1-8B)
 make security         # NeuVector core
 make full             # All roles
 make clean            # Full uninstall (5s countdown, destructive)
@@ -144,7 +146,7 @@ install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-cifs-nas (storage — must precede PVC-backed services)
 → install-registry → install-hermes-agent-image
 → install-litellm-proxy → install-hermes-agent
-→ install-holmes → install-kagent → install-openclaw
+→ install-holmes → install-kagent → install-openclaw → install-rknpu-pool
 ```
 
 **Storage dependency**: `install-cifs-nas` must run before any role that uses `smb-nas` PVCs
@@ -165,6 +167,7 @@ Bootstrap tags:
 | ai | registry + hermes-image + litellm-proxy + hermes-agent | networking, storage |
 | kagent | kagent + kmcp | networking, LiteLLM deployed |
 | openclaw | openclaw | networking, LiteLLM deployed |
+| `ai-npu-pool` | install-rknpu-pool (4× rkllama NPU servers) | `networking`, `longhorn` |
 
 ---
 
@@ -339,6 +342,7 @@ NAS: LG N2R1 @ `192.168.178.102`, share `//192.168.178.102/service`, SMB1 only.
 | HolmesGPT | `ai` | `holmes.cluster.home` | SRE assistant |
 | kagent | `kagent` | `kagent.cluster.home` | AI agent platform + kmcp, multi-tenant |
 | **OpenClaw** | `openclaw` | `openclaw.cluster.home` | Personal AI gateway (Telegram + LiteLLM) |
+| **RK1 NPU Pool** | `ai` | cluster-internal only | 4× rkllama servers, Llama-3.1-8B w8a8 via RK3588S NPU (6 TOPS each) |
 
 kagent uses `smb-nas-pg` StorageClass for bundled PostgreSQL.
 Built-in agents need `tolerations: [{operator: Exists}]` patched onto Agent CRDs after deploy.
@@ -350,6 +354,7 @@ When the GPU host is down, requests fall through automatically:
 
 ```
 Hermes:   hermes-qwen → qwen-pro (paid) → free2 → cheap
+RK1 NPU:  rk1-npu-01..04 (least_busy routing via LiteLLM)
 Holmes:   GPU Ollama → holmes-free2 (cloud free) → holmes-cheap (cloud cheap) → qwen-pro (paid)
 Headlamp: local-reason (GPU) → same Holmes chain ↑
 OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap
@@ -390,6 +395,59 @@ kubectl get secret argocd-initial-admin-secret -n argocd \
 ssh dalmine@192.168.178.85
 ```
 
+## RK1 NPU Pool — Critical Knowledge
+
+4× TuringPi 2 RK1 nodes each run a dedicated `rkllama` server (Ollama-compatible API) using the RK3588S NPU (6 TOPS).
+Model: **Llama-3.1-8B w8a8** (8.63 GB, ~12 GB in NPU RAM).
+
+### Device mapping (kernel 6.1 vendor)
+
+The RKNPU driver is bound to `/npu@fdab0000` but exposes via **DRM interface**, NOT `/dev/rknpu0`:
+
+| Device | Driver | What it is |
+|--------|--------|------------|
+| `/dev/dri/renderD128` | `rockchip-drm` | Mali GPU (display) — NOT the NPU |
+| `/dev/dri/renderD129` | `RKNPU` | **RK3588S NPU** — use this one |
+
+`librkllmrt.so` v1.2.3 auto-detects `renderD129` via DRI fallback scan. No kernel update needed.
+Mount `/dev/dri` (the whole dir) into pods — the runtime picks the right node automatically.
+
+### Storage
+
+- **StorageClass**: `longhorn-nvme` (NVMe, not eMMC — hostPath would land on eMMC)
+- **PVC size**: 30Gi per node (8.63 GB model + KV prompt cache + headroom)
+- **Model location**: `/opt/rkllama/models/<model-name>/<file>.rkllm`
+
+### Deployment
+
+```bash
+make ai-npu-pool   # deploy 4× Deployments + Services + PVCs + InitContainer download
+```
+
+InitContainer is **idempotent**: skips download if `.rkllm` already exists on PVC.
+First boot downloads 8.63 GB from HuggingFace — takes ~20–40 min depending on bandwidth.
+
+### LiteLLM integration
+
+All 4 servers are registered in LiteLLM with `least_busy` routing:
+```
+rk1-npu-01.ai.svc.cluster.local:8080
+rk1-npu-02.ai.svc.cluster.local:8080
+rk1-npu-03.ai.svc.cluster.local:8080
+rk1-npu-04.ai.svc.cluster.local:8080
+```
+
+### Pod resources
+
+| Parameter | Value | Reason |
+|-----------|-------|--------|
+| Memory request | 2Gi | Low request → easy scheduling |
+| Memory limit | 20Gi | NPU inference uses LPDDR4X (32 GB total per node) |
+| CPU request | 2000m | 2 guaranteed cores |
+| CPU limit | 8000m | All 8 cores of RK3588S available |
+| num_ctx | 8192 tokens | 2× default KV cache |
+| max_new_tokens | 4096 | Long responses |
+
 ---
 
 ## Available Skills (.agents/skills)
@@ -407,6 +465,7 @@ ssh dalmine@192.168.178.85
 | `ai` | registry + LiteLLM + Hermes Agent + HolmesGPT + OpenClaw |
 | `openclaw` | Personal AI gateway, Telegram bot, modular RBAC, LiteLLM config |
 | `kagent` | AI agent platform, CRDs, RBAC, LiteLLM integration |
+| `rknpu` | RK1 NPU pool: rkllama, RKLLM runtime, device mapping, model download |
 | `infra-ops` | node health checks, RK1 MAC fix, TuringPi 2 ops |
 | `k8s-debug` | debug pods, network, nodes |
 | `platform-engineering` | Helm, Terraform, CI/CD |

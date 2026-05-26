@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "honcho.fullname" . }}-redis
+  labels:
+    {{- include "honcho.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    {{- include "honcho.selectorLabels" . | nindent 4 }}
+    app: {{ include "honcho.fullname" . }}-redis
+  type: ClusterIP

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: honcho
+description: Custom Helm chart for deploying self-hosted Honcho memory platform in K3s
+type: application
+version: 0.1.0
+appVersion: "latest"
