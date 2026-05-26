@@ -150,18 +150,22 @@
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
                 api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
 
             # ── Legacy Aliases & Tool Defaults ──────────────────────────────
             - model_name: free
