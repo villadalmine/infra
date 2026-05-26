@@ -47,7 +47,7 @@ hermes_mcp_image_tag: "v0.0.60"
 #   - operator: read/write/edit inside the 'ai' namespace (allow bot restarts)
 #   - admin: read/write/edit across all cluster namespaces (allow fixing everything)
 # Elevate dynamically using: make hermes-rbac LEVEL=admin
-hermes_rbac_level: "readonly"
+hermes_rbac_level: "admin"
 
 # Hermes memory and learning loop settings
 hermes_memory_provider: "honcho"
