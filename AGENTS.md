@@ -85,6 +85,7 @@ infra/
     ├── install-pihole/                ← DNS at .203 + wildcard *.cluster.home → .200
     ├── install-argocd/                ← ClusterIP + HTTPRoute
     ├── install-helm-dashboard/        ← Helm release management UI
+    ├── install-headlamp/              ← Kubernetes UI with Holmes AI plugin
     ├── install-kube-prometheus-stack/ ← Prometheus + Grafana + AlertManager
     ├── install-tempo/                 ← Grafana Tempo (grafana-community chart, pinned v1.26.7)
     ├── install-loki/                  ← Grafana Loki SingleBinary + MinIO
@@ -113,10 +114,11 @@ make help             # Show all targets
 make core             # K3s + kubeconfig
 make networking       # + Cilium, LB-IPAM, Gateway API CRDs
 make ingress          # + cert-manager, Gateway
-make services         # + Pi-hole, ArgoCD, helm-dashboard
+make services         # + Pi-hole, ArgoCD, helm-dashboard, headlamp
 make storage          # SMB CSI driver (required before services/observability PVCs)
 make observability    # + Prometheus, Grafana, Tempo, Loki, Alloy
-make ai               # Full AI stack (registry + hermes build + deploy)
+make ai               # Deploy core AI stack (litellm, hermes, npu-pool). Skips image builds!
+make ai-build         # Build all local ARM64 images via kaniko
 make openclaw         # Deploy OpenClaw personal AI gateway
 make kagent           # kagent + kmcp AI agent platform
 make ai-npu-pool      # RK1 NPU inference pool (4× rkllama servers, Llama-3.1-8B)
@@ -140,7 +142,7 @@ make node-stats       # Fast script: CPU/RAM/temp table
 ```
 install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-cilium-pools → install-cert-manager → install-gateway
-→ install-pihole → install-argocd → install-helm-dashboard
+→ install-pihole → install-argocd → install-helm-dashboard → install-headlamp
 → install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
 → install-version-checker → install-neuvector
 → install-cifs-nas (storage — must precede PVC-backed services)
@@ -362,7 +364,7 @@ OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap
 **Context Window Limits & Fallbacks:**
 - The RK1 NPU (`rk1-npu-local`) has a hard context limit of **4096 tokens**.
 - LiteLLM is configured with `max_input_tokens: 4096` for the NPU models to prevent crashing the runtime (`rkllama` worker).
-- If a prompt exceeds 4096 tokens, it triggers a `context_window_fallback` and is routed to `local-fast` (GPU) -> `gemini-free2` -> `free2`.
+- If a prompt exceeds 4096 tokens, it triggers a `context_window_fallback` and is routed to `local-fast` (GPU) -> `gemini-free2` -> `free2` -> `deepseek-pro` -> `deepseek-free`.
 ```
 
 ## Pi-hole — Critical Knowledge

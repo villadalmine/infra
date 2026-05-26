@@ -4,7 +4,7 @@
 - [x] Migrate LiteLLM to support `least_busy` load balancing across RK1 NPU pool.
 - [x] Implement robust context-window fallbacks for OpenClaw/LiteLLM to avoid NPU crashes.
 - [ ] Add monitoring dashboards specifically for NPU health (temperature, utilization, context limits).
-- [ ] Implement automatic failover for local GPU if it goes offline.
+- [x] Implement automatic failover for local GPU if it goes offline.
 
 ## Q3 2026 - Scale & Storage
 - [ ] Upgrade Longhorn CSI to support node-specific NVMe affinity for the RK1 pool.

@@ -122,7 +122,7 @@ LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 ```
 Hermes:   hermes-qwen → qwen-pro → free2 → cheap
 Holmes:   GPU Ollama → holmes-free2 (cloud) → holmes-cheap (cloud) → qwen-pro (paid)
-OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap
+OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap → deepseek-pro → deepseek-free
 Local GPU (all): GPU → free tier → cheap → qwen-pro (paid last resort)
 ```
 
@@ -156,16 +156,16 @@ kubectl get jobs -n kaniko
 kubectl logs -n kaniko job/build-hermes-arm64 -f | grep -v "npm WARN"
 ```
 
-### Step 3: Deploy LiteLLM proxy + Hermes (2 min)
+### Step 3: Deploy AI stack (fast)
 
 ```bash
-make ai-hermes-deploy
+make ai  # registry + litellm + hermes deploy (skips kaniko build)
 ```
 
-### All at once
+### All at once (including build)
 
 ```bash
-make ai  # registry + build + deploy (~70 min total)
+make ai-build && make ai
 ```
 
 ---
