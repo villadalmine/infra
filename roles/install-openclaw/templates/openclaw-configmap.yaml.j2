@@ -51,7 +51,8 @@ data:
             "mode": "{{ 'docker' if openclaw_sandbox_enabled else 'off' }}"
           },
           "model": "{{ openclaw_model_primary }}",
-          "systemPromptOverride": {{ openclaw_agent_instructions | to_json }}
+          "systemPromptOverride": {{ openclaw_agent_instructions | to_json }},
+          "timeoutSeconds": 180
         }
       },
       "channels": {
