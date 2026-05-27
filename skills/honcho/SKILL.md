@@ -165,31 +165,60 @@ curl -H "Authorization: Bearer $HERMES_KEY" \
 
 ---
 
+## SDK Python — env vars oficiales
+
+El Honcho Python SDK lee exactamente estas variables de entorno:
+
+| Env var | Propósito | Ejemplo |
+|---------|-----------|---------|
+| `HONCHO_URL` | URL del API (primary) | `http://honcho-api.honcho.svc.cluster.local` |
+| `HONCHO_BASE_URL` | URL del API (alias) | igual que HONCHO_URL |
+| `HONCHO_API_KEY` | JWT o API key de autenticación | `eyJ...` |
+| `HONCHO_WORKSPACE_ID` | Workspace ID (primary) | `hermes` |
+| `HONCHO_WORKSPACE` | Workspace ID (alias, añadido por compatibilidad) | `hermes` |
+
+**Hermes** usa el SDK Python y lee `HONCHO_URL` + `HONCHO_WORKSPACE_ID`.
+Para garantizar compatibilidad, el deployment de Hermes setea los 5 nombres.
+
+**OpenClaw** usa el plugin `@honcho-ai/openclaw-honcho` (TypeScript) con el SDK JS.
+El SDK JS lee `baseUrl` de `openclaw.json` config (no env var).
+
+---
+
 ## API v3 — endpoints clave
 
 ```bash
 # Health check (sin auth)
 GET /health → {"status":"ok"}
 
-# Get-or-create workspace (idempotente)
-POST /v3/workspaces/{workspace_id}
+# Crear workspace (POST /v3/workspaces con body {id: "..."})
+POST /v3/workspaces
 Authorization: Bearer <jwt>
-→ {"id":"openclaw","created_at":"..."}
+{"id": "hermes"}
+→ {"id":"hermes","created_at":"..."}
 
-# Listar sessions en un workspace
-GET /v3/workspaces/{workspace_id}/sessions
-Authorization: Bearer <jwt>
+# GET workspace existente
+POST /v3/workspaces       # con id ya existente → devuelve el existente (idempotente)
+PUT  /v3/workspaces/{workspace_id}   # update
 
-# Crear session
-POST /v3/workspaces/{workspace_id}/sessions
+# Listar workspaces
+POST /v3/workspaces/list
+{"filter": null}
+
+# Crear peer
+POST /v3/workspaces/{workspace_id}/peers
+{"id": "user-123", "metadata": {}}
+
+# Listar peers
+POST /v3/workspaces/{workspace_id}/peers/list
+{}
+
+# Crear session para un peer
+POST /v3/workspaces/{workspace_id}/peers/{peer_id}/sessions
 {"metadata": {...}}
 
-# Añadir mensaje a session
-POST /v3/workspaces/{workspace_id}/sessions/{session_id}/messages
-{"is_user": true, "content": "Hola"}
-
-# Obtener peers (user identities)
-GET /v3/workspaces/{workspace_id}/sessions/{session_id}/peers
+# Chat con contexto de memoria
+POST /v3/workspaces/{workspace_id}/peers/{peer_id}/chat
 ```
 
 ---
