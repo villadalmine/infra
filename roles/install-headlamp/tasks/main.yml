@@ -41,23 +41,16 @@
       # Configure plugins via initContainer
       initContainers:
         - name: setup-plugins
-          image: curlimages/curl:latest
+          image: alpine:latest
           command: ["/bin/sh", "-c"]
           args:
             - |
-              # 1. Download official ai-assistant plugin
-              mkdir -p /build/plugins/ai-assistant
-              curl -sL {{ headlamp_ai_assistant_url }} | tar -xz -C /build/plugins/
-              
-              # 2. Patch ai-assistant to point to 'ai' namespace instead of 'default'
-              sed -i 's/"holmesgpt-holmes",dB=80,fB="default"/"holmesgpt-holmes",dB=80,fB="ai"/' /build/plugins/ai-assistant/main.js
-              
-              # 3. Copy custom headlamp-holmes plugin from configmap
+              # 1. Copy custom headlamp-holmes plugin from configmap
               mkdir -p /build/plugins/headlamp-holmes
               cp /tmp/headlamp-holmes-config/main.js /build/plugins/headlamp-holmes/
               cp /tmp/headlamp-holmes-config/package.json /build/plugins/headlamp-holmes/
               
-              # 4. Patch the custom plugin with ansible variables
+              # 2. Patch the custom plugin with ansible variables
               sed -i 's|http://192.168.178.90:4000/v1/chat/completions|{{ headlamp_holmes_url }}|g' /build/plugins/headlamp-holmes/main.js
               sed -i 's|local-fast|{{ headlamp_holmes_model }}|g' /build/plugins/headlamp-holmes/main.js
           volumeMounts:

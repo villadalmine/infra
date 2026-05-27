@@ -5,7 +5,8 @@
 - [x] Implement robust context-window fallbacks for OpenClaw/LiteLLM to avoid NPU crashes.
 - [ ] Add monitoring dashboards specifically for NPU health (temperature, utilization, context limits).
 - [x] Implement automatic failover for local GPU if it goes offline.
-- [x] Deploy Headlamp Kubernetes UI in-cluster with official and custom Holmes AI plugins.
+- [x] Deploy Headlamp Kubernetes UI in-cluster with custom headlamp-holmes AI plugin.
+- [ ] Evaluate and integrate the official Headlamp `ai-assistant` plugin once stable.
 
 ## Q3 2026 - Scale & Storage
 - [ ] Upgrade Longhorn CSI to support node-specific NVMe affinity for the RK1 pool.
