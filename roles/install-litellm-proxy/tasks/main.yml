@@ -456,6 +456,20 @@
                 model: openrouter/anthropic/claude-sonnet-4-5
                 api_key: os.environ/OPENROUTER_API_KEY
 
+            # ── Free Models and Aliases for Headlamp / Holmes ──
+            - model_name: nemotron
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: qwen3.6-free
+              litellm_params:
+                model: openrouter/qwen/qwen3-coder:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: deepseek4v-free
+              litellm_params:
+                model: openrouter/deepseek/deepseek-v4-flash:free
+                api_key: os.environ/OPENROUTER_API_KEY
+
           litellm_settings:
             router_settings:
               routing_strategy: least_busy
@@ -475,6 +489,9 @@
               - {"local-fast": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
               - {"local-llama": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
               - {"rk1-npu-local": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"nemotron": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"qwen3.6-free": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"deepseek4v-free": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
@@ -487,6 +504,9 @@
               - {"gpt-4o": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
               - {"openai/gpt-4o": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
               - {"rk1-npu-local": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"nemotron": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"qwen3.6-free": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"deepseek4v-free": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
             set_verbose: true
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]
