@@ -7,9 +7,8 @@ metadata:
     app.kubernetes.io/name: headlamp
 spec:
   parentRefs:
-    - name: shared-gateway
+    - name: cluster-gateway
       namespace: gateway
-      sectionName: https
   hostnames:
     - "headlamp.cluster.home"
   rules:
