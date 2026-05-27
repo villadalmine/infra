@@ -386,19 +386,26 @@ spec:
 
 {% if openclaw_mcp_bridge_enabled | default(false) %}
         # ── OpenClaw MCP Bridge ───────────────────────────────────────────────
-        # Wraps `openclaw mcp serve` (stdio-only) as streamable-http on port
+        # Wraps `openclaw mcp serve` (stdio-only) as SSE on port
         # {{ openclaw_mcp_bridge_port }} via supergateway, enabling Hermes to call
         # OpenClaw's messaging-bridge tools (reverse A2A direction).
         # Endpoint para Hermes: http://openclaw.openclaw.svc.cluster.local:{{ openclaw_mcp_bridge_port }}/sse
+        # Note: supergateway SSE mode reuses one child process per instance; it crashes
+        # when a second client connects. The while-true loop restarts it transparently
+        # so Hermes reconnects succeed after the brief restart window (~2s).
         - name: openclaw-mcp-bridge
           image: {{ openclaw_image }}:{{ openclaw_version }}
           imagePullPolicy: Always
           command: ["sh", "-c"]
           args:
             - |
-              npx -y supergateway \
-                --port {{ openclaw_mcp_bridge_port }} \
-                --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
+              while true; do
+                npx -y supergateway \
+                  --port {{ openclaw_mcp_bridge_port }} \
+                  --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
+                echo "[mcp-bridge] supergateway exited (code $?), restarting in 2s..."
+                sleep 2
+              done
           env:
             - name: HOME
               value: /home/node

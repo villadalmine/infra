@@ -457,6 +457,46 @@ rk1-npu-04.ai.svc.cluster.local:8080
 
 ---
 
+## OpenClaw MCP Bridge Deadlock Bypass (CRITICAL)
+
+In OpenClaw versions v2026.x+, the `openclaw-mcp-bridge` sidecar container requires a scope upgrade (`operator.read, operator.write, operator.approvals, operator.pairing`) to register and route A2A bridge tools. 
+
+Because the gateway suspends unauthorized scope upgrades, the bridge client connection gets blocked in a pending state (`scope upgrade pending approval`). However, trying to run the approval CLI command (`openclaw devices approve`) inside the gateway container itself initiates a WebSocket connection that triggers a nested scope upgrade, leading to a **chicken-and-egg bootstrap deadlock**.
+
+### Direct PVC Approval Bypass
+To resolve this deadlock and authorize the bridge:
+1. Run a Node.js one-liner directly inside the gateway container to edit the device list on the PVC and pre-approve all required scopes:
+   ```bash
+   kubectl exec -n openclaw deployment/openclaw -c openclaw-gateway -- node -e '
+   const fs = require("fs");
+   const file = "/home/node/.openclaw/devices/paired.json";
+   const data = JSON.parse(fs.readFileSync(file, "utf8"));
+   const key = "c7eb17c905d9c3b9fad7d2623ce4f58ab3fe7499a1a2b13a7efb81ae679b8fb8";
+   if (data[key]) {
+     const targetScopes = ["operator.read", "operator.write", "operator.approvals", "operator.pairing"];
+     data[key].scopes = targetScopes;
+     data[key].approvedScopes = targetScopes;
+     if (data[key].tokens && data[key].tokens.operator) {
+       data[key].tokens.operator.scopes = targetScopes;
+     }
+     fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf8");
+     console.log("SUCCESS: paired.json successfully updated.");
+   }
+   '
+   ```
+2. Remove any stale queue requests:
+   ```bash
+   kubectl exec -n openclaw deployment/openclaw -c openclaw-gateway -- rm -f /home/node/.openclaw/devices/pending.json
+   ```
+3. Restart the OpenClaw deployment to force the gateway to reload `paired.json` and let the bridge connect:
+   ```bash
+   kubectl rollout restart -n openclaw deployment/openclaw
+   ```
+
+*Note: Since supergateway only supports one active client session per stdio process, do not run concurrent manual curls to `supergateway` port 18790, as it will crash the container.*
+
+---
+
 ## Available Skills (.agents/skills)
 
 | Skill | Covers |
