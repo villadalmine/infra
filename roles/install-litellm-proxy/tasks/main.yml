@@ -44,13 +44,7 @@
       data:
         config.yaml: |
           model_list:
-            # ── Local GPU routes (DIRECT to Ollama — bypasses t7910 LiteLLM) ─
-            # Double-hop (in-cluster LiteLLM → t7910 LiteLLM → Ollama) breaks
-            # tool_calls: models return inline JSON instead of tool_calls objects.
-            # Fix: route directly to Ollama /v1 on the GPU-specific port.
-            # P4 GPU :11434 — small models (≤8B, ~4-5 GB VRAM)
-            # M4000 dual :11436 — large models (≥14B)
-            # ── Local GPU models (primary) — fallback → OpenRouter when GPU host is down ─
+            # ── Local GPU routes (Ollama at 192.168.178.90) ──
             - model_name: local-fast
               litellm_params:
                 model: openai/qwen2.5-coder:7b
@@ -59,12 +53,6 @@
             - model_name: local-llama
               litellm_params:
                 model: openai/llama3.1:8b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
-            - model_name: local-reason
-              litellm_params:
-                # Used by Holmes default config + Headlamp AG-UI plugin
-                model: openai/deepseek-r1:8b
                 api_base: http://192.168.178.90:11434/v1
                 api_key: "dummy"
             - model_name: local-coder-7b
@@ -83,69 +71,8 @@
                 api_base: http://192.168.178.90:11436/v1
                 api_key: "dummy"
 
-            # ── Hermes routing ──────────────────────────────────────────────
-            - model_name: hermes-qwen
-              litellm_params:
-                model: openrouter/qwen/qwen3-coder:free
-                api_key: os.environ/OPENROUTER_API_KEY
-            - model_name: free2
-              litellm_params:
-                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
-                api_key: os.environ/OPENROUTER_API_KEY
-            - model_name: cheap
-              litellm_params:
-                model: openrouter/qwen/qwen-turbo
-                api_key: os.environ/OPENROUTER_API_KEY
-            # Recommended higher-quality Qwen model. Use this for heavier workloads.
-            - model_name: qwen-pro
-              litellm_params:
-                model: openrouter/qwen/qwen3.6-plus
-                api_key: os.environ/OPENROUTER_API_KEY
-
-            # ── Holmes routing ──────────────────────────────────────────────
-            # Direct Ollama (bypass t7910 LiteLLM double-hop).
-            # Double-hop (in-cluster LiteLLM → t7910 LiteLLM → Ollama) silently
-            # breaks tool calling: llama3.1:8b generates inline JSON instead of
-            # proper tool_calls API objects. Direct Ollama /v1 fixes this.
-            - model_name: holmes-llama
-              litellm_params:
-                model: openai/llama3.1:8b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
-            - model_name: holmes-free2
-              litellm_params:
-                # Cloud fallback tier 1 — used when GPU host (192.168.178.90) is down
-                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
-            - model_name: holmes-cheap
-              litellm_params:
-                # Cloud fallback tier 2 — last resort if free tier also fails
-                model: openrouter/qwen/qwen-turbo
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
-
-            # ── OpenClaw routing ────────────────────────────────────────────
-            # Uses openai/ prefix + api_base (NOT openrouter/ prefix) to avoid
-            # LiteLLM's double-prefix bug in the /v1/messages Anthropic pass-through path.
-            # Primary: gpt-oss-120b (120B, 128k ctx, tools, reliable)
-            # Fallback: nemotron-super (120B, 262k ctx, tools)
-            - model_name: openclaw-gemini
-              litellm_params:
-                model: openai/gpt-oss-120b:free
-                api_base: https://openrouter.ai/api/v1
-                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-            - model_name: gemini-free2
-              litellm_params:
-                model: openai/nvidia/nemotron-3-super-120b-a12b:free
-                api_base: https://openrouter.ai/api/v1
-                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-
-            # ── Kagent routing ──────────────────────────────────────────────
-            - model_name: kagent-orchestrator
-              litellm_params:
-                model: openrouter/qwen/qwen-turbo
-                api_key: os.environ/KAGENT_OPENROUTER_API_KEY
-
-            # ── Local TuringPi 2 RK1 NPU Pool ────────────────────────────────
+            # ── Local TuringPi 2 RK1 NPU Pool (Primary routes for ALL services) ──
+            # 4x RK1 Nodes running Llama-3.1-8B-Instruct on RKNPU (instantly available, 0 cost)
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
@@ -175,55 +102,339 @@
               model_info:
                 max_input_tokens: 4096
 
-            # ── Legacy Aliases & Tool Defaults ──────────────────────────────
+            # ── hermes-qwen NPU pool mapping ──
+            - model_name: hermes-qwen
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: hermes-qwen
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: hermes-qwen
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: hermes-qwen
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+
+            # ── holmes-llama NPU pool mapping ──
+            - model_name: holmes-llama
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: holmes-llama
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: holmes-llama
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: holmes-llama
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+
+            # ── gpt-5.4 & openai/gpt-5.4 NPU pool mapping (Holmes default alias) ──
+            - model_name: gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-5.4
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+
+            # ── local-reason NPU pool mapping (Holmes default model name) ──
+            - model_name: local-reason
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: local-reason
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: local-reason
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: local-reason
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+
+            # ── openclaw-gemini NPU pool mapping ──
+            - model_name: openclaw-gemini
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openclaw-gemini
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openclaw-gemini
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openclaw-gemini
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+
+            # ── gpt-4o & openai/gpt-4o NPU pool mapping (OpenClaw defaults) ──
+            - model_name: gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gpt-4o
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+
+            # ── gemini-free & openai/gemini-free NPU pool mapping (OpenClaw aliases) ──
+            - model_name: gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-01.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-02.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-03.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+            - model_name: openai/gemini-free
+              litellm_params:
+                model: openai/llama-3.1-8b-instruct
+                api_base: http://rk1-npu-04.ai.svc.cluster.local:8080/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 4096
+
+            # ── OpenRouter Cloud Models (Fallbacks only) ──
+            - model_name: free2
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: cheap
+              litellm_params:
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: qwen-pro
+              litellm_params:
+                model: openrouter/qwen/qwen3.6-plus
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: holmes-free2
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+            - model_name: holmes-cheap
+              litellm_params:
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
+            - model_name: gemini-free2
+              litellm_params:
+                model: openai/nvidia/nemotron-3-super-120b-a12b:free
+                api_base: https://openrouter.ai/api/v1
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            - model_name: kagent-orchestrator
+              litellm_params:
+                model: openrouter/qwen/qwen-turbo
+                api_key: os.environ/KAGENT_OPENROUTER_API_KEY
             - model_name: free
               litellm_params:
                 model: openrouter/qwen/qwen3-coder:free
                 api_key: os.environ/OPENROUTER_API_KEY
-            # gpt-5.4 = Holmes default model name → direct Ollama (bypass t7910 LiteLLM)
-            # MUST be direct Ollama, NOT via t7910 LiteLLM. Double-hop breaks tool calling.
-            # Fallbacks: holmes-free2 (OpenRouter free) → holmes-cheap (OpenRouter cheap)
-            - model_name: gpt-5.4
-              litellm_params:
-                model: openai/llama3.1:8b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
-            - model_name: openai/gpt-5.4
-              litellm_params:
-                model: openai/llama3.1:8b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
-            - model_name: gemini-free
-              litellm_params:
-                model: openai/gpt-oss-120b:free
-                api_base: https://openrouter.ai/api/v1
-                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-            # Backwards-compat alias: OpenClaw prefixes provider (openai/gemini-free)
-            - model_name: openai/gemini-free
-              litellm_params:
-                model: openai/gpt-oss-120b:free
-                api_base: https://openrouter.ai/api/v1
-                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-            # OpenClaw calls litellm/gpt-4o → LiteLLM receives model=gpt-4o
-            # Route through openclaw key → gpt-oss-120b:free → nemotron → cheap
-            # Uses openai/ prefix + api_base to avoid LiteLLM /v1/messages double-prefix bug
-            - model_name: gpt-4o
-              litellm_params:
-                model: openai/gpt-oss-120b:free
-                api_base: https://openrouter.ai/api/v1
-                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-            - model_name: openai/gpt-4o
-              litellm_params:
-                model: openai/gpt-oss-120b:free
-                api_base: https://openrouter.ai/api/v1
-                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-            # OpenClaw fallback using openai/ prefix to avoid /v1/messages double-prefix bug
             - model_name: openclaw-cheap
               litellm_params:
                 model: openai/qwen/qwen-turbo
                 api_base: https://openrouter.ai/api/v1
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-            # ── Free DeepSeek fallback ──────────────────────────────────────
             - model_name: deepseek-free
               litellm_params:
                 model: openrouter/deepseek/deepseek-v4-flash:free
@@ -232,8 +443,6 @@
               litellm_params:
                 model: openrouter/deepseek/deepseek-v4-pro
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
-
-            # ── Premium models ──────────────────────────────────────────────
             - model_name: claude-sonnet
               litellm_params:
                 model: openrouter/anthropic/claude-sonnet-4-5
@@ -253,25 +462,30 @@
               allowed_fails: 3
               cooldown_time: 30
             fallbacks:
-              - {"hermes-qwen": ["rk1-npu-local", "local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
-              # Holmes: NPU Pool → GPU → DeepSeek free → Nemotron free → DeepSeek Pro → Qwen Pro
-              - {"holmes-llama": ["rk1-npu-local", "local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"gpt-5.4": ["rk1-npu-local", "local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              # local-reason = Holmes default model (Headlamp AG-UI)
-              - {"local-reason": ["rk1-npu-local", "local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              # Other GPU models
+              - {"hermes-qwen": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"holmes-llama": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"gpt-5.4": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openai/gpt-5.4": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"local-reason": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openclaw-gemini": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"gpt-4o": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openai/gpt-4o": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"gemini-free": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openai/gemini-free": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
               - {"local-fast": ["deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
-              - {"local-llama": ["rk1-npu-local", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"local-llama": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
               - {"rk1-npu-local": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
-              - {"openclaw-gemini": ["rk1-npu-local", "local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"gpt-4o": ["rk1-npu-local", "local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openai/gpt-4o": ["rk1-npu-local", "local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"kagent-orchestrator": ["cheap"]}
-              - {"free": ["free2", "cheap"]}
-              - {"gemini-free": ["openclaw-gemini", "gemini-free2", "openclaw-cheap", "deepseek-pro", "deepseek-free"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
+              - {"hermes-qwen": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
+              - {"holmes-llama": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"gpt-5.4": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openai/gpt-5.4": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"local-reason": ["local-fast", "deepseek-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openclaw-gemini": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"gpt-4o": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
+              - {"openai/gpt-4o": ["local-fast", "deepseek-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
               - {"rk1-npu-local": ["local-fast", "deepseek-free", "free2", "deepseek-pro", "qwen-pro"]}
             set_verbose: true
             success_callback: ["prometheus"]

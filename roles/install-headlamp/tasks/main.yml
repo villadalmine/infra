@@ -79,6 +79,19 @@
           configMap:
             name: headlamp-holmes-plugin
 
+- name: Create permanent ServiceAccount token secret for Headlamp Admin
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: headlamp-admin-token
+        namespace: "{{ headlamp_namespace }}"
+        annotations:
+          kubernetes.io/service-account.name: "headlamp"
+      type: kubernetes.io/service-account-token
+
 - name: Expose Headlamp via Gateway API (HTTPRoute)
   kubernetes.core.k8s:
     state: present

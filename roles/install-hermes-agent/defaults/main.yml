@@ -74,7 +74,7 @@ hermes_kagent_mcp_connect_timeout: 30
 
 # A2A reverse — OpenClaw MCP bridge (Hermes → OpenClaw)
 # supergateway wraps `openclaw mcp serve` as streamable-http on port 18790
-hermes_openclaw_mcp_url: "http://openclaw.openclaw.svc.cluster.local:18790/mcp"
+hermes_openclaw_mcp_url: "http://openclaw.openclaw.svc.cluster.local:18790/sse"
 hermes_openclaw_mcp_timeout: 120
 hermes_openclaw_mcp_connect_timeout: 30
 

@@ -389,7 +389,7 @@ spec:
         # Wraps `openclaw mcp serve` (stdio-only) as streamable-http on port
         # {{ openclaw_mcp_bridge_port }} via supergateway, enabling Hermes to call
         # OpenClaw's messaging-bridge tools (reverse A2A direction).
-        # Endpoint for Hermes: http://openclaw.openclaw.svc.cluster.local:{{ openclaw_mcp_bridge_port }}/mcp
+        # Endpoint para Hermes: http://openclaw.openclaw.svc.cluster.local:{{ openclaw_mcp_bridge_port }}/sse
         - name: openclaw-mcp-bridge
           image: {{ openclaw_image }}:{{ openclaw_version }}
           imagePullPolicy: Always
@@ -398,7 +398,6 @@ spec:
             - |
               npx -y supergateway \
                 --port {{ openclaw_mcp_bridge_port }} \
-                --outputTransport streamableHttp \
                 --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
           env:
             - name: HOME
