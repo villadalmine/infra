@@ -390,9 +390,9 @@ spec:
         # {{ openclaw_mcp_bridge_port }} via supergateway, enabling Hermes to call
         # OpenClaw's messaging-bridge tools (reverse A2A direction).
         # Endpoint para Hermes: http://openclaw.openclaw.svc.cluster.local:{{ openclaw_mcp_bridge_port }}/sse
-        # Note: supergateway SSE mode reuses one child process per instance; it crashes
-        # when a second client connects. The while-true loop restarts it transparently
-        # so Hermes reconnects succeed after the brief restart window (~2s).
+        # Note: supergateway SSE mode reuses one child per instance — crashes on a
+        # second concurrent connection. The while-true wrapper restarts it in ~2s so
+        # Hermes reconnects succeed after the brief restart window.
         - name: openclaw-mcp-bridge
           image: {{ openclaw_image }}:{{ openclaw_version }}
           imagePullPolicy: Always

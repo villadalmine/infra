@@ -493,7 +493,10 @@ To resolve this deadlock and authorize the bridge:
    kubectl rollout restart -n openclaw deployment/openclaw
    ```
 
-*Note: Since supergateway only supports one active client session per stdio process, do not run concurrent manual curls to `supergateway` port 18790, as it will crash the container.*
+*Note: Since supergateway SSE mode reuses one child process, a second concurrent SSE client triggers "Already connected to transport" and crashes supergateway. The `while true` wrapper in the sidecar command restarts it in ~2s. Do NOT run concurrent manual curls to port 18790 during active Hermes sessions.*
+
+**Known issue (2026-05-27):** `openclaw mcp serve` v2026.5.22 exits after ~16s of inactivity.
+Hermes's keepalive detects "Session terminated" and retries 5×. To re-establish: `kubectl rollout restart deployment/hermes-agent-mcp -n ai`.
 
 ---
 

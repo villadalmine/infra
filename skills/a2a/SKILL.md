@@ -1,10 +1,10 @@
 ---
 name: a2a
 description: >
-  Agent-to-Agent (A2A) communication entre OpenClaw y Hermes.
-  Bidireccional: OpenClaw→Hermes via MCP :8000 (probado ✅).
-  Hermes→OpenClaw via MCP bridge :18790 (supergateway, implementado 2026-05-26).
-  Debate autónomo multi-turno usando ask_hermes_agent / ask_openclaw_agent.
+  Agent-to-Agent (A2A) bidireccional OpenClaw↔Hermes.
+  OpenClaw→Hermes: ✅ operacional (ask_hermes_agent + MCP tools).
+  Hermes→OpenClaw: ✅ bridge desplegado (supergateway SSE :18790, while-true restart, scope pre-aprobado).
+  Debate autónomo multi-turno via ask_hermes_agent / ask_openclaw_agent.
 license: MIT
 compatibility:
   - opencode
@@ -84,41 +84,53 @@ La distinción importante: `ask_hermes_agent("DEBATE...")` no llama una función
 
 ---
 
-## Arquitectura actual (2026-05-26)
+## Arquitectura actual (2026-05-27)
 
 ```
 Usuario (Telegram @tito_es_tu_bot)
     │
     ▼
 OpenClaw (Tito) — namespace: openclaw, node: srv-rk1-nvme-02
-    │ pod: openclaw-* (4 containers: gateway, kubernetes-mcp, smee-client, mcp-bridge)
+    │ pod: openclaw-* (4 containers)
+    │   ├─ openclaw-gateway     :18789  — AI gateway, Telegram, Honcho memory
+    │   ├─ kubernetes-mcp       :8080   — K8s MCP sidecar
+    │   ├─ smee-client          —       — webhook relay GitHub→Telegram
+    │   └─ openclaw-mcp-bridge  :18790  — supergateway SSE wrapping `openclaw mcp serve`
     │
-    ├─[MCP :8000]──────────────────────────────────────────────────────┐
-    │  Tool: hermes__ask_hermes_agent(question)                         │
-    │  Tool: hermes__conversations_list / messages_send / etc.          ▼
-    │                                                         hermes-agent-mcp.ai:8000
-    │                                                                   │
-    │                                                         Hermes — namespace: ai
-    │                                                         ├─ LiteLLM (razonamiento)
-    │                                                         ├─ kubernetes MCP (sidecar :8080)
-    │                                                         ├─ kagent MCP (:8084)
-    │                                                         └─ openclaw MCP (:18790) ←─┐
-    │                                                                   │                 │
-    │                                                         Hermes razona               │
-    │                                                         y responde                  │
-    │                                                                                     │
-    └─[MCP Bridge :18790]──────────────────────────────────────────────────────────────┘
-       supergateway wrapping `openclaw mcp serve` (stdio → streamable-http)
-       Tool: openclaw__ask_openclaw_agent(question)
-       Tool: openclaw__conversations_list / messages_send / etc.
+    ├─[MCP HTTP :8000]─────────────────────────────────────────────────────────┐
+    │  Tools: hermes__ask_hermes_agent / conversations_list / messages_send/etc │
+    │                                                                           ▼
+    │                                                          hermes-agent-mcp.ai:8000
+    │                                                                           │
+    │                                                          Hermes — ns: ai, node: srv-rk1-nvme-01
+    │                                                          ├─ LiteLLM proxy (razonamiento)
+    │                                                          ├─ kubernetes MCP sidecar :8080
+    │                                                          ├─ kagent MCP :8084
+    │                                                          └─ openclaw MCP :18790/sse ←─┐
+    │                                                                           │             │
+    │                                                          Hermes razona                 │
+    │                                                          y responde                    │
+    │                                                                                        │
+    └─[SSE Bridge :18790]───────────────────────────────────────────────────────────────────┘
+       supergateway SSE mode: `openclaw mcp serve` (stdio → SSE /sse)
+       while-true restart loop (container stays alive, supergateway restarts in ~2s)
+       Tools: openclaw__ask_openclaw_agent / conversations_list / messages_send / etc.
 
 Honcho (namespace: honcho, :80 → pod :8000)
-    ├─ workspace "openclaw" — memoria de OpenClaw
+    ├─ workspace "openclaw" — memoria de OpenClaw (peers, conversaciones)
     └─ workspace "hermes"   — memoria de Hermes
 ```
 
-**Dirección OpenClaw → Hermes:** ✅ probado y funcionando
-**Dirección Hermes → OpenClaw:** ✅ implementado (deploy pendiente)
+---
+
+## Estado por dirección (2026-05-27)
+
+| Dirección | Estado | Detalle |
+|-----------|--------|---------|
+| **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` funciona, debate confirmado |
+| **Hermes → OpenClaw** | ⚠️ Bridge arriba, sesión inestable | SSE endpoint responde, pero `openclaw mcp serve` sale después de ~16s de inactividad. Hermes pierde conexión y reintenta. |
+| **Honcho memoria** | ✅ Ambos | `[plugins] Honcho memory ready` en ambos pods |
+| **Scope upgrade** | ✅ Resuelto | paired.json bypass aplicado (ver AGENTS.md) |
 
 ---
 
@@ -152,7 +164,6 @@ curl -X POST http://hermes-agent-mcp.ai.svc.cluster.local:8000/mcp \
 ### 3. messages_read ✅
 
 ```bash
-# IMPORTANTE: messages_read lee historial, NO dispara razonamiento de Hermes
 curl ... -d '{"method":"tools/call","params":{"name":"messages_read","arguments":{
   "session_key": "agent:main:telegram:dm:8492872858", "limit": 5
 }}}'
@@ -161,32 +172,13 @@ curl ... -d '{"method":"tools/call","params":{"name":"messages_read","arguments"
 
 ### 4. messages_send ✅ — pero es OUTGOING (del bot al usuario)
 
-```bash
-curl ... -d '{"method":"tools/call","params":{"name":"messages_send","arguments":{
-  "target": "telegram:8492872858",
-  "message": "[OpenClaw] Mensaje de prueba A2A"
-}}}'
-# → {"success": true, "mirrored": true}
-```
-
 ⚠️ **CRÍTICO — comportamiento real verificado:**
 `messages_send` envía un mensaje FROM el bot de Hermes TO el usuario. Es **saliente**.
-NO dispara el loop del agente de Hermes. `mirrored: true` = aparece en historial como mensaje de bot.
-**Usar solo para mostrar transcripción del debate al usuario en tiempo real.**
-**Para disparar razonamiento de Hermes → usar `ask_hermes_agent`.**
+NO dispara el loop del agente de Hermes. **Para disparar razonamiento → usar `ask_hermes_agent`.**
 
 ### 5. events_poll ✅
 
-```bash
-curl ... -d '{"method":"tools/call","params":{"name":"events_poll","arguments":{
-  "session_key": "agent:main:telegram:dm:8492872858",
-  "cursor": "188", "limit": 5
-}}}'
-# → eventos desde cursor 188 (message_id del último evento visto)
-```
-
 ⚠️ `events_poll` y `events_wait` esperan mensajes del USUARIO, no respuestas de Hermes.
-Si OpenClaw usa messages_send para "preguntar" a Hermes, NO habrá eventos — Hermes no responde ahí.
 
 ### 6. ask_hermes_agent ✅ — DEBATE REAL CONFIRMADO
 
@@ -201,232 +193,200 @@ curl ... -d '{"method":"tools/call","params":{"name":"ask_hermes_agent","argumen
 
 ---
 
-## Protocolo de debate A2A (implementado en OpenClaw system prompt)
+## Tests realizados (Hermes → OpenClaw bridge)
 
-```
-T1: OpenClaw forma posición inicial (2-3 oraciones)
-T2: ask_hermes_agent("DEBATE T1/N — Tema: X\nMi posición (OpenClaw): [pos]\nAnalizá pros/contras")
-    → Hermes corre AIAgent completo con sus MCPs (~30-90s)
-T3: OpenClaw lee respuesta de Hermes
-T4: OpenClaw forma réplica integrando argumentos de Hermes
-T5: ask_hermes_agent("DEBATE T2/N — Historial:\nOpenClaw T1: [pos]\nHermes T1: [resp]\nMi réplica: [réplica]\n¿Contraargumento?")
-T6: Repetir para N turnos (default 3, máximo 5)
-T7: Síntesis → consenso o desacuerdo documentado → al usuario
+### 1. SSE endpoint accesible ✅
 
-OPCIONAL (mostrar en tiempo real):
-Después de cada turno de Hermes:
-  messages_send(target="telegram:CHAT_ID", message="[Hermes dice] " + resp_hermes)
-  — muestra la respuesta de Hermes en su propio chat Telegram para que el usuario lo siga
-  CHAT_ID: extraer del session_key de conversations_list
-```
-
-### ¿Cuándo OpenClaw inicia debate automáticamente?
-El sistema prompt de OpenClaw tiene esta regla:
-> **DEBATE MANDATORIO CON HERMES**: Antes de proponer o solicitar aprobación al usuario para CUALQUIER operación de escritura en el cluster (apply/scale/delete/shell), DEBES iniciar debate técnico con Hermes via `hermes__ask_hermes_agent`.
-
----
-
-## 11 tools del messaging bridge (disponibles en ambos sentidos)
-
-| Tool | Descripción | Args clave |
-|------|-------------|------------|
-| `conversations_list` | Lista conversaciones activas | `platform`, `limit`, `search` |
-| `conversation_get` | Detalle de una conversación | `session_key` |
-| `messages_read` | Lee mensajes recientes | `session_key`, `limit` |
-| `attachments_fetch` | Attachments de un mensaje | `session_key`, `message_id` |
-| `events_poll` | Eventos desde un cursor | `session_key`, `cursor`, `limit` |
-| `events_wait` | Espera bloqueante de eventos (USER messages only) | `session_key`, `timeout` |
-| `messages_send` | Envía mensaje **outgoing** del bot al usuario | `target`, `message` |
-| `channels_list` | Lista canales disponibles | — |
-| `permissions_list_open` | Permisos pendientes | — |
-| `permissions_respond` | Responde a un permiso | `permission_id`, `approved` |
-| `ask_hermes_agent` / `ask_openclaw_agent` | Corre el AIAgent completo | `question` |
-
----
-
-## Cómo probarlo desde Telegram (@tito_es_tu_bot)
-
-### Test 1 — Delegación simple a Hermes
-```
-Tú → Tito: "Consulta a Hermes: ¿qué pods están corriendo en el namespace ai?"
-```
-Esperado: Tito llama `hermes__ask_hermes_agent`, Hermes usa su kubernetes MCP y responde con la lista.
-
-### Test 2 — Debate técnico multi-turno
-```
-Tú → Tito: "Debatan con Hermes sobre cuál es mejor storage para bases de datos en el cluster, 3 turnos"
-```
-Esperado: Tito forma posición → llama `hermes__ask_hermes_agent` T1 → réplica → T2 → T3 → síntesis final.
-Opcionalmente verás mensajes de Hermes en tu chat con @hermes_bot mostrando el debate en vivo.
-
-### Test 3 — Debate mandatorio antes de operación de escritura
-```
-Tú → Tito: "Escala el deployment de openclaw a 2 réplicas"
-```
-Esperado: Tito PRIMERO debate con Hermes los riesgos, LUEGO presenta la propuesta consensuada y pide confirmación.
-
-### Test 4 — Hermes inicia contacto con OpenClaw (Fase 3, post-deploy)
-```
-Tú → Hermes: "Consulta a Tito (OpenClaw) qué estuvo haciendo hoy"
-```
-Esperado: Hermes llama `openclaw__messages_read` o `openclaw__ask_openclaw_agent` y responde.
-
----
-
-## Cómo probarlo desde dentro del cluster
-
-### Verificar conectividad OpenClaw → Hermes
 ```bash
-kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- \
-  curl -s -m 5 http://hermes-agent-mcp.ai.svc.cluster.local:8000/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | grep serverInfo
-# → "serverInfo":{"name":"hermes","version":"1.26.0"}
+# Desde dentro del pod openclaw-mcp-bridge
+curl -sN --max-time 3 http://127.0.0.1:18790/sse -H "Accept: text/event-stream"
+# → event: endpoint
+# → data: /message?sessionId=<uuid>
+
+# Cross-namespace: desde hermes pod
+curl -sN --max-time 3 http://openclaw.openclaw.svc.cluster.local:18790/sse -H "Accept: text/event-stream"
+# → event: endpoint
+# → data: /message?sessionId=<uuid>
 ```
 
-### Verificar MCP bridge OpenClaw (Hermes → OpenClaw)
+### 2. Container restarts ✅ (0 restarts, while-true working)
+
 ```bash
-# ¿Está el sidecar corriendo?
-kubectl get pod -n openclaw -o jsonpath='{.items[0].spec.containers[*].name}'
-# → openclaw-gateway kubernetes-mcp smee-client openclaw-mcp-bridge
+kubectl get pod -n openclaw -o jsonpath='{range .status.containerStatuses[*]}{.name}: {.restartCount}{"\n"}{end}'
+# → openclaw-mcp-bridge: 0  (supergateway restarts inside while-true, no container crash)
+```
 
-# ¿El bridge responde?
+### 3. Hermes MCP connection — ⚠️ sesión inestable
+
+Hermes conecta, obtiene sesión SSE, hace initialize exitosamente.
+Pero `openclaw mcp serve` sale después de ~16s de inactividad → keepalive falla → Hermes intenta reconectar.
+
+```
+# Hermes logs (patrón esperado):
+[05:39:06] WARNING  MCP server 'openclaw' keepalive failed: Session terminated
+[05:39:07] WARNING  MCP server 'openclaw' connection lost (attempt 1/5), reconnecting in 1s
+[05:39:09] WARNING  MCP server 'openclaw' connection lost (attempt 2/5), reconnecting in 2s
+# ... (5 intentos, luego "giving up")
+```
+
+**Causa**: `openclaw mcp serve` en v2026.5.22 cierra la sesión si no hay actividad por ~16s.
+**Workaround**: El while-true loop reinicia supergateway. Hermes debe ser reiniciado manualmente después para reestablecer la conexión.
+
+---
+
+## Configuración deployed
+
+### openclaw-mcp-bridge sidecar (openclaw-deployment.yaml.j2)
+
+```yaml
+- name: openclaw-mcp-bridge
+  image: {{ openclaw_image }}:{{ openclaw_version }}
+  command: ["sh", "-c"]
+  args:
+    - |
+      while true; do
+        npx -y supergateway \
+          --port {{ openclaw_mcp_bridge_port }} \
+          --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
+        echo "[mcp-bridge] supergateway exited (code $?), restarting in 2s..."
+        sleep 2
+      done
+  env:
+    - name: OPENCLAW_GATEWAY_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: openclaw-secrets
+          key: OPENCLAW_GATEWAY_TOKEN
+  ports:
+    - name: mcp-bridge
+      containerPort: 18790
+```
+
+### Hermes MCP config (hermes-config-configmap.yaml.j2)
+
+```yaml
+mcp_servers:
+  kubernetes:
+    url: http://127.0.0.1:8080/mcp
+    timeout: 120
+  kagent:
+    url: http://kagent-tools.kagent.svc.cluster.local:8084/mcp
+    timeout: 60
+  openclaw:
+    url: http://openclaw.openclaw.svc.cluster.local:18790/sse   # SSE transport
+    timeout: 120
+    connect_timeout: 30
+```
+
+---
+
+## Scope Upgrade Bypass (CRÍTICO)
+
+`openclaw mcp serve` necesita scopes `operator.read, operator.write, operator.approvals, operator.pairing`.
+El token de gateway solo tiene `operator.write` → scope upgrade → deadlock.
+
+**Fix:** editar `paired.json` directamente en el PVC para pre-aprobar los scopes. Documentado en `AGENTS.md` sección "OpenClaw MCP Bridge Deadlock Bypass".
+
+```bash
+# Verificar si el device está en paired.json:
 kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- \
-  curl -s -m 5 http://localhost:18790/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
-# → serverInfo con openclaw tools
+  node -e 'const d=JSON.parse(require("fs").readFileSync("/home/node/.openclaw/devices/paired.json"));
+  console.log(JSON.stringify(Object.keys(d).map(k=>({k,scopes:d[k].scopes})),null,2))'
+```
 
-# ¿Hermes puede llegar?
+---
+
+## NetworkPolicy — gotcha post-DNAT
+
+**Honcho** escucha en puerto 8000 (pod port), pero el Service es puerto 80. Kubernetes evalúa NetworkPolicy DESPUÉS del DNAT, con el puerto real del pod.
+
+```yaml
+# CORRECTO (egress desde openclaw → honcho):
+egress:
+  - to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: honcho
+    ports:
+      - port: 8000   # POD port, no Service port
+        protocol: TCP
+```
+
+---
+
+## Cómo probar desde Telegram
+
+### 1. OpenClaw → Hermes (dirección 1)
+
+```
+Tú → @tito_es_tu_bot: "Consulta a Hermes sobre el estado de los pods en el namespace ai"
+```
+OpenClaw usa `ask_hermes_agent` → Hermes consulta kubernetes MCP → responde con análisis.
+
+### 2. Debate bidireccional
+
+```
+Tú → @tito_es_tu_bot: "Inicia un debate con Hermes sobre si deberíamos migrar a longhorn para los PVCs de observabilidad"
+```
+OpenClaw debate con Hermes, síntesis final al usuario.
+
+### 3. Hermes → OpenClaw (dirección 2)
+
+```
+Tú → Hermes (Telegram): "Consulta a Tito (OpenClaw) sobre qué conversaciones recientes tiene"
+```
+Hermes usa `ask_openclaw_agent` → OpenClaw responde (requiere que la sesión SSE esté activa).
+
+---
+
+## Diagnóstico rápido
+
+```bash
+# Estado de pods
+kubectl get pods -n openclaw -o wide
+kubectl get pods -n ai -l app=hermes-agent-mcp
+
+# Restarts del bridge
+kubectl get pod -n openclaw -o jsonpath='{range .status.containerStatuses[*]}{.name}: {.restartCount}{"\n"}{end}'
+
+# Logs bridge (ver si while-true está funcionando)
+kubectl logs -n openclaw deploy/openclaw -c openclaw-mcp-bridge --tail=20
+
+# Logs gateway (scope upgrades, WS connections)
+kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- \
+  node -e 'require("fs").readFileSync("/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log","utf8").split("\n").filter(Boolean).forEach(l=>{try{const j=JSON.parse(l);console.log(j.time.slice(0,19),j.message.slice(0,100));}catch(e){}})' 2>/dev/null | grep -E "scope|ws|mcp|upgrade" | tail -20
+
+# Hermes MCP connections
+kubectl logs -n ai deploy/hermes-agent-mcp -c hermes-agent | grep -E "openclaw|connected|failed" | tail -20
+
+# Test manual SSE desde hermes namespace
 kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
-  curl -s -m 5 http://openclaw.openclaw.svc.cluster.local:18790/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"hermes","version":"1.0"}}}'
-```
-
-### Verificar Honcho (ambos agentes)
-```bash
-# OpenClaw
-kubectl logs -n openclaw deploy/openclaw -c openclaw-gateway | grep -i honcho
-# → [plugins] Honcho memory ready — peer map: /home/node/.honcho/openclaw-peers.json
-
-# Hermes
-kubectl logs -n ai deploy/hermes-agent-mcp -c hermes-agent | grep -i honcho
-```
-
-### Test debate completo vía MCP directo
-```bash
-# Desde openclaw pod, simular un turno de debate
-SESSION=$(curl -s -X POST http://hermes-agent-mcp.ai.svc.cluster.local:8000/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' \
-  -D /tmp/h.txt > /dev/null && grep -i mcp-session-id /tmp/h.txt | tr -d '\r' | awk '{print $2}')
-
-curl -s -X POST http://hermes-agent-mcp.ai.svc.cluster.local:8000/mcp \
-  -H "mcp-session-id: $SESSION" \
-  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ask_hermes_agent","arguments":{"question":"DEBATE T1/2 — Tema: longhorn vs local-path\nMi posición (OpenClaw): longhorn-nvme para stateful crítico. ¿Tu análisis?"}}}'
-# → respuesta autónoma de Hermes en JSON
+  curl -sN --max-time 3 http://openclaw.openclaw.svc.cluster.local:18790/sse -H "Accept: text/event-stream"
+# Esperado: event: endpoint + data: /message?sessionId=<uuid>
 ```
 
 ---
 
-## Componentes del sistema
+## Bugs encontrados y resueltos
 
-### OpenClaw pod (4 containers en openclaw namespace)
-```
-openclaw-gateway      :18789  — gateway principal, LLM, Telegram bot (@tito_es_tu_bot)
-kubernetes-mcp        :8080   — kubernetes MCP sidecar (read-only)
-smee-client           —       — relay de webhooks GitHub/CI
-openclaw-mcp-bridge   :18790  — supergateway wrapping `openclaw mcp serve` → HTTP
-```
-
-### Hermes pod (2 containers en ai namespace)
-```
-hermes-agent          :8000   — Hermes gateway: MCP server + AIAgent + Telegram bot
-kubernetes-mcp-server :8080   — kubernetes MCP sidecar (cluster-admin)
-```
-
-### Services y URLs en-cluster
-```
-OpenClaw gateway:      http://openclaw.openclaw.svc.cluster.local:18789
-OpenClaw MCP bridge:   http://openclaw.openclaw.svc.cluster.local:18790/mcp
-Hermes MCP server:     http://hermes-agent-mcp.ai.svc.cluster.local:8000/mcp
-Honcho API:            http://honcho-api.honcho.svc.cluster.local (port 80 → pod 8000)
-```
-
-### NetworkPolicy — puertos permitidos
-```
-OpenClaw egress:
-  → ai:8000 (hermes)      MCP client OpenClaw→Hermes
-  → kagent:8084           kagent MCP
-  → honcho:8000 (pod)     memoria Honcho (post-DNAT: usar pod port 8000, no svc port 80)
-  → ai:4000 (litellm)     LLM proxy
-  → :443 ext              Telegram API
-
-OpenClaw ingress:
-  ← monitoring, kaniko, gateway, argocd, openclaw  :18789  (webhooks + gateway)
-  ← ai:hermes-agent-mcp                            :18790  (A2A reverse MCP)
-
-Hermes: sin NetworkPolicy → permite todo egress/ingress por default K8s
-```
+| Bug | Causa | Fix |
+|-----|-------|-----|
+| `Honcho NetworkPolicy` | K8s evalúa NetworkPolicy post-DNAT → puerto 8000 (pod), no 80 (service) | egress port 8000 en openclaw-network.yaml.j2 |
+| `events_wait timeout` | messages_send es OUTGOING — no dispara Hermes | usar ask_hermes_agent por turno |
+| `scope upgrade deadlock` | mcp serve necesita scopes que el token no tiene; approval requiere token → chicken-and-egg | paired.json bypass (AGENTS.md) |
+| `Already connected to transport` | supergateway SSE reutiliza un hijo; segundo cliente lo mata | while-true restart loop en command |
+| `No connection established for requestId` | streamableHttp stateless pierde el HTTP request antes de que el hijo responda | usar SSE mode (sin --outputTransport streamableHttp) |
+| `openclaw mcp serve exits ~16s` | mcp serve v2026.5.22 cierra la sesión si no hay actividad | Hermes debe reiniciarse post-restart; pending fix en OpenClaw upstream |
+| `OpenRouter key limit` | qwen-pro (Hermes model) agotó créditos OpenRouter | recargar créditos o cambiar modelo |
 
 ---
 
-## Bugs encontrados y fixes
+## Roadmap
 
-### Bug 1 — events_wait timeout (RESUELTO)
-**Síntoma:** `hermes__events_wait failed: MCP error -32001: Request timed out`
-**Causa:** `messages_send` es OUTGOING (del bot al usuario). No dispara el loop de Hermes.
-`events_wait` espera mensajes del USUARIO, no respuestas autónomas de Hermes.
-**Fix:** Debate usa `ask_hermes_agent` para cada turno (no messages_send + events_wait).
-
-### Bug 2 — Honcho NetworkPolicy port mismatch (RESUELTO)
-**Síntoma:** `ConnectionError: fetch failed` al init de OpenClaw. Timeout en `curl http://honcho-api.../health`.
-**Causa:** NetworkPolicy usaba service port (80) pero K8s evalúa **post-DNAT** → pod port (8000).
-**Fix:** `roles/install-openclaw/templates/openclaw-network.yaml.j2` → cambiar port 80 a 8000 en egress a honcho.
-Resultado: `[plugins] Honcho memory ready — peer map: /home/node/.honcho/openclaw-peers.json (0 known senders)`
-
----
-
-## Roadmap A2A
-
-### Fase 1 — DONE ✅
-- [x] MCP connectivity OpenClaw → Hermes (port 8000)
-- [x] Todos los tools del bridge: conversations_list, messages_read, messages_send, events_poll, events_wait, ask_hermes_agent
-- [x] Debate multi-turno A2A funcionando end-to-end (ask_hermes_agent por turno)
-- [x] System prompts de OpenClaw: protocolo de debate documentado e implementado
-- [x] Honcho fix: NetworkPolicy post-DNAT (port 8000, no 80)
-
-### Fase 2 — DONE ✅
-- [x] Documentación completa en skills/a2a/SKILL.md
-- [x] Debate confirmado funcionando: test con tema "storage longhorn vs local-path"
-- [x] ask_hermes_agent probado y respondiendo con análisis autónomo (~30s)
-
-### Fase 3 — Bidireccional: Hermes → OpenClaw (IMPLEMENTADO, pendiente deploy)
-- [x] Sidecar `openclaw-mcp-bridge` en `openclaw-deployment.yaml.j2`
-- [x] Service port 18790 en `openclaw-network.yaml.j2`
-- [x] Ingress NetworkPolicy: Hermes (ai) → OpenClaw :18790
-- [x] Hermes config: `openclaw` MCP server en `hermes-config-configmap.yaml.j2`
-- [x] Hermes system prompt: instrucciones para usar openclaw MCP + `ask_openclaw_agent`
-- [ ] Deploy: `ansible-playbook playbooks/bootstrap.yml --tags openclaw,ai-hermes-deploy`
-- [ ] Test: `kubectl exec -n ai deploy/hermes-agent-mcp -- curl http://openclaw.openclaw.svc.cluster.local:18790/mcp`
-
-### Fase 4 — Google A2A Protocol (futuro)
-- [ ] Implementar Agent Cards en ambos agentes
-- [ ] Endpoints `/a2a` con streaming SSE
-- [ ] Push proactivo (Hermes inicia sin ser llamado)
-
----
-
-## Repo Paths
-
-```
-skills/a2a/SKILL.md                                              # este archivo
-skills/openclaw/SKILL.md                                         # arquitectura OpenClaw + sección A2A
-roles/install-openclaw/defaults/main.yml                         # openclaw_mcp_bridge_enabled/port
-roles/install-openclaw/templates/openclaw-deployment.yaml.j2     # sidecar openclaw-mcp-bridge
-roles/install-openclaw/templates/openclaw-network.yaml.j2        # Service :18790 + ingress Hermes
-roles/install-hermes-agent/defaults/main.yml                     # hermes_openclaw_mcp_url + system_prompt
-roles/install-hermes-agent/templates/hermes-config-configmap.yaml.j2  # openclaw en mcp_servers
-```
+| Fase | Descripción | Estado |
+|------|-------------|--------|
+| Fase 1 | OpenClaw → Hermes: ask_hermes_agent via MCP :8000 | ✅ Operacional |
+| Fase 2 | Honcho compartido (ambos agentes usan misma instancia) | ✅ Operacional |
+| Fase 3 | Hermes → OpenClaw: sidecar openclaw-mcp-bridge :18790 SSE | ✅ Bridge desplegado, sesión inestable |
+| Fase 3.1 | Estabilizar sesión mcp serve (keepalive / persistent mode) | 🔄 Pendiente |
+| Fase 4 | Google A2A protocol (Agent Cards, push bidireccional) | ⬜ Backlog |
