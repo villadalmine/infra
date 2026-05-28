@@ -218,3 +218,47 @@ Manual fix (if needed):
 kubectl exec -n kagent deployment/kagent-postgresql -- \
   psql -U kagent -d postgres -c "CREATE DATABASE kagent OWNER kagent;"
 ```
+
+## NetworkPolicy — kagent-tools cross-namespace access
+
+`kagent-tools` pod has NetworkPolicy enforcement. The `allow-openclaw-to-kagent-tools` policy
+(deployed by `install-openclaw`) controls which namespaces can reach port 8084.
+
+**Critical:** adding ANY NetworkPolicy to a pod activates enforcement. If only `openclaw` is in the
+allowlist, the `kagent-controller` itself (same namespace `kagent`) gets blocked and CRD reconciliation
+fails every ~2 minutes.
+
+**The policy must include three namespaces:**
+- `kagent` — controller reconciliation
+- `openclaw` — OpenClaw MCP client
+- `ai` — Hermes Agent MCP client (added 2026-05-28)
+
+```yaml
+# In openclaw-network.yaml.j2, NetworkPolicy in namespace: kagent
+ingress:
+  - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kagent
+    ports:
+      - port: 8084
+  - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: openclaw
+    ports:
+      - port: 8084
+  - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ai
+    ports:
+      - port: 8084
+```
+
+Verify Hermes can reach kagent-tools:
+```bash
+kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
+  wget -qO- --timeout=5 http://kagent-tools.kagent.svc.cluster.local:8084/mcp
+# Should return JSON-RPC response, not connection timed out
+```

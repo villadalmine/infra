@@ -89,12 +89,43 @@ HERMES_MODEL=free
 
 LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 
-| Virtual model | Real model | Provider |
-|--------------|-----------|---------|
-| `free` | `openrouter/qwen/qwen3-coder:free` | coding-first free tier |
-| `free2` | `openrouter/google/gemini-2.0-flash-exp:free` | Google free fallback |
-| `cheap` | `openrouter/qwen/qwen-turbo` | reliable paid fallback |
-| `strong` | `openrouter/deepseek/deepseek-chat-v3-0324` | best balance for hard tasks |
+| Virtual model | Real model | Provider | Notes |
+|--------------|-----------|---------|-------|
+| `rk1-npu-local` | `llama-3.1-8b-instruct` | 4× RK1 NPU (load-balanced) | Primary, 0 cost, `max_input_tokens: 4096` |
+| `hermes-qwen` | `llama-3.1-8b-instruct` | 4× RK1 NPU | Hermes Agent primary |
+| `holmes-llama` | `llama-3.1-8b-instruct` | 4× RK1 NPU | Holmes + gpt-5.4 alias |
+| `gemini-free` | `llama-3.1-8b-instruct` | 4× RK1 NPU | OpenClaw default alias |
+| `free` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | Cloud primary (coding-first) |
+| `free2` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Cloud fallback #1 |
+| `deepseek4v-free` | `openrouter/deepseek/deepseek-v4-flash:free` | OpenRouter | Cloud fallback #2 |
+| `nemotron` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Cloud fallback #3 |
+| `cheap` | `openrouter/qwen/qwen-turbo` | OpenRouter | Paid fallback (reliable) |
+| `deepseek-pro` | `openrouter/deepseek/deepseek-v4-pro` | OpenRouter | Paid strong fallback |
+
+**NPU-first routing:** All primary model aliases (`hermes-qwen`, `holmes-llama`, `gemini-free`, `rk1-npu-local`) point to the 4-node RK1 NPU pool. OpenRouter cloud models are fallback-only.
+
+**Fallback chain (confirmed working 2026-05-28):** `NPU-primary → free2 → deepseek4v-free → nemotron → deepseek-pro → qwen-pro`
+
+**`deepseek-free` was removed** from all chains — persistently 429 rate-limited on OpenRouter.
+
+**`local-fast` removed from `context_window_fallbacks`** — it has the same 4096 NPU token limit as the primary, so it never helped with context overflow errors; it just delayed the real fallback.
+
+### LiteLLM smoke tester
+
+`scripts/test-litellm-models.py` — tests all model groups, reports which work/fail:
+
+```bash
+# Test all models against in-cluster LiteLLM
+kubectl port-forward -n ai svc/litellm-proxy 4000:4000 &
+python3 scripts/test-litellm-models.py --url http://localhost:4000 --key sk-hermes-internal
+
+# Options
+--timeout 30       # per-model timeout (default: 30s)
+--prompt "hi"      # test prompt
+--models free,free2,nemotron  # test specific models only
+```
+
+**Known broken (2026-05-28):** `qwen-turbo` (404 on OpenRouter), `gemini-flash-1.5` (404), any paid model if OpenRouter credits exhausted.
 
 ### Hermes MCP lessons learned
 

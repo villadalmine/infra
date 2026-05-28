@@ -180,6 +180,88 @@ Transport confirmado:
 
 ---
 
+## A2A MCP Bridge — Hermes→OpenClaw (bridge.js en :18790)
+
+OpenClaw expone sus propias herramientas MCP para que Hermes las consuma. Esto se implementa con
+un bridge stateful Node.js que corre como proceso secundario dentro del container openclaw-gateway.
+
+```
+Hermes ──[POST /mcp]──► bridge.js :18790 ──[stdio]──► openclaw mcp serve (child process)
+       ──[GET /mcp]──► bridge.js devuelve 200 SSE keepalive (Python MCP SDK lo requiere)
+```
+
+### Por qué bridge.js (no supergateway)
+
+Se evaluaron tres diseños — el historial de bugs es importante:
+
+1. **supergateway SSE mode** — descartado: race condition cuando el pod de Hermes se reinicia.
+   El pod viejo hace un clean disconnect pero el `mcp serve` hijo retiene el "transport slot";
+   el nuevo pod falla con "Already connected to a transport" → supergateway crashea.
+
+2. **supergateway streamableHttp + proxy Node.js** — descartado: supergateway stateless
+   reinicializa `mcp serve` en CADA POST (no solo `initialize`). Cada reinit tarda ~8s
+   (reconectar WS a openclaw gateway + registrar 100+ tools). Con connect_timeout=30s esto
+   causa TimeoutError antes de que tools/list retorne.
+
+3. **bridge.js stateful** ✅ — `mcp serve` se inicia UNA VEZ al arrancar el container.
+   Initialize handshake se hace en startup y el resultado se cachea. Todos los tool calls
+   van al hijo ya-inicializado via stdio. Sin overhead de reinit, sin race conditions.
+
+### Diagrama bridge.js
+
+```
+Container startup:
+  bridge.js ──[spawn]──► mcp serve ──[WS]──► openclaw gateway
+               ──[stdio initialize]──► handshake (una vez)
+               ──[stdio notifications/initialized]──► ready
+
+HTTP requests from Hermes:
+  POST /mcp (initialize)    → devuelve childInitResult cacheado
+  POST /mcp (tools/list)    → forwarded via child.stdin → response via readline
+  POST /mcp (tools/call)    → forwarded via child.stdin → response via readline
+  GET  /mcp                 → 200 SSE keepalive vacío (Python MCP SDK satisfied)
+  POST /mcp (notifications) → 202 swallowed (no llegan al hijo)
+```
+
+### Configuración relevante
+
+```yaml
+# roles/install-openclaw/defaults/main.yml
+openclaw_mcp_bridge_enabled: true
+openclaw_mcp_bridge_port: 18790    # port donde escucha bridge.js
+
+# roles/install-hermes-agent/defaults/main.yml
+hermes_openclaw_mcp_url: "http://openclaw.openclaw.svc.cluster.local:18790/mcp"
+hermes_openclaw_mcp_timeout: 120
+hermes_openclaw_mcp_connect_timeout: 30
+```
+
+### Verificar el bridge
+
+```bash
+# Desde dentro del pod openclaw
+kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- \
+  wget -qO- http://localhost:18790/mcp \
+  --post-data='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+  --header='Content-Type: application/json'
+# → {"jsonrpc":"2.0","id":1,"result":{"tools":[...]}}
+
+# Logs del bridge (aparecen en stderr del container)
+kubectl logs -n openclaw deploy/openclaw -c openclaw-gateway | grep '\[bridge\]'
+# → [bridge] :18790 ready
+# → [bridge] mcp serve ready, proto: 2024-11-05
+
+# Desde Hermes — verificar que ve las tools de openclaw
+kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
+  wget -qO- --timeout=10 http://openclaw.openclaw.svc.cluster.local:18790/mcp \
+  --post-data='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+  --header='Content-Type: application/json' | head -c 300
+```
+
+Ver `skills/a2a/SKILL.md` para documentación completa del bridge A2A bidireccional.
+
+---
+
 ## NetworkPolicy — egress (openclaw namespace)
 
 | Destino | Puerto | Propósito |
