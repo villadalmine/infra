@@ -1,10 +1,10 @@
 ---
 name: a2a
 description: >
-  Agent-to-Agent (A2A) bidireccional OpenClaw↔Hermes.
-  OpenClaw→Hermes: ✅ operacional (ask_hermes_agent via MCP :8000).
-  Hermes→OpenClaw: ⚠️ bridge desplegado (supergateway streamableHttp :18790/mcp), Python mcp client falla por GET /mcp sin soporte stateless.
-  ask_hermes_agent timeout fix: max_iterations=15 (era 90), NPU hermes-qwen local.
+  Agent-to-Agent (A2A) bidireccional OpenClaw↔Hermes — ambas direcciones operacionales.
+  OpenClaw→Hermes: ✅ ask_hermes_agent via MCP :8000. Fix: max_iterations=15 (era 90).
+  Hermes→OpenClaw: ✅ proxy Node.js :18790 + supergateway streamableHttp :18791/mcp.
+  Proxy maneja GET /mcp con SSE keepalive vacío; POST forwarded a supergateway. kagent NetworkPolicy corregida para ns ai.
 license: MIT
 compatibility:
   - opencode
@@ -95,7 +95,9 @@ OpenClaw (Tito) — namespace: openclaw, node: srv-rk1-nvme-02
     │   ├─ openclaw-gateway     :18789  — AI gateway, Telegram, Honcho memory
     │   ├─ kubernetes-mcp       :8080   — K8s MCP sidecar
     │   ├─ smee-client          —       — webhook relay GitHub→Telegram
-    │   └─ openclaw-mcp-bridge  :18790  — supergateway SSE wrapping `openclaw mcp serve`
+    │   └─ openclaw-mcp-bridge  :18790  — Node.js proxy + supergateway (Streamable HTTP)
+    │         proxy :18790 handles GET (empty SSE keepalive) + forwards POST to :18791
+    │         supergateway :18791 (stateless streamableHttp) → `openclaw mcp serve` (stdio)
     │
     ├─[MCP HTTP :8000]─────────────────────────────────────────────────────────┐
     │  Tools: hermes__ask_hermes_agent / conversations_list / messages_send/etc │
@@ -105,15 +107,15 @@ OpenClaw (Tito) — namespace: openclaw, node: srv-rk1-nvme-02
     │                                                          Hermes — ns: ai, node: srv-rk1-nvme-01
     │                                                          ├─ LiteLLM proxy (razonamiento)
     │                                                          ├─ kubernetes MCP sidecar :8080
-    │                                                          ├─ kagent MCP :8084
-    │                                                          └─ openclaw MCP :18790/sse ←─┐
-    │                                                                           │             │
-    │                                                          Hermes razona                 │
-    │                                                          y responde                    │
-    │                                                                                        │
-    └─[SSE Bridge :18790]───────────────────────────────────────────────────────────────────┘
-       supergateway SSE mode: `openclaw mcp serve` (stdio → SSE /sse)
-       while-true restart loop (container stays alive, supergateway restarts in ~2s)
+    │                                                          ├─ kagent MCP :8084  ← NetworkPolicy fix (ai ns)
+    │                                                          └─ openclaw MCP :18790/mcp ←──┐
+    │                                                                           │              │
+    │                                                          Hermes razona                  │
+    │                                                          y responde                     │
+    │                                                                                         │
+    └─[proxy :18790 + supergateway :18791]────────────────────────────────────────────────────┘
+       GET /mcp → proxy returns 200 SSE keepalive (satisfies Python MCP SDK)
+       POST /mcp → proxy forwards to supergateway:18791 → `openclaw mcp serve` (stdio)
        Tools: openclaw__ask_openclaw_agent / conversations_list / messages_send / etc.
 
 Honcho (namespace: honcho, :80 → pod :8000)
@@ -128,7 +130,7 @@ Honcho (namespace: honcho, :80 → pod :8000)
 | Dirección | Estado | Detalle |
 |-----------|--------|---------|
 | **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` funciona, debate confirmado. Fix: max_iterations=15 (era 90) — timeout resuelto. |
-| **Hermes → OpenClaw** | ⚠️ Bridge desplegado, conexión falla | supergateway streamableHttp: initialize+tools/list OK, pero Python mcp client intenta GET /mcp → 405 (stateless no lo soporta) → CancelledError. |
+| **Hermes → OpenClaw** | ✅ Operacional | proxy+supergateway streamableHttp: GET /mcp→SSE keepalive, POST→forward. Kagent NetworkPolicy también corregida (ai ns). |
 | **Honcho memoria** | ✅ Ambos | `[plugins] Honcho memory ready` en ambos pods |
 | **Scope upgrade** | ✅ Resuelto | paired.json bypass aplicado (ver AGENTS.md) |
 
@@ -202,42 +204,49 @@ curl ... -d '{"method":"tools/call","params":{"name":"ask_hermes_agent","argumen
 
 ## Tests realizados (Hermes → OpenClaw bridge)
 
-### 1. SSE endpoint accesible ✅
+### 1. Bridge endpoint accesible ✅
 
 ```bash
-# Desde dentro del pod openclaw-mcp-bridge
-curl -sN --max-time 3 http://127.0.0.1:18790/sse -H "Accept: text/event-stream"
-# → event: endpoint
-# → data: /message?sessionId=<uuid>
+# Desde hermes pod: POST /mcp initialize
+curl -s --max-time 5 -X POST http://openclaw.openclaw.svc.cluster.local:18790/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+# → event: message
+# → data: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{...}},"serverInfo":{"name":"openclaw","version":"2026.5.22"}}}
 
-# Cross-namespace: desde hermes pod
-curl -sN --max-time 3 http://openclaw.openclaw.svc.cluster.local:18790/sse -H "Accept: text/event-stream"
-# → event: endpoint
-# → data: /message?sessionId=<uuid>
+# GET /mcp (server notification channel — bridge responde con SSE keepalive vacío, no 405)
+curl -sv --max-time 3 http://openclaw.openclaw.svc.cluster.local:18790/mcp 2>&1 | grep "HTTP/"
+# → HTTP/1.1 200 OK  (no 405)
 ```
 
-### 2. Container restarts ✅ (0 restarts, while-true working)
+### 2. Hermes MCP: 3 servidores registrados ✅
+
+```
+kubectl logs -n ai deploy/hermes-agent-mcp -c hermes-agent | grep "registered.*tool\|server\(s\)"
+# → registered 21 tool(s): (kubernetes)
+# → registered 124 tool(s): (kagent)
+# → registered 11 tool(s): (openclaw)  ← Hermes→OpenClaw operacional
+# → MCP: registered 156 tool(s) from 3 server(s) (0 failed)
+```
+
+### 3. Diagnóstico rápido si falla
 
 ```bash
-kubectl get pod -n openclaw -o jsonpath='{range .status.containerStatuses[*]}{.name}: {.restartCount}{"\n"}{end}'
-# → openclaw-mcp-bridge: 0  (supergateway restarts inside while-true, no container crash)
+# Bridge logs
+kubectl logs -n openclaw deploy/openclaw -c openclaw-mcp-bridge --tail=20
+# Esperado: "[bridge] mcp serve ready, proto: 2024-11-05"
+# Error: "[bridge] mcp serve exited code=..." → bridge auto-restarts en 3s
+
+# Hermes MCP status
+kubectl logs -n ai deploy/hermes-agent-mcp -c hermes-agent | grep -E "openclaw|failed|server\(s\)" | tail -5
+
+# Test connectivity
+kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
+  curl -s --max-time 5 -X POST http://openclaw.openclaw.svc.cluster.local:18790/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' | head -1
+# Esperado: event: message
 ```
-
-### 3. Hermes MCP connection — ⚠️ sesión inestable
-
-Hermes conecta, obtiene sesión SSE, hace initialize exitosamente.
-Pero `openclaw mcp serve` sale después de ~16s de inactividad → keepalive falla → Hermes intenta reconectar.
-
-```
-# Hermes logs (patrón esperado):
-[05:39:06] WARNING  MCP server 'openclaw' keepalive failed: Session terminated
-[05:39:07] WARNING  MCP server 'openclaw' connection lost (attempt 1/5), reconnecting in 1s
-[05:39:09] WARNING  MCP server 'openclaw' connection lost (attempt 2/5), reconnecting in 2s
-# ... (5 intentos, luego "giving up")
-```
-
-**Causa**: `openclaw mcp serve` en v2026.5.22 cierra la sesión si no hay actividad por ~16s.
-**Workaround**: El while-true loop reinicia supergateway. Hermes debe ser reiniciado manualmente después para reestablecer la conexión.
 
 ---
 
@@ -245,31 +254,34 @@ Pero `openclaw mcp serve` sale después de ~16s de inactividad → keepalive fal
 
 ### openclaw-mcp-bridge sidecar (openclaw-deployment.yaml.j2)
 
+Stateful Node.js bridge (`/tmp/bridge.js`), no supergateway. Spawns `openclaw mcp serve` once, initializes it, routes all HTTP POST /mcp via stdio. GET /mcp → SSE keepalive. Child crash → auto-restart in 3s.
+
+```
+GET /mcp  → bridge returns 200 SSE keepalive (satisfies Python MCP SDK)
+POST /mcp (initialize)     → bridge returns cached childInitResult immediately
+POST /mcp (notifications/) → bridge returns 202, no round-trip
+POST /mcp (tools/*)        → bridge routes to child stdin, returns stdout response
+```
+
+Key properties:
+- **No auto-init overhead**: child initialized once at startup (~8s), subsequent tool calls are fast
+- **No transport slot issue**: each HTTP request is independent, no SSE session state
+- **Child restart**: bridge detects child exit, restarts in 3s, queued requests get error and retry
+
 ```yaml
 - name: openclaw-mcp-bridge
-  image: {{ openclaw_image }}:{{ openclaw_version }}
   command: ["sh", "-c"]
   args:
     - |
-      while true; do
-        npx -y supergateway \
-          --port {{ openclaw_mcp_bridge_port }} \
-          --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
-        echo "[mcp-bridge] supergateway exited (code $?), restarting in 2s..."
-        sleep 2
-      done
-  env:
-    - name: OPENCLAW_GATEWAY_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: openclaw-secrets
-          key: OPENCLAW_GATEWAY_TOKEN
-  ports:
-    - name: mcp-bridge
-      containerPort: 18790
+      cat > /tmp/bridge.js << 'BRIDGEOF'
+      # (stateful Node.js bridge — see openclaw-deployment.yaml.j2 for full source)
+      # Spawns mcp serve, initializes once, HTTP server on BRIDGE_PORT
+      BRIDGEOF
+      GW_URL="ws://localhost:18789" GW_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \
+      BRIDGE_PORT="18790" node /tmp/bridge.js
 ```
 
-### Hermes MCP config (hermes-config-configmap.yaml.j2)
+### Hermes MCP config
 
 ```yaml
 mcp_servers:
@@ -280,9 +292,23 @@ mcp_servers:
     url: http://kagent-tools.kagent.svc.cluster.local:8084/mcp
     timeout: 60
   openclaw:
-    url: http://openclaw.openclaw.svc.cluster.local:18790/sse   # SSE transport
+    url: http://openclaw.openclaw.svc.cluster.local:18790/mcp   # stateful bridge
     timeout: 120
     connect_timeout: 30
+```
+
+### kagent-tools NetworkPolicy (openclaw-network.yaml.j2)
+
+Allows `ai` namespace (Hermes) to reach kagent-tools MCP on port 8084. Without this, kagent MCP fails with i/o timeout from the Hermes pod.
+
+```yaml
+# in NetworkPolicy allow-openclaw-to-kagent-tools
+- from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ai
+  ports:
+    - port: 8084
 ```
 
 ---
@@ -381,10 +407,12 @@ kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
 | `Honcho NetworkPolicy` | K8s evalúa NetworkPolicy post-DNAT → puerto 8000 (pod), no 80 (service) | egress port 8000 en openclaw-network.yaml.j2 |
 | `events_wait timeout` | messages_send es OUTGOING — no dispara Hermes | usar ask_hermes_agent por turno |
 | `scope upgrade deadlock` | mcp serve necesita scopes que el token no tiene; approval requiere token → chicken-and-egg | paired.json bypass (AGENTS.md) |
-| `Already connected to transport` | supergateway SSE reutiliza un hijo; segundo cliente lo mata | Cambiado a streamableHttp (--outputTransport streamableHttp) |
+| `Already connected to transport` | supergateway SSE: stale `mcp serve` child holds transport slot after clean disconnect; new client → crash | Cambiado a proxy+streamableHttp: GET manejado por proxy (sin transport slot) |
 | `ask_hermes_agent timeout (-32001)` | max_iterations=90 + NPU lento → excede timeout MCP (~90s) | max_iterations=15 en hermes-static-mcp.yaml.j2 |
-| `GET /mcp → 405` | supergateway stateless streamableHttp no soporta GET /mcp | Pendiente: stateful mode o bridge Python propio |
-| `Python mcp client CancelledError` | Cliente intenta GET /mcp para notificaciones SSE, recibe 405 → TaskGroup falla | Raíz: mismo que GET /mcp → 405 |
+| `GET /mcp → 405` | supergateway stateless streamableHttp no soporta GET /mcp | Proxy Node.js en :18790 responde GET con SSE keepalive vacío; POST forwarded a supergateway:18791 |
+| `Python mcp client CancelledError` | Cliente GET /mcp → 405 → TaskGroup falla | Fix: mismo que arriba (proxy maneja GET) |
+| `kagent MCP timeout` | NetworkPolicy `allow-openclaw-to-kagent-tools` no incluía namespace `ai` | Añadido ingress from `ai` ns en openclaw-network.yaml.j2 |
+| `LiteLLM fallbacks broken` | `deepseek-free` 429 rate-limited; `local-fast` en context_window_fallbacks (mismo límite NPU 4096 → inútil) | Reemplazado con `free2, deepseek4v-free, nemotron`; local-fast eliminado de context_window_fallbacks |
 
 ---
 
@@ -394,6 +422,7 @@ kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
 |------|-------------|--------|
 | Fase 1 | OpenClaw → Hermes: ask_hermes_agent via MCP :8000 | ✅ Operacional |
 | Fase 2 | Honcho compartido (ambos agentes usan misma instancia) | ✅ Operacional |
-| Fase 3 | Hermes → OpenClaw: sidecar openclaw-mcp-bridge :18790 streamableHttp | ⚠️ Bridge desplegado, GET /mcp falla en Python client |
-| Fase 3.1 | Fix GET /mcp: stateful supergateway o bridge Python propio con FastMCP | 🔄 Pendiente |
+| Fase 3 | Hermes → OpenClaw: proxy+supergateway bridge :18790/mcp | ✅ Operacional |
+| Fase 3.1 | Fix GET /mcp (Python MCP SDK): proxy Node.js maneja GET con SSE keepalive | ✅ Resuelto |
+| Fase 3.2 | Fix kagent MCP (ai ns NetworkPolicy) + LiteLLM fallback chains | ✅ Resuelto |
 | Fase 4 | Google A2A protocol (Agent Cards, push bidireccional) | ⬜ Backlog |

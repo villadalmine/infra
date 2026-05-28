@@ -386,27 +386,93 @@ spec:
 
 {% if openclaw_mcp_bridge_enabled | default(false) %}
         # ── OpenClaw MCP Bridge ───────────────────────────────────────────────
-        # Wraps `openclaw mcp serve` (stdio-only) as SSE on port
-        # {{ openclaw_mcp_bridge_port }} via supergateway, enabling Hermes to call
-        # OpenClaw's messaging-bridge tools (reverse A2A direction).
-        # Endpoint para Hermes: http://openclaw.openclaw.svc.cluster.local:{{ openclaw_mcp_bridge_port }}/sse
-        # Note: supergateway SSE mode reuses one child per instance — crashes on a
-        # second concurrent connection. The while-true wrapper restarts it in ~2s so
-        # Hermes reconnects succeed after the brief restart window.
+        # Stateful Node.js bridge (no supergateway) on port {{ openclaw_mcp_bridge_port }}.
+        # Spawns `openclaw mcp serve` ONCE, initializes it, then routes all HTTP
+        # POST /mcp requests directly via stdio — no per-request auto-init overhead.
+        # GET /mcp returns an empty SSE keepalive so Python MCP SDK doesn't get 405.
+        # Child crash → bridge auto-restarts it (3s delay).
         - name: openclaw-mcp-bridge
           image: {{ openclaw_image }}:{{ openclaw_version }}
           imagePullPolicy: Always
           command: ["sh", "-c"]
           args:
             - |
-              while true; do
-                npx -y supergateway \
-                  --port {{ openclaw_mcp_bridge_port }} \
-                  --outputTransport streamableHttp \
-                  --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
-                echo "[mcp-bridge] supergateway exited (code $?), restarting in 2s..."
-                sleep 2
-              done
+              cat > /tmp/bridge.js << 'BRIDGEOF'
+              const http = require('http');
+              const { spawn } = require('child_process');
+              const readline = require('readline');
+              const PORT = parseInt(process.env.BRIDGE_PORT || '18790');
+              const GW_URL = process.env.GW_URL;
+              const GW_TOKEN = process.env.GW_TOKEN;
+              let child = null, rl_iface = null;
+              const pending = new Map();
+              let nid = 1, initialized = false, queue = [];
+              let childInitResult = null;
+              function startChild() {
+                child = spawn('node', ['dist/index.js', 'mcp', 'serve', '--url', GW_URL, '--token', GW_TOKEN]);
+                child.stderr.on('data', d => process.stderr.write('[mcp-serve] ' + d));
+                child.on('exit', code => {
+                  console.log('[bridge] mcp serve exited code=' + code + ', restarting in 3s');
+                  initialized = false;
+                  for (const [id, cb] of pending) cb({ jsonrpc: '2.0', id, error: { code: -32000, message: 'mcp serve restarted' } });
+                  pending.clear();
+                  setTimeout(startChild, 3000);
+                });
+                rl_iface = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+                rl_iface.on('line', line => {
+                  if (!line.trim()) return;
+                  try {
+                    const m = JSON.parse(line);
+                    if (m.id !== undefined && pending.has(String(m.id))) {
+                      const cb = pending.get(String(m.id)); pending.delete(String(m.id)); cb(m);
+                    }
+                  } catch(e) {}
+                });
+                const initId = nid++;
+                pending.set(String(initId), r => {
+                  childInitResult = r.result;
+                  child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }) + '\n');
+                  initialized = true;
+                  console.log('[bridge] mcp serve ready, proto:', childInitResult && childInitResult.protocolVersion);
+                  const q = queue.splice(0); q.forEach(f => f());
+                });
+                child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: initId, method: 'initialize',
+                  params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'bridge', version: '1.0' } } }) + '\n');
+              }
+              startChild();
+              http.createServer((req, res) => {
+                if (req.method === 'GET') {
+                  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+                  const k = setInterval(() => { try { res.write(': k\n\n'); } catch(e) { clearInterval(k); } }, 20000);
+                  req.on('close', () => clearInterval(k));
+                  return;
+                }
+                let body = '';
+                req.on('data', d => body += d);
+                req.on('end', () => {
+                  let msg; try { msg = JSON.parse(body); } catch(e) { res.writeHead(400); res.end(); return; }
+                  const sse = data => {
+                    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+                    res.end('event: message\ndata: ' + JSON.stringify(data) + '\n\n');
+                  };
+                  if (msg.method === 'initialize') {
+                    sse({ jsonrpc: '2.0', id: msg.id, result: childInitResult || { protocolVersion: '2024-11-05', capabilities: { tools: { listChanged: true } }, serverInfo: { name: 'openclaw', version: 'unknown' } } });
+                    return;
+                  }
+                  if (msg.method && msg.method.startsWith('notifications/')) { res.writeHead(202); res.end(); return; }
+                  const fwd = () => {
+                    const id = nid++;
+                    pending.set(String(id), r => { r.id = msg.id; sse(r); });
+                    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: msg.method, params: msg.params }) + '\n');
+                  };
+                  if (initialized) fwd(); else queue.push(fwd);
+                });
+              }).listen(PORT, () => console.log('[bridge] :' + PORT + ' ready'));
+              BRIDGEOF
+              GW_URL="ws://localhost:{{ openclaw_gateway_port }}" \
+              GW_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \
+              BRIDGE_PORT="{{ openclaw_mcp_bridge_port }}" \
+              node /tmp/bridge.js
           env:
             - name: HOME
               value: /home/node
