@@ -402,6 +402,7 @@ spec:
               while true; do
                 npx -y supergateway \
                   --port {{ openclaw_mcp_bridge_port }} \
+                  --outputTransport streamableHttp \
                   --stdio "node dist/index.js mcp serve --url ws://localhost:{{ openclaw_gateway_port }} --token $OPENCLAW_GATEWAY_TOKEN"
                 echo "[mcp-bridge] supergateway exited (code $?), restarting in 2s..."
                 sleep 2

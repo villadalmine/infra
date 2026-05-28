@@ -2,9 +2,9 @@
 name: a2a
 description: >
   Agent-to-Agent (A2A) bidireccional OpenClaw↔Hermes.
-  OpenClaw→Hermes: ✅ operacional (ask_hermes_agent + MCP tools).
-  Hermes→OpenClaw: ✅ bridge desplegado (supergateway SSE :18790, while-true restart, scope pre-aprobado).
-  Debate autónomo multi-turno via ask_hermes_agent / ask_openclaw_agent.
+  OpenClaw→Hermes: ✅ operacional (ask_hermes_agent via MCP :8000).
+  Hermes→OpenClaw: ⚠️ bridge desplegado (supergateway streamableHttp :18790/mcp), Python mcp client falla por GET /mcp sin soporte stateless.
+  ask_hermes_agent timeout fix: max_iterations=15 (era 90), NPU hermes-qwen local.
 license: MIT
 compatibility:
   - opencode
@@ -84,7 +84,7 @@ La distinción importante: `ask_hermes_agent("DEBATE...")` no llama una función
 
 ---
 
-## Arquitectura actual (2026-05-27)
+## Arquitectura actual (2026-05-28)
 
 ```
 Usuario (Telegram @tito_es_tu_bot)
@@ -123,14 +123,21 @@ Honcho (namespace: honcho, :80 → pod :8000)
 
 ---
 
-## Estado por dirección (2026-05-27)
+## Estado por dirección (2026-05-28)
 
 | Dirección | Estado | Detalle |
 |-----------|--------|---------|
-| **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` funciona, debate confirmado |
-| **Hermes → OpenClaw** | ⚠️ Bridge arriba, sesión inestable | SSE endpoint responde, pero `openclaw mcp serve` sale después de ~16s de inactividad. Hermes pierde conexión y reintenta. |
+| **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` funciona, debate confirmado. Fix: max_iterations=15 (era 90) — timeout resuelto. |
+| **Hermes → OpenClaw** | ⚠️ Bridge desplegado, conexión falla | supergateway streamableHttp: initialize+tools/list OK, pero Python mcp client intenta GET /mcp → 405 (stateless no lo soporta) → CancelledError. |
 | **Honcho memoria** | ✅ Ambos | `[plugins] Honcho memory ready` en ambos pods |
 | **Scope upgrade** | ✅ Resuelto | paired.json bypass aplicado (ver AGENTS.md) |
+
+### Fix aplicado: ask_hermes_agent timeout (2026-05-28)
+
+**Síntoma**: `[tools] hermes__ask_hermes_agent failed: MCP error -32001: Request timed out`
+**Causa**: AIAgent con max_iterations=90 + hermes-qwen (llama-3.1-8b NPU, ~30s/turno) → excede timeout MCP
+**Fix**: max_iterations=15 en hermes-static-mcp.yaml.j2 + kubectl patch directo
+**Resultado esperado**: 2-3 turns × 30s = ~60-90s por debate, dentro del timeout de 600s de OpenClaw
 
 ---
 
@@ -374,10 +381,10 @@ kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
 | `Honcho NetworkPolicy` | K8s evalúa NetworkPolicy post-DNAT → puerto 8000 (pod), no 80 (service) | egress port 8000 en openclaw-network.yaml.j2 |
 | `events_wait timeout` | messages_send es OUTGOING — no dispara Hermes | usar ask_hermes_agent por turno |
 | `scope upgrade deadlock` | mcp serve necesita scopes que el token no tiene; approval requiere token → chicken-and-egg | paired.json bypass (AGENTS.md) |
-| `Already connected to transport` | supergateway SSE reutiliza un hijo; segundo cliente lo mata | while-true restart loop en command |
-| `No connection established for requestId` | streamableHttp stateless pierde el HTTP request antes de que el hijo responda | usar SSE mode (sin --outputTransport streamableHttp) |
-| `openclaw mcp serve exits ~16s` | mcp serve v2026.5.22 cierra la sesión si no hay actividad | Hermes debe reiniciarse post-restart; pending fix en OpenClaw upstream |
-| `OpenRouter key limit` | qwen-pro (Hermes model) agotó créditos OpenRouter | recargar créditos o cambiar modelo |
+| `Already connected to transport` | supergateway SSE reutiliza un hijo; segundo cliente lo mata | Cambiado a streamableHttp (--outputTransport streamableHttp) |
+| `ask_hermes_agent timeout (-32001)` | max_iterations=90 + NPU lento → excede timeout MCP (~90s) | max_iterations=15 en hermes-static-mcp.yaml.j2 |
+| `GET /mcp → 405` | supergateway stateless streamableHttp no soporta GET /mcp | Pendiente: stateful mode o bridge Python propio |
+| `Python mcp client CancelledError` | Cliente intenta GET /mcp para notificaciones SSE, recibe 405 → TaskGroup falla | Raíz: mismo que GET /mcp → 405 |
 
 ---
 
@@ -387,6 +394,6 @@ kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
 |------|-------------|--------|
 | Fase 1 | OpenClaw → Hermes: ask_hermes_agent via MCP :8000 | ✅ Operacional |
 | Fase 2 | Honcho compartido (ambos agentes usan misma instancia) | ✅ Operacional |
-| Fase 3 | Hermes → OpenClaw: sidecar openclaw-mcp-bridge :18790 SSE | ✅ Bridge desplegado, sesión inestable |
-| Fase 3.1 | Estabilizar sesión mcp serve (keepalive / persistent mode) | 🔄 Pendiente |
+| Fase 3 | Hermes → OpenClaw: sidecar openclaw-mcp-bridge :18790 streamableHttp | ⚠️ Bridge desplegado, GET /mcp falla en Python client |
+| Fase 3.1 | Fix GET /mcp: stateful supergateway o bridge Python propio con FastMCP | 🔄 Pendiente |
 | Fase 4 | Google A2A protocol (Agent Cards, push bidireccional) | ⬜ Backlog |
