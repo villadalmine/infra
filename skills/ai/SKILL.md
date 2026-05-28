@@ -91,20 +91,21 @@ LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 
 | Virtual model | Real model | Provider | Notes |
 |--------------|-----------|---------|-------|
-| `rk1-npu-local` | `llama-3.1-8b-instruct` | 4× RK1 NPU (load-balanced) | Primary, 0 cost, `max_input_tokens: 4096` |
-| `hermes-qwen` | `llama-3.1-8b-instruct` | 4× RK1 NPU | Hermes Agent primary |
-| `holmes-llama` | `llama-3.1-8b-instruct` | 4× RK1 NPU | Holmes + gpt-5.4 alias |
-| `gemini-free` | `llama-3.1-8b-instruct` | 4× RK1 NPU | OpenClaw default alias |
-| `free` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | Cloud primary (coding-first) |
+| `rk1-npu-local` | `llama-3.1-8b-instruct` | 4× RK1 NPU (load-balanced) | NPU only — no token limit workaround, `max_input_tokens: 4096` |
+| `hermes-qwen` | `llama-3.1-8b-instruct` | 4× RK1 NPU | NPU directo — **NO usar como modelo principal de agentes** (4096 token limit traba sesiones largas) |
+| `holmes-llama` | `llama-3.1-8b-instruct` | 4× RK1 NPU | Holmes alias |
+| `qwen3.6-free` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | **Hermes Agent primary** (desde 2026-05-28) |
+| `free` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | Cloud primary alias |
 | `free2` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Cloud fallback #1 |
 | `deepseek4v-free` | `openrouter/deepseek/deepseek-v4-flash:free` | OpenRouter | Cloud fallback #2 |
 | `nemotron` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Cloud fallback #3 |
-| `cheap` | `openrouter/qwen/qwen-turbo` | OpenRouter | Paid fallback (reliable) |
 | `deepseek-pro` | `openrouter/deepseek/deepseek-v4-pro` | OpenRouter | Paid strong fallback |
 
-**NPU-first routing:** All primary model aliases (`hermes-qwen`, `holmes-llama`, `gemini-free`, `rk1-npu-local`) point to the 4-node RK1 NPU pool. OpenRouter cloud models are fallback-only.
+**Routing policy (2026-05-28):** NPU modelos (`hermes-qwen`, `rk1-npu-local`) son accesibles por nombre directo pero NO se usan como primario de ningún servicio. Todos los servicios (Hermes, Holmes, OpenClaw, kagent) usan OpenRouter free tier como primary.
 
-**Fallback chain (confirmed working 2026-05-28):** `NPU-primary → free2 → deepseek4v-free → nemotron → deepseek-pro → qwen-pro`
+**Por qué se sacó NPU de los servicios:** context limit 4096 tokens. En sesiones con historial largo (>20 mensajes + tool descriptions) el NPU se traba con APITimeoutError. OpenRouter no tiene ese límite.
+
+**Fallback chain (confirmed working 2026-05-28):** `qwen3.6-free → free2 → deepseek4v-free → nemotron`
 
 **`deepseek-free` was removed** from all chains — persistently 429 rate-limited on OpenRouter.
 
@@ -212,8 +213,9 @@ LiteLLM proxy loads this same file automatically.
 Edit `roles/install-hermes-agent/defaults/main.yml`:
 
 ```yaml
-hermes_model: "free"    # default — uses LiteLLM fallback chain
-hermes_model: "cheap"   # skip free tiers entirely
+hermes_model: "qwen3.6-free"   # default (2026-05-28) — OpenRouter qwen/qwen3-coder:free
+hermes_model: "free2"          # alternativa: nvidia/nemotron-120b:free (más capaz, misma key)
+hermes_model: "hermes-qwen"    # NPU directo — EVITAR, 4096 token limit traba sesiones largas
 ```
 
 ### Resources (CM4-friendly defaults)

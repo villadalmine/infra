@@ -141,7 +141,7 @@ Honcho (namespace: honcho, :80 → pod :8000)
 ### Fix aplicado: ask_hermes_agent timeout (2026-05-28, inicial)
 
 **Síntoma**: `[tools] hermes__ask_hermes_agent failed: MCP error -32001: Request timed out`
-**Causa**: AIAgent con max_iterations=90 + hermes-qwen (llama-3.1-8b NPU, ~30s/turno) → excede timeout MCP
+**Causa**: AIAgent con max_iterations=90 + hermes-qwen (llama-3.1-8b NPU, 4096 token limit, ~30s/turno) → context overflow + excede timeout MCP
 **Fix**: max_iterations=15 en hermes-static-mcp.yaml.j2 + kubectl patch directo
 **Resultado esperado**: 2-3 turns × 30s = ~60-90s por debate, dentro del timeout de 600s de OpenClaw
 
