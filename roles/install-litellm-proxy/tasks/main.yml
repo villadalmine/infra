@@ -449,7 +449,7 @@
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: gemini-flash
               litellm_params:
-                model: openrouter/google/gemini-flash-1.5
+                model: openrouter/google/gemini-2.0-flash-001
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: default
               litellm_params:
@@ -476,40 +476,41 @@
               allowed_fails: 3
               cooldown_time: 30
             fallbacks:
-              # free2/deepseek4v-free/nemotron confirmed working 2026-05-28 test; deepseek-free is 429 rate-limited
-              - {"hermes-qwen": ["free2", "deepseek4v-free", "nemotron", "deepseek-pro", "qwen-pro"]}
-              - {"holmes-llama": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"gpt-5.4": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openai/gpt-5.4": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"local-reason": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openclaw-gemini": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"gpt-4o": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openai/gpt-4o": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"gemini-free": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openai/gemini-free": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"local-fast": ["free2", "deepseek4v-free", "nemotron", "deepseek-pro", "qwen-pro"]}
-              - {"local-llama": ["local-fast", "free2", "deepseek4v-free", "holmes-free2", "deepseek-pro"]}
-              - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron", "deepseek-pro", "qwen-pro"]}
-              - {"nemotron": ["free2", "deepseek4v-free", "deepseek-pro", "qwen-pro"]}
-              - {"qwen3.6-free": ["free2", "deepseek4v-free", "nemotron", "deepseek-pro", "qwen-pro"]}
-              - {"deepseek4v-free": ["free2", "nemotron", "deepseek-pro", "qwen-pro"]}
+              # Verified working 2026-05-28: free2/deepseek4v-free/nemotron/gemini-free2/holmes-free2
+              # deepseek-pro/gemini-flash/qwen-pro/claude-sonnet: 403 (no credits). cheap/openclaw-cheap: 404 (qwen-turbo removed).
+              - {"hermes-qwen": ["free2", "deepseek4v-free", "nemotron"]}
+              - {"holmes-llama": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"openai/gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"local-reason": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"openclaw-gemini": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"openai/gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"gemini-free": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"openai/gemini-free": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"local-fast": ["free2", "deepseek4v-free", "nemotron"]}
+              - {"local-llama": ["local-fast", "free2", "deepseek4v-free"]}
+              - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
+              - {"nemotron": ["free2", "deepseek4v-free"]}
+              - {"qwen3.6-free": ["free2", "deepseek4v-free", "nemotron"]}
+              - {"deepseek4v-free": ["free2", "nemotron"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
-              # gemini-flash first: handles 33K+ tokens in ~10s vs free2/nemotron which each timeout at 120s
-              # ask_hermes_agent sends 33K tokens (145 k8s tools) → NPU limit 4096 → must fallback fast
-              - {"hermes-qwen": ["gemini-flash", "free2", "deepseek4v-free", "nemotron", "deepseek-pro", "qwen-pro"]}
-              - {"holmes-llama": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"gpt-5.4": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openai/gpt-5.4": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"local-reason": ["free2", "deepseek4v-free", "holmes-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openclaw-gemini": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"gpt-4o": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"openai/gpt-4o": ["free2", "deepseek4v-free", "gemini-free2", "deepseek-pro", "qwen-pro"]}
-              - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron", "deepseek-pro", "qwen-pro"]}
-              - {"nemotron": ["free2", "deepseek4v-free", "deepseek-pro", "qwen-pro"]}
-              - {"qwen3.6-free": ["free2", "deepseek4v-free", "nemotron", "deepseek-pro", "qwen-pro"]}
-              - {"deepseek4v-free": ["free2", "nemotron", "deepseek-pro", "qwen-pro"]}
+              # Verified 2026-05-28: free2 handles 33K+ token contexts in ~10s (nemotron-120b, fast)
+              # deepseek-pro/gemini-flash/qwen-pro all return 403 — removed from all chains.
+              - {"hermes-qwen": ["free2", "deepseek4v-free", "nemotron"]}
+              - {"holmes-llama": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"openai/gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"local-reason": ["holmes-free2", "free2", "deepseek4v-free"]}
+              - {"openclaw-gemini": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"openai/gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
+              - {"nemotron": ["free2", "deepseek4v-free"]}
+              - {"qwen3.6-free": ["free2", "deepseek4v-free", "nemotron"]}
+              - {"deepseek4v-free": ["free2", "nemotron"]}
             set_verbose: true
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]
