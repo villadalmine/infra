@@ -93,6 +93,14 @@ spec:
             - |
               # Secure the agents directory (emptyDir mount)
               chmod 700 /home/node/.openclaw/agents/main/agent || true
+              # Patch MCP SDK default request timeout: 60s → 300s.
+              # The @modelcontextprotocol/sdk hardcodes DEFAULT_REQUEST_TIMEOUT_MSEC=60000.
+              # openclaw's callTool() does not pass a custom timeout, so all tool calls
+              # use this default. ask_hermes_agent needs >60s for Hermes to reason.
+              MCP_PROTO="/app/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/protocol.js"
+              if [ -f "$MCP_PROTO" ]; then
+                sed -i 's/DEFAULT_REQUEST_TIMEOUT_MSEC = 60000/DEFAULT_REQUEST_TIMEOUT_MSEC = 300000/' "$MCP_PROTO" || true
+              fi
               # Create symlinks for plugin-skills (required for internal discovery)
               PLUGIN_DIR="/home/node/.openclaw/plugin-skills"
               mkdir -p $PLUGIN_DIR

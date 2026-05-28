@@ -190,11 +190,13 @@ spec:
                   import os
                   from run_agent import AIAgent
 
+                  # max_iterations=6: limits reasoning to ~90s worst-case.
+                  # OpenClaw's MCP client timeout is patched to 300s, so 6 iters is safe.
                   agent = AIAgent(
                       model=os.environ.get("HERMES_MODEL", "hermes-qwen"),
                       base_url=os.environ.get("OPENAI_API_BASE"),
                       api_key=os.environ.get("OPENAI_API_KEY"),
-                      max_iterations=15,
+                      max_iterations=6,
                       quiet_mode=True,
                       verbose_logging=False
                   )
@@ -203,7 +205,7 @@ spec:
                       response = res.get("final_response", "") if res else ""
                       if not response and res and res.get("error"):
                           response = f"Error: {res['error']}"
-                      return response
+                      return response if response else "Hermes completó el análisis pero no generó respuesta textual."
                   except Exception as e:
                       return f"Error executing Hermes conversation: {e}"
 
