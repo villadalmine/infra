@@ -3,8 +3,8 @@ name: a2a
 description: >
   Agent-to-Agent (A2A) bidireccional OpenClaw↔Hermes — ambas direcciones operacionales.
   OpenClaw→Hermes: ✅ ask_hermes_agent via MCP :8000. Fix: max_iterations=15 (era 90).
-  Hermes→OpenClaw: ✅ proxy Node.js :18790 + supergateway streamableHttp :18791/mcp.
-  Proxy maneja GET /mcp con SSE keepalive vacío; POST forwarded a supergateway. kagent NetworkPolicy corregida para ns ai.
+  Hermes→OpenClaw: ✅ bridge.js stateful Node.js :18790 (no supergateway).
+  ask_hermes_agent PONG en 9s (era 37s). E2E 13/13 PASS 2026-05-28.
 license: MIT
 compatibility:
   - opencode
@@ -95,9 +95,11 @@ OpenClaw (Tito) — namespace: openclaw, node: srv-rk1-nvme-02
     │   ├─ openclaw-gateway     :18789  — AI gateway, Telegram, Honcho memory
     │   ├─ kubernetes-mcp       :8080   — K8s MCP sidecar
     │   ├─ smee-client          —       — webhook relay GitHub→Telegram
-    │   └─ openclaw-mcp-bridge  :18790  — Node.js proxy + supergateway (Streamable HTTP)
-    │         proxy :18790 handles GET (empty SSE keepalive) + forwards POST to :18791
-    │         supergateway :18791 (stateless streamableHttp) → `openclaw mcp serve` (stdio)
+    │   └─ openclaw-mcp-bridge  :18790  — bridge.js stateful (Node.js)
+    │         `openclaw mcp serve` spawned ONCE at startup
+    │         GET /mcp → 200 SSE keepalive (Python MCP SDK no 405)
+    │         POST /mcp initialize → cached childInitResult
+    │         POST /mcp tools/* → routed via child stdin/stdout
     │
     ├─[MCP HTTP :8000]─────────────────────────────────────────────────────────┐
     │  Tools: hermes__ask_hermes_agent / conversations_list / messages_send/etc │
@@ -113,9 +115,11 @@ OpenClaw (Tito) — namespace: openclaw, node: srv-rk1-nvme-02
     │                                                          Hermes razona                  │
     │                                                          y responde                     │
     │                                                                                         │
-    └─[proxy :18790 + supergateway :18791]────────────────────────────────────────────────────┘
-       GET /mcp → proxy returns 200 SSE keepalive (satisfies Python MCP SDK)
-       POST /mcp → proxy forwards to supergateway:18791 → `openclaw mcp serve` (stdio)
+    └─[bridge.js stateful :18790]───────────────────────────────────────────────────────────┘
+       session key fijo: "agent:main:main" (no lookup via conversations_list)
+       sentAt timestamp: filtra eventos anteriores al mensaje enviado
+       getEvents(): parsea structuredContent.events o text fallback (JSON)
+       events_wait timeout: 60s (era 90s), hasta 3 intentos
        Tools: openclaw__ask_openclaw_agent / conversations_list / messages_send / etc.
 
 Honcho (namespace: honcho, :80 → pod :8000)
@@ -129,17 +133,33 @@ Honcho (namespace: honcho, :80 → pod :8000)
 
 | Dirección | Estado | Detalle |
 |-----------|--------|---------|
-| **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` funciona, debate confirmado. Fix: max_iterations=15 (era 90) — timeout resuelto. |
-| **Hermes → OpenClaw** | ✅ Operacional | proxy+supergateway streamableHttp: GET /mcp→SSE keepalive, POST→forward. Kagent NetworkPolicy también corregida (ai ns). |
+| **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` PONG en **9s** (era 37s). E2E 13/13 PASS. |
+| **Hermes → OpenClaw** | ✅ Operacional | bridge.js stateful: no supergateway. Session key fijo, sentAt filter, getEvents() helper. |
 | **Honcho memoria** | ✅ Ambos | `[plugins] Honcho memory ready` en ambos pods |
 | **Scope upgrade** | ✅ Resuelto | paired.json bypass aplicado (ver AGENTS.md) |
 
-### Fix aplicado: ask_hermes_agent timeout (2026-05-28)
+### Fix aplicado: ask_hermes_agent timeout (2026-05-28, inicial)
 
 **Síntoma**: `[tools] hermes__ask_hermes_agent failed: MCP error -32001: Request timed out`
 **Causa**: AIAgent con max_iterations=90 + hermes-qwen (llama-3.1-8b NPU, ~30s/turno) → excede timeout MCP
 **Fix**: max_iterations=15 en hermes-static-mcp.yaml.j2 + kubectl patch directo
 **Resultado esperado**: 2-3 turns × 30s = ~60-90s por debate, dentro del timeout de 600s de OpenClaw
+
+### Fix aplicado: bridge.js askOpenclaw performance (2026-05-28)
+
+**Síntoma**: `ask_openclaw_agent` tardaba 37s+ (visible en E2E test anterior)
+**Causa raíz**:
+1. `askOpenclaw` llamaba `conversations_list` para obtener el session key — round-trip innecesario
+2. `waitForReply` sin filtro de timestamp — podía devolver eventos anteriores al mensaje (stale reply)
+3. `getEvents()` ausente — código de parseo duplicado con try/catch frágil
+
+**Fix** (en `bridge.js` embebido en `openclaw-deployment.yaml.j2`):
+- Session key hardcodeado: `'agent:main:main'` (evita lookup)
+- `sentAt = Date.now()` antes de `messages_send` → `waitForReply` solo acepta `ev.updatedAt >= sentAt`
+- `getEvents(r)` helper: parsea `r.result.structuredContent.events` o text fallback (JSON)
+- `events_wait timeout_ms`: 90000 → 60000 (3 intentos = 180s max)
+
+**Resultado**: PONG en 9s (era 37s)
 
 ---
 
@@ -413,6 +433,7 @@ kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
 | `Python mcp client CancelledError` | Cliente GET /mcp → 405 → TaskGroup falla | Fix: mismo que arriba (proxy maneja GET) |
 | `kagent MCP timeout` | NetworkPolicy `allow-openclaw-to-kagent-tools` no incluía namespace `ai` | Añadido ingress from `ai` ns en openclaw-network.yaml.j2 |
 | `LiteLLM fallbacks broken` | `deepseek-free` 429 rate-limited; `local-fast` en context_window_fallbacks (mismo límite NPU 4096 → inútil) | Reemplazado con `free2, deepseek4v-free, nemotron`; local-fast eliminado de context_window_fallbacks |
+| `ask_openclaw_agent lento (37s)` | `askOpenclaw` llamaba `conversations_list` antes de cada `messages_send`; sin filtro de timestamp → stale events | Session key fijo `'agent:main:main'`; `sentAt` timestamp filter; `getEvents()` helper |
 
 ---
 

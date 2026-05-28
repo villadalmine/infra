@@ -512,6 +512,7 @@ Si ves `kagent_*` o herramientas de helm/kubectl → usa kagent-tools MCP.
 | `message_start` error en stream | Bug LiteLLM `/v1/messages` doble emit | `openai/` prefix + `api_base` + env var |
 | MCP tools no cargan, `tools: []` | Transport SSE en vez de streamable-http | `"transport": "streamable-http"` + URL `/mcp` |
 | kagent-controller falla con i/o timeout | NetworkPolicy de ingress solo permite openclaw | Añadir regla `from: namespace kagent` en la misma NP |
+| ask_openclaw_agent lento o stale reply | bridge.js buscaba session key en cada call; sin sentAt filter | Session key `'agent:main:main'` fijo + `sentAt` timestamp en waitForReply |
 
 ---
 
@@ -607,23 +608,22 @@ OpenClaw (orquestador)
     └── Hermes  MCP (:8000) ✅ ONLINE  → messaging bridge + agente autónomo
 ```
 
-### Canal A2A con Hermes — messaging bridge (probado 2026-05-26)
+### Canal A2A con Hermes — messaging bridge (E2E 13/13 PASS 2026-05-28)
 
 Hermes expone un **messaging bridge MCP completo** en puerto 8000. OpenClaw puede:
 - `conversations_list` → ver qué conversaciones Telegram tiene Hermes activas
 - `messages_send(target, message)` → enviar un mensaje real al chat de Hermes
 - `events_poll(session_key, cursor)` → leer respuestas de Hermes
-- `ask_hermes_agent(question)` → delegar al loop autónomo completo de Hermes
+- `ask_hermes_agent(question)` → delegar al loop autónomo completo de Hermes (PONG 9s)
 
 **Diferencia vs tool calling clásico:** `messages_send` hace que Hermes reciba el mensaje
 como si fuera del usuario — procesa con su LLM + kubernetes MCP + kagent MCP y responde
 autónomamente. No es una función, es un agente razonando.
 
-Ver `skills/a2a/SKILL.md` para tests completos, schemas y roadmap.
+**Bidireccional activo:** bridge.js stateful en `:18790` — Hermes puede llamar `ask_openclaw_agent`.
+Session key fijo `'agent:main:main'`, sentAt filter (evita stale replies), getEvents() helper.
 
-**Lo que falta para bidireccional:**
-OpenClaw no expone MCP server (`/mcp` → 404). Hermes no puede iniciar contacto.
-Opciones: habilitar MCP server en OpenClaw, o usar Honcho workspace compartido.
+Ver `skills/a2a/SKILL.md` para arquitectura completa, tests y roadmap.
 
 ### AlertManager → OpenClaw (pendiente)
 ```yaml

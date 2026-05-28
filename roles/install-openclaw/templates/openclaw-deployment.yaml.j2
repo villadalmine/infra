@@ -453,36 +453,36 @@ spec:
                 pending.set(String(id), cb);
                 child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }) + '\n');
               }
-              function waitForReply(sk, afterCursor, sse, msgId, attempt) {
-                callTool('events_wait', { session_key: sk, after_cursor: afterCursor, timeout_ms: 90000 }, r => {
+              function getEvents(r) {
+                if (r.result && r.result.structuredContent && r.result.structuredContent.events) return r.result.structuredContent.events;
+                try {
+                  const txt = r.result && r.result.content && r.result.content[0] && r.result.content[0].text || '';
+                  const json = JSON.parse(txt.replace(/^events:\s*\d+\s*/,''));
+                  return json.events || json || [];
+                } catch(e) { return []; }
+              }
+              function waitForReply(sk, afterCursor, sentAt, sse, msgId, attempt) {
+                callTool('events_wait', { session_key: sk, after_cursor: afterCursor, timeout_ms: 60000 }, r => {
                   let reply = null, lastCursor = afterCursor;
-                  try {
-                    const evs = (r.result.structuredContent && r.result.structuredContent.events) || [];
-                    for (const ev of evs) {
-                      if (ev.cursor > lastCursor) lastCursor = ev.cursor;
-                      if (ev.role === 'assistant' && ev.text) reply = ev.text;
-                    }
-                  } catch(e) {}
-                  if (reply) {
-                    sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: reply }] } });
-                  } else if (attempt < 2) {
-                    waitForReply(sk, lastCursor, sse, msgId, attempt + 1);
-                  } else {
-                    sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: 'Timeout waiting for OpenClaw response' }] } });
+                  const evs = getEvents(r);
+                  for (const ev of evs) {
+                    if (ev.cursor > lastCursor) lastCursor = ev.cursor;
+                    if (ev.role === 'assistant' && ev.text && (ev.updatedAt || 0) >= sentAt) reply = ev.text;
                   }
+                  if (reply) return sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: reply }] } });
+                  if (attempt < 2) return waitForReply(sk, lastCursor, sentAt, sse, msgId, attempt + 1);
+                  sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: 'Timeout: OpenClaw did not respond in time' }] } });
                 });
               }
               function askOpenclaw(question, sse, msgId) {
-                callTool('conversations_list', { limit: 1 }, r1 => {
-                  let sk;
-                  try { sk = r1.result.structuredContent.conversations[0].sessionKey; }
-                  catch(e) { return sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: 'Error: ' + e }] } }); }
-                  callTool('events_poll', { session_key: sk, limit: 1 }, r2 => {
-                    let cursor = 0;
-                    try { const evs = r2.result.structuredContent.events; if (evs && evs.length) cursor = evs[evs.length-1].cursor; } catch(e) {}
-                    callTool('messages_send', { session_key: sk, text: question }, _r3 => {
-                      waitForReply(sk, cursor, sse, msgId, 0);
-                    });
+                const sk = 'agent:main:main';
+                const sentAt = Date.now();
+                callTool('events_poll', { session_key: sk, limit: 1 }, r2 => {
+                  let cursor = 0;
+                  try { const evs = getEvents(r2); if (evs.length) cursor = evs[evs.length-1].cursor; } catch(e) {}
+                  callTool('messages_send', { session_key: sk, text: question }, r3 => {
+                    if (r3.error) return sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: 'Error sending: ' + JSON.stringify(r3.error) }] } });
+                    waitForReply(sk, cursor, sentAt, sse, msgId, 0);
                   });
                 });
               }
