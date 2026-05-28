@@ -98,6 +98,14 @@ LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 | `cheap` | `openrouter/qwen/qwen-turbo` | OpenRouter | Fallback tier 2 |
 | `qwen-pro` | `openrouter/qwen/qwen3.6-plus` | OpenRouter | Paid last resort |
 
+### Free Models & Aliases (Headlamp / Holmes)
+
+| Virtual model | Real model | Provider | Notes |
+|--------------|-----------|---------|-------|
+| `nemotron` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Dedicated free Nemotron model |
+| `qwen3.6-free` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | Dedicated free Qwen3.6 coder model |
+| `deepseek4v-free` | `openrouter/deepseek/deepseek-v4-flash:free` | OpenRouter | Dedicated free DeepSeek-v4 model |
+
 ### Holmes routing (GPU primary → cloud fallback)
 
 | Virtual model | Real model | Provider | Notes |

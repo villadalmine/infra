@@ -199,6 +199,9 @@ El namespace está parchado a `ai` (ver sección 5b).
 | `local-deepseek` | DeepSeek-V2 16B — dual GPU :11436 | 10 GB | Razonamiento largo |
 | `or-nemotron-super` | Nemotron 120B — OpenRouter | cloud | Tareas complejas |
 | `or-qwen3-coder` | Qwen3-Coder 480B — OpenRouter | cloud | Código a escala |
+| `nemotron` | Nvidia Nemotron 120B — OpenRouter | cloud (free) | Tareas generales, chat lateral |
+| `qwen3.6-free` | Qwen3.6 Coder 480B — OpenRouter | cloud (free) | Código a escala, scripts, chat |
+| `deepseek4v-free` | DeepSeek V4 Flash — OpenRouter | cloud (free) | Chat rápido, diagnósticos veloces |
 
 ---
 

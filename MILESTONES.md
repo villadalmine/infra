@@ -1,6 +1,7 @@
 # Project Milestones
 
 ## May 2026
+- **Headlamp Official AI Assistant & LiteLLM Free Models:** Fully deployed the official Headlamp `ai-assistant` plugin, featuring dynamic namespace patching (`fB="default"` to `fB="ai"`) via K8s Helm initContainers to securely route requests to the in-cluster `holmesgpt-holmes` service. Added first-class model registration in LiteLLM proxy for `nemotron`, `qwen3.6-free`, and `deepseek4v-free` complete with resilient automatic cloud-to-local failovers.
 - **RK1 NPU Pool Deployed:** Successfully deployed 4x TuringPi 2 RK1 nodes running `rkllama` with Llama-3.1-8B w8a8.
 - **Agent Mesh Architecture:** Implemented OpenClaw, HolmesGPT, and Hermes agents routing through a centralized LiteLLM proxy.
 - **Context Window Protection:** Documented and enforced the 4096 token limit for the RK3588S NPU. Added `context_window_fallbacks` to route large context prompts to the local GPU and Nemotron (OpenRouter), preventing `rkllama` crashes.
