@@ -448,6 +448,45 @@ spec:
                   params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'bridge', version: '1.0' } } }) + '\n');
               }
               startChild();
+              function callTool(name, args, cb) {
+                const id = nid++;
+                pending.set(String(id), cb);
+                child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }) + '\n');
+              }
+              function waitForReply(sk, afterCursor, sse, msgId, attempt) {
+                callTool('events_wait', { session_key: sk, after_cursor: afterCursor, timeout_ms: 90000 }, r => {
+                  let reply = null, lastCursor = afterCursor;
+                  try {
+                    const evs = (r.result.structuredContent && r.result.structuredContent.events) || [];
+                    for (const ev of evs) {
+                      if (ev.cursor > lastCursor) lastCursor = ev.cursor;
+                      if (ev.role === 'assistant' && ev.text) reply = ev.text;
+                    }
+                  } catch(e) {}
+                  if (reply) {
+                    sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: reply }] } });
+                  } else if (attempt < 2) {
+                    waitForReply(sk, lastCursor, sse, msgId, attempt + 1);
+                  } else {
+                    sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: 'Timeout waiting for OpenClaw response' }] } });
+                  }
+                });
+              }
+              function askOpenclaw(question, sse, msgId) {
+                callTool('conversations_list', { limit: 1 }, r1 => {
+                  let sk;
+                  try { sk = r1.result.structuredContent.conversations[0].sessionKey; }
+                  catch(e) { return sse({ jsonrpc: '2.0', id: msgId, result: { content: [{ type: 'text', text: 'Error: ' + e }] } }); }
+                  callTool('events_poll', { session_key: sk, limit: 1 }, r2 => {
+                    let cursor = 0;
+                    try { const evs = r2.result.structuredContent.events; if (evs && evs.length) cursor = evs[evs.length-1].cursor; } catch(e) {}
+                    callTool('messages_send', { session_key: sk, text: question }, _r3 => {
+                      waitForReply(sk, cursor, sse, msgId, 0);
+                    });
+                  });
+                });
+              }
+              const ASK_OPENCLAW_TOOL = { name: 'ask_openclaw_agent', description: 'Pregunta al agente OpenClaw (Tito) sobre el cluster. Envía una pregunta a su loop de razonamiento autónomo y espera su respuesta.', inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] } };
               http.createServer((req, res) => {
                 if (req.method === 'GET') {
                   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
@@ -469,6 +508,25 @@ spec:
                     return;
                   }
                   if (msg.method && msg.method.startsWith('notifications/')) { res.writeHead(202); res.end(); return; }
+                  if (msg.method === 'tools/list') {
+                    const doList = () => {
+                      const id = nid++;
+                      pending.set(String(id), r => {
+                        r.id = msg.id;
+                        if (r.result && r.result.tools) r.result.tools.push(ASK_OPENCLAW_TOOL);
+                        sse(r);
+                      });
+                      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list', params: {} }) + '\n');
+                    };
+                    if (initialized) doList(); else queue.push(doList);
+                    return;
+                  }
+                  if (msg.method === 'tools/call' && msg.params && msg.params.name === 'ask_openclaw_agent') {
+                    const q = (msg.params.arguments && msg.params.arguments.question) || '';
+                    const doAsk = () => askOpenclaw(q, sse, msg.id);
+                    if (initialized) doAsk(); else queue.push(doAsk);
+                    return;
+                  }
                   const fwd = () => {
                     const id = nid++;
                     pending.set(String(id), r => { r.id = msg.id; sse(r); });
