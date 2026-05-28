@@ -443,7 +443,8 @@ spec:
               http.createServer((req, res) => {
                 if (req.method === 'GET') {
                   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
-                  const k = setInterval(() => { try { res.write(': k\n\n'); } catch(e) { clearInterval(k); } }, 20000);
+                  res.write(': ok\n\n');
+                  const k = setInterval(() => { try { res.write(': k\n\n'); } catch(e) { clearInterval(k); } }, 15000);
                   req.on('close', () => clearInterval(k));
                   return;
                 }
