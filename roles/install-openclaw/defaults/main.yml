@@ -48,7 +48,7 @@ openclaw_litellm_master_key: "sk-hermes-internal"
 # Default to the virtual model name resolved by LiteLLM so the client does not
 # include a provider prefix. This helps prevent OpenClaw from triggering the
 # provider routing logic that sends traffic to api.openai.com directly.
-openclaw_model_primary: "litellm/gpt-4o"
+openclaw_model_primary: "litellm/openclaw-gemini"
 # Fallbacks (optional) — keep as provider-prefixed where sensible.
 openclaw_model_fallback1: "openrouter/qwen/qwen3-coder:free"
 openclaw_model_fallback2: "openrouter/google/gemini-2.0-flash-exp:free"

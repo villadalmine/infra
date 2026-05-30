@@ -128,11 +128,23 @@ LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 ### Fallback chains
 
 ```
-Hermes:   hermes-qwen → qwen-pro → free2 → cheap
-Holmes:   GPU Ollama → holmes-free2 (cloud) → holmes-cheap (cloud) → qwen-pro (paid)
-OpenClaw: openclaw-gemini → gemini-free2 → openclaw-cheap → deepseek-pro → deepseek-free
-Local GPU (all): GPU → free tier → cheap → qwen-pro (paid last resort)
+Hermes:   rk1-npu-local (NPU) → hermes-qwen → qwen-pro → free2 → cheap
+Holmes:   rk1-npu-local (NPU) → holmes-llama (Ollama) → holmes-free2 (cloud) → holmes-cheap (cloud) → qwen-pro (paid)
+OpenClaw: rk1-npu-local (NPU) → openclaw-gemini → gemini-free2 → openclaw-cheap → deepseek-pro → deepseek-free
+Local GPU (all): rk1-npu-local (NPU) → GPU → free tier → cheap → qwen-pro (paid last resort)
 ```
+
+> **Note on NPU Integration:** The NPU Pool (`rk1-npu-local`) is intended to be the default primary base for all consumers. Due to its context window limit (`max_input_tokens: 4096`), LiteLLM will automatically trigger a `context_window_fallback` to the cloud/GPU chains defined above if a prompt exceeds the limit. If an NPU model fails or is offline, it will similarly fall back to the "real" models.
+
+### Modifying LiteLLM Configuration (Strict Rule)
+
+**CRITICAL:** NEVER use `sed` or regex-based python script text replacement to inject aliases into `install-litellm-proxy/tasks/main.yml`. Because `model_list` is a YAML list, appending a model with a duplicate `model_name` elsewhere in the file creates a duplicated list item that can unintentionally hijack other model routes and break traffic. 
+
+If you must update the LiteLLM config:
+1. Manually edit `roles/install-litellm-proxy/tasks/main.yml` using precise replacement.
+2. Ensure you modify the existing YAML block scalar directly.
+3. Validate that you are not defining duplicate `- model_name: <alias>` items unintentionally.
+4. Redeploy cleanly using `make ai-litellm-proxy-deploy` (or `ansible-playbook ... --tags ai-litellm-proxy`).
 
 ### Hermes MCP lessons learned
 
