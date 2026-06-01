@@ -44,32 +44,32 @@
       data:
         config.yaml: |
           model_list:
-            # ── Local GPU routes (Ollama at 192.168.178.90) ──
-            - model_name: local-fast
-              litellm_params:
-                model: openai/qwen2.5-coder:7b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
-            - model_name: local-llama
-              litellm_params:
-                model: openai/llama3.1:8b
-                api_base: http://192.168.178.90:11434/v1
-                api_key: "dummy"
-            - model_name: local-coder-7b
-              litellm_params:
-                model: openai/qwen2.5-coder:7b-instruct-q8_0
-                api_base: http://192.168.178.90:11436/v1
-                api_key: "dummy"
-            - model_name: local-codestral
-              litellm_params:
-                model: openai/codestral:latest
-                api_base: http://192.168.178.90:11436/v1
-                api_key: "dummy"
-            - model_name: local-deepseek
-              litellm_params:
-                model: openai/deepseek-coder-v2:16b
-                api_base: http://192.168.178.90:11436/v1
-                api_key: "dummy"
+            # ── Local GPU routes (Ollama at 192.168.178.90 — srv-t7910 offline, restore when GPU node returns) ──
+            # - model_name: local-fast
+            #   litellm_params:
+            #     model: openai/qwen2.5-coder:7b
+            #     api_base: http://192.168.178.90:11434/v1
+            #     api_key: "dummy"
+            # - model_name: local-llama
+            #   litellm_params:
+            #     model: openai/llama3.1:8b
+            #     api_base: http://192.168.178.90:11434/v1
+            #     api_key: "dummy"
+            # - model_name: local-coder-7b
+            #   litellm_params:
+            #     model: openai/qwen2.5-coder:7b-instruct-q8_0
+            #     api_base: http://192.168.178.90:11436/v1
+            #     api_key: "dummy"
+            # - model_name: local-codestral
+            #   litellm_params:
+            #     model: openai/codestral:latest
+            #     api_base: http://192.168.178.90:11436/v1
+            #     api_key: "dummy"
+            # - model_name: local-deepseek
+            #   litellm_params:
+            #     model: openai/deepseek-coder-v2:16b
+            #     api_base: http://192.168.178.90:11436/v1
+            #     api_key: "dummy"
 
             # ── Local TuringPi 2 RK1 NPU Pool (Primary routes for ALL services) ──
             # 4x RK1 Nodes running Llama-3.1-8B-Instruct on RKNPU (instantly available, 0 cost)
@@ -251,9 +251,10 @@
               litellm_params:
                 model: openrouter/google/gemini-2.0-flash-001
                 api_key: os.environ/OPENROUTER_API_KEY
+            # ── default → nemotron free (fallback chain: qwen36-free → deepseek-flash → claude-sonnet) ──
             - model_name: default
               litellm_params:
-                model: openrouter/anthropic/claude-sonnet-4-5
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENROUTER_API_KEY
 
             # ── Free Models and Aliases for Headlamp / Holmes ──
@@ -277,6 +278,17 @@
               litellm_params:
                 model: openrouter/deepseek/deepseek-v4-flash
                 api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: qwen36-free
+              litellm_params:
+                model: openrouter/qwen/qwen3.6-plus:free
+                api_key: os.environ/OPENROUTER_API_KEY
+
+            # ── Embedding Models (for Honcho Memory) ──
+            - model_name: text-embedding-3-small
+              litellm_params:
+                model: openai/text-embedding-3-small
+                api_base: https://openrouter.ai/api/v1
+                api_key: os.environ/OPENROUTER_API_KEY
 
           litellm_settings:
             router_settings:
@@ -296,12 +308,11 @@
               - {"openai/gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
               - {"gemini-free": ["gemini-free2", "free2", "deepseek4v-free"]}
               - {"openai/gemini-free": ["gemini-free2", "free2", "deepseek4v-free"]}
-              - {"local-fast": ["free2", "deepseek4v-free", "nemotron"]}
-              - {"local-llama": ["local-fast", "free2", "deepseek4v-free"]}
               - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
               - {"nemotron": ["free2", "deepseek4v-free"]}
               - {"hermes-free": ["hermes-free-fallback", "deepseek-cheap", "free2"]}
               - {"deepseek4v-free": ["free2", "nemotron"]}
+              - {"default": ["qwen36-free", "deepseek4v-free", "claude-sonnet"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
@@ -319,6 +330,7 @@
               - {"nemotron": ["free2", "deepseek4v-free"]}
               - {"hermes-free": ["hermes-free-fallback", "deepseek-cheap", "free2"]}
               - {"deepseek4v-free": ["free2", "nemotron"]}
+              - {"default": ["qwen36-free", "deepseek4v-free", "claude-sonnet"]}
             set_verbose: true
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]

@@ -153,6 +153,11 @@ spec:
                 chown -R 1000:1000 /opt/data/.hermes/gateway.json || true
               fi
               ln -sf /opt/data/.hermes/gateway.json /opt/data/gateway.json
+
+              # Symlink skills directory to PVC for persistence
+              if [ -d /opt/data/.hermes/skills ]; then
+                ln -sfn /opt/data/.hermes/skills /opt/data/skills
+              fi
           volumeMounts:
             - name: hermes-data
               mountPath: /opt/data
