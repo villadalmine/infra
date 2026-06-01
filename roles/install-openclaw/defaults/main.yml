@@ -76,7 +76,7 @@ openclaw_mcp_bridge_port: 18790
 # ─── Honcho Memory Configuration ──────────────────────────────────────────────
 # Self-hosted Honcho in-cluster. Workspace-scoped JWT key in secrets.yml (workspace: openclaw).
 openclaw_honcho_url: "http://honcho-api.honcho.svc.cluster.local"
-openclaw_honcho_timeout_ms: 30000
+openclaw_honcho_timeout_ms: 90000   # kimi-free reasoning takes 18-57s; 30s was always timing out
 
 # ─── Subagent endpoints (for NetworkPolicy + AGENTS.md) ──────────────────────
 openclaw_holmes_url: "http://holmesgpt-holmes.ai.svc.cluster.local"
