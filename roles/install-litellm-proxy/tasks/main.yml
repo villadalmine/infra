@@ -299,6 +299,7 @@
                 api_key: os.environ/OPENROUTER_API_KEY
 
           litellm_settings:
+            modify_params: true
             router_settings:
               routing_strategy: least_busy
               allowed_fails: 3

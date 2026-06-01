@@ -22,7 +22,8 @@ llm:
   apiKey: "sk-hermes-internal"
   # Model for text generation (must support tool calling / function calling)
   # Maps to a LiteLLM model alias in your litellm config
-  model: "hermes-qwen"
+  # kimi-free (moonshotai/kimi-k2.6:free) — 262K ctx, native tool calling, supports tool_choice required/auto
+  model: "kimi-free"
   # Embeddings are disabled (EMBED_MESSAGES=false) — no embedding model needed in LiteLLM.
   # To enable: add an embedding model to LiteLLM and set embeddingModel here.
   embeddingModel: ""
