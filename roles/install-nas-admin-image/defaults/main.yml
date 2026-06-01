@@ -2,5 +2,5 @@ nas_admin_build_namespace: build
 nas_admin_registry: registry.registry:5000
 nas_admin_image_name: ai/nas-admin
 nas_admin_image_tag: latest
-nas_admin_build_storage_class: local-path
+nas_admin_build_storage_class: longhorn-nvme
 nas_admin_build_workspace_size: 500Mi

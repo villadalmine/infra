@@ -7,6 +7,6 @@ leloir_image_name: "ai/leloir-controlplane"
 leloir_kaniko_namespace: kaniko
 leloir_kaniko_storage_class: "longhorn-nvme"
 leloir_kaniko_storage_size: "10Gi"
-leloir_kaniko_workspace_storage_class: "local-path"
+leloir_kaniko_workspace_storage_class: "longhorn-nvme"
 leloir_kaniko_workspace_storage_size: "5Gi"
 leloir_kaniko_node_hostname: "srv-rk1-nvme-01"

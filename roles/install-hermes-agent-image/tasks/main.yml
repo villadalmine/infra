@@ -60,6 +60,11 @@
           app: hermes-agent-build
       spec:
         entrypoint: build-image
+        # Auto-delete workflow and PVCs after completion (reclaimPolicy: Delete on longhorn-nvme)
+        ttlStrategy:
+          secondsAfterCompletion: 300    # 5 min after success
+          secondsAfterSuccess: 300
+          secondsAfterFailure: 3600      # 1 h to inspect failed builds
         nodeSelector:
           kubernetes.io/hostname: "{{ kaniko_node_hostname }}"
         tolerations:
@@ -112,9 +117,11 @@
                 requests:
                   cpu: "1"
                   memory: "8Gi"
+                  ephemeral-storage: "4Gi"
                 limits:
                   cpu: "4"
                   memory: "20Gi"
+                  ephemeral-storage: "8Gi"
               volumeMounts:
                 - name: dockerfile
                   mountPath: /workspace/Dockerfile

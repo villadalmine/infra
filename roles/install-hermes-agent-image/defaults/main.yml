@@ -7,5 +7,5 @@ kaniko_namespace: kaniko
 kaniko_storage_class: "longhorn-nvme"
 kaniko_storage_size: "60Gi"
 kaniko_node_hostname: "srv-rk1-nvme-01"
-kaniko_workspace_storage_class: "local-path"
+kaniko_workspace_storage_class: "longhorn-nvme"
 kaniko_workspace_storage_size: "40Gi"
