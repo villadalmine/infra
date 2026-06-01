@@ -17,10 +17,13 @@ hermes_memory_request: "2Gi"
 # Schedule Hermes on the high-resource node.
 hermes_node_hostname: "srv-rk1-nvme-01"
 
-# Storage for ~/.hermes
+# Storage for ~/.hermes (gateway.json, skills symlink)
 hermes_storage_size: "10Gi"
 hermes_storage_class: "longhorn-nvme"
 hermes_storage_role: ""
+
+# Storage for /opt/data workspace (scripts, history, tools — persistent across restarts)
+hermes_workspace_size: "5Gi"
 
 # Platform integrations
 # Telegram disabled: OpenClaw uses the same bot token → conflict if both run.

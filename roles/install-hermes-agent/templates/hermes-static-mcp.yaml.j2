@@ -357,7 +357,8 @@ spec:
               mountPath: /tmp
       volumes:
         - name: hermes-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: hermes-data-pvc
         - name: hermes-home
           persistentVolumeClaim:
             claimName: hermes-home-pvc
@@ -396,3 +397,16 @@ spec:
   resources:
     requests:
       storage: {{ hermes_storage_size }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-data-pvc
+  namespace: {{ hermes_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ hermes_storage_class }}
+  resources:
+    requests:
+      storage: {{ hermes_workspace_size }}
