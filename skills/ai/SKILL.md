@@ -98,18 +98,22 @@ LiteLLM config (`roles/install-litellm-proxy/tasks/main.yml`):
 | `free` | `openrouter/qwen/qwen3-coder:free` | OpenRouter | Cloud primary alias |
 | `free2` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Cloud fallback #1 |
 | `deepseek4v-free` | `openrouter/deepseek/deepseek-v4-flash:free` | OpenRouter | Cloud fallback #2 |
-| `nemotron` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Cloud fallback #3 |
-| `deepseek-pro` | `openrouter/deepseek/deepseek-v4-pro` | OpenRouter | Paid strong fallback |
+| `nemotron` | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | Nemotron alias — **NO soporta `tool_choice: any`** |
+| `kimi-free` | `openrouter/moonshotai/kimi-k2.6:free` | OpenRouter | **Honcho reasoning primary** — 262K ctx, soporta tool_choice any/required (2026-06-01) |
+| `gemma4-free` | `openrouter/google/gemma-4-31b-it:free` | OpenRouter | Free fallback extra |
+| `deepseek-pro` | `openrouter/deepseek/deepseek-v4-pro` | OpenRouter | Paid strong fallback (last resort) |
 
-**Routing policy (2026-05-28):** NPU modelos (`hermes-qwen`, `rk1-npu-local`) son accesibles por nombre directo pero NO se usan como primario de ningún servicio. Todos los servicios (Hermes, Holmes, OpenClaw, kagent) usan OpenRouter free tier como primary.
+**Routing policy (2026-05-28→2026-06-01):** NPU modelos (`hermes-qwen`, `rk1-npu-local`) son accesibles por nombre directo pero NO se usan como primario de ningún servicio. Todos los servicios (Hermes, Holmes, OpenClaw, kagent) usan OpenRouter free tier como primary.
 
 **Por qué se sacó NPU de los servicios:** context limit 4096 tokens. En sesiones con historial largo (>20 mensajes + tool descriptions) el NPU se traba con APITimeoutError. OpenRouter no tiene ese límite.
 
-**Fallback chain (confirmed working 2026-05-28):** `qwen3.6-free → free2 → deepseek4v-free → nemotron`
+**Default fallback chain (2026-06-01):** `default → kimi-free → gemma4-free → deepseek4v-free → deepseek-pro`
 
 **`deepseek-free` was removed** from all chains — persistently 429 rate-limited on OpenRouter.
 
 **`local-fast` removed from `context_window_fallbacks`** — it has the same 4096 NPU token limit as the primary, so it never helped with context overflow errors; it just delayed the real fallback.
+
+**`modify_params: true`** — Added to `litellm_settings` (2026-06-01). LiteLLM auto-drops or translates provider-specific params (e.g. `tool_choice: "any"` → drops when unsupported). Required for Honcho's deriver/dialectic to work with any OpenRouter model.
 
 ### LiteLLM smoke tester
 
@@ -252,12 +256,23 @@ curl http://localhost:4000/health
 ### Kaniko build fails with OOM / disk pressure
 
 ```bash
-kubectl describe node cm4-unknow  # check disk/memory
+kubectl describe node srv-rk1-nvme-01 | grep -E "DiskPressure|MemoryPressure|Taints"
 kubectl get events -n kaniko --sort-by=.lastTimestamp
+# Look for: "ephemeral-storage" eviction or DiskPressure taint
 ```
 
-Fix: build always runs on control-plane node (`node-role.kubernetes.io/control-plane`).
-Job has `backoffLimit: 3` — it will retry up to 3 times.
+**Root cause (fixed 2026-06-01):** `local-path` StorageClass writes PVC data to node's root disk.
+RK1 nodes have ~29 GB root disks. A 40 GB `kaniko_workspace_storage_size` PVC + ephemeral writes
+triggers DiskPressure, which evicts ALL pods on the node (including Hermes, LiteLLM, etc.).
+
+**Fix:** all kaniko roles use `longhorn-nvme` (NVMe replicated storage, not local disk).
+Argo Workflow also has `ttlStrategy` and `ephemeral-storage` limits set.
+
+**If DiskPressure still appears after fix:** check for leftover PVCs from failed builds:
+```bash
+kubectl get pvc -n kaniko          # delete stale PVCs
+kubectl get workflows -n kaniko    # delete stuck workflows
+```
 
 ### Kaniko build push fails (registry unreachable)
 
@@ -341,14 +356,14 @@ The storage backend (`install-cifs-nas`) is **auto-installed** as the first task
 |------|-------------|-------------|
 | `install-registry` | `registry_storage_class` | `smb-nas` |
 | `install-hermes-agent` | `hermes_storage_class` | `smb-nas` |
-| `install-hermes-agent-image` | `kaniko_storage_class` | `smb-nas` |
+| `install-hermes-agent-image` | `kaniko_storage_class` | `longhorn-nvme` |
 | `install-kubernetes-mcp-server-image` | `kubernetes_mcp_storage_class` | `smb-nas` |
 
-To override to local-path (no NAS):
-```bash
-ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai \
-  -e "registry_storage_class=local-path hermes_storage_class=local-path kaniko_storage_class=local-path"
-```
+**Kaniko workspace MUST be `longhorn-nvme`** (fixed 2026-06-01). Using `local-path` writes 40 GB workspace to
+the node's root disk (`/var/lib/rancher/k3s/storage/`). RK1 nodes have ~29 GB root — accumulated failed builds
+triggered DiskPressure and evicted all pods on that node. Also: Argo Workflow now has `ttlStrategy`
+(5 min cleanup on success / 1 h on failure) and `ephemeral-storage` requests/limits so kubelet evicts the
+build job before pressuring the node.
 
 See `skills/storage/SKILL.md` for the full pattern documentation.
 

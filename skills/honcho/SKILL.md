@@ -243,11 +243,23 @@ charts/honcho/
 
 Variables clave en `values.yaml`:
 ```yaml
+llm:
+  baseUrl: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+  apiKey: "sk-hermes-internal"
+  model: "kimi-free"   # ← CRÍTICO: debe soportar tool_choice:any (ver gotcha abajo)
+  embedMessages: "false"
 auth:
   useAuth: "true"       # "false" = dev mode (any key accepted)
   jwtSecret: ""         # Injected from Ansible secrets.yml
 postgresql:
   dbPassword: ""        # Injected from Ansible secrets.yml
+```
+
+**`llm.model` se inyecta en el Secret** (`secret.yaml`) como `DERIVER_MODEL`, `SUMMARY_MODEL`,
+`DREAM_MODEL` y `DIALECTIC_LEVELS`. Cambiar el valor en `values.yaml` actualiza el Secret en el
+próximo `make honcho`, pero **no reinicia los pods automáticamente**. Siempre hacer:
+```bash
+kubectl rollout restart deployment/honcho-worker deployment/honcho-api -n honcho
 ```
 
 ---
@@ -268,6 +280,26 @@ ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-honcho
 ```
 
 La primera vez, los init containers ejecutan las 24 migraciones Alembic (~30s extra).
+
+---
+
+## Gotcha — `tool_choice: "any"` rechazado por Nemotron/OpenRouter
+
+**Síntoma:** OpenClaw muestra "⚠️ Something went wrong while processing your request" en cada mensaje.
+Los logs del honcho-worker no tienen errores visibles, pero la memoria no se guarda ni se recupera.
+
+**Causa raíz:** Honcho v3 envía `tool_choice: "any"` (convención Anthropic) en sus llamadas
+de dialectic/deriver al LLM. Nemotron via OpenRouter solo acepta `"none"`, `"auto"`, `"required"` →
+devuelve HTTP 400 → el worker de reasoning falla silenciosamente → la memoria se escribe pero
+la síntesis de contexto no funciona → OpenClaw no puede recuperar contexto → error en respuesta.
+
+**Fix (aplicado 2026-06-01):**
+1. `charts/honcho/values.yaml`: `llm.model: "kimi-free"` — Moonshot kimi-k2.6:free soporta tool_choice correctamente
+2. `roles/install-litellm-proxy/tasks/main.yml`: `litellm_settings.modify_params: true` — LiteLLM dropa params no soportados como fallback de seguridad
+
+**Regla:** solo usar modelos como `llm.model` en Honcho que soporten **`tool_choice: "any"` o `"required"`**.
+Modelos confirmados como problemáticos: Nemotron (`nvidia/nemotron-3-super-120b-a12b`).
+Modelos confirmados como funcionando: kimi-k2.6:free, Kimi, modelos con soporte nativo de Anthropic tool_choice.
 
 ---
 
