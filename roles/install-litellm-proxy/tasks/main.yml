@@ -150,15 +150,18 @@
                 model: openrouter/deepseek/deepseek-v4-flash
                 api_key: os.environ/OPENROUTER_API_KEY
 
-            # ── openclaw-gemini → deepseek v4 via OPENCLAW key ──
+            # ── openclaw-gemini → gemma4-free + nemotron free ──
+            # drop_params strips thinking/budget_tokens for non-Claude models (prevents empty response)
             - model_name: openclaw-gemini
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
-                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+                model: openrouter/google/gemma-4-31b-it:free
+                api_key: os.environ/OPENROUTER_API_KEY
+                drop_params: true
             - model_name: openclaw-gemini
               litellm_params:
-                model: openrouter/meta-llama/llama-3.3-70b-instruct
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+                drop_params: true
 
             # ── gpt-4o & openai/gpt-4o → deepseek v4 via OPENCLAW key ──
             - model_name: gpt-4o
@@ -312,11 +315,11 @@
               - {"gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
               - {"openai/gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
               - {"local-reason": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"openclaw-gemini": ["gemini-free2", "free2", "deepseek4v-free"]}
-              - {"gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
-              - {"openai/gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
-              - {"gemini-free": ["gemini-free2", "free2", "deepseek4v-free"]}
-              - {"openai/gemini-free": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"openclaw-gemini": ["gemma4-free", "free2", "deepseek4v-free"]}
+              - {"gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
+              - {"openai/gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
+              - {"gemini-free": ["gemma4-free", "free2", "deepseek4v-free"]}
+              - {"openai/gemini-free": ["gemma4-free", "free2", "deepseek4v-free"]}
               - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
               - {"nemotron": ["free2", "deepseek4v-free"]}
               - {"hermes-free": ["hermes-free-fallback", "deepseek-pro", "free2"]}
@@ -332,9 +335,9 @@
               - {"gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
               - {"openai/gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
               - {"local-reason": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"openclaw-gemini": ["gemini-free2", "free2", "deepseek4v-free"]}
-              - {"gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
-              - {"openai/gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
+              - {"openclaw-gemini": ["gemma4-free", "free2", "deepseek4v-free"]}
+              - {"gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
+              - {"openai/gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
               - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
               - {"nemotron": ["free2", "deepseek4v-free"]}
               - {"hermes-free": ["hermes-free-fallback", "deepseek-pro", "free2"]}
