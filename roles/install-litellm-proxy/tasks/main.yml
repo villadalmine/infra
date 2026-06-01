@@ -251,16 +251,24 @@
               litellm_params:
                 model: openrouter/google/gemini-2.0-flash-001
                 api_key: os.environ/OPENROUTER_API_KEY
-            # ── default → nemotron free (fallback chain: qwen36-free → deepseek-flash → claude-sonnet) ──
+            # ── default → nemotron-super free (chain: kimi-free → gemma4-free → deepseek-flash → deepseek-pro) ──
             - model_name: default
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENROUTER_API_KEY
 
-            # ── Free Models and Aliases for Headlamp / Holmes ──
+            # ── Free Models and Aliases ──
             - model_name: nemotron
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: kimi-free
+              litellm_params:
+                model: openrouter/moonshotai/kimi-k2.6:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: gemma4-free
+              litellm_params:
+                model: openrouter/google/gemma-4-31b-it:free
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: hermes-free
               litellm_params:
@@ -270,7 +278,7 @@
               litellm_params:
                 model: openrouter/meta-llama/llama-3.3-70b-instruct
                 api_key: os.environ/OPENROUTER_API_KEY
-            - model_name: deepseek-cheap
+            - model_name: deepseek-pro
               litellm_params:
                 model: openrouter/deepseek/deepseek-v4-pro
                 api_key: os.environ/OPENROUTER_API_KEY
@@ -310,9 +318,9 @@
               - {"openai/gemini-free": ["gemini-free2", "free2", "deepseek4v-free"]}
               - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
               - {"nemotron": ["free2", "deepseek4v-free"]}
-              - {"hermes-free": ["hermes-free-fallback", "deepseek-cheap", "free2"]}
+              - {"hermes-free": ["hermes-free-fallback", "deepseek-pro", "free2"]}
               - {"deepseek4v-free": ["free2", "nemotron"]}
-              - {"default": ["qwen36-free", "deepseek4v-free", "claude-sonnet"]}
+              - {"default": ["kimi-free", "gemma4-free", "deepseek4v-free", "deepseek-pro"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
@@ -328,9 +336,9 @@
               - {"openai/gpt-4o": ["gemini-free2", "free2", "deepseek4v-free"]}
               - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
               - {"nemotron": ["free2", "deepseek4v-free"]}
-              - {"hermes-free": ["hermes-free-fallback", "deepseek-cheap", "free2"]}
+              - {"hermes-free": ["hermes-free-fallback", "deepseek-pro", "free2"]}
               - {"deepseek4v-free": ["free2", "nemotron"]}
-              - {"default": ["qwen36-free", "deepseek4v-free", "claude-sonnet"]}
+              - {"default": ["kimi-free", "gemma4-free", "deepseek4v-free", "deepseek-pro"]}
             set_verbose: true
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]
