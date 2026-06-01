@@ -76,6 +76,11 @@ spec:
                 cp /etc/openclaw/openclaw.json /home/node/.openclaw/openclaw.json
                 chown 1000:1000 /home/node/.openclaw/openclaw.json || true
               fi
+              # Clear stale .processing locks from previous pod (PID 1 reuse in containers
+              # prevents OpenClaw from detecting stale locks by PID check — rename to unblock queue)
+              find /home/node/.openclaw/telegram -name '*.processing' -type f 2>/dev/null | while read f; do
+                mv "$f" "${f%.processing}" && echo "Released stale spool lock: $f"
+              done || true
           volumeMounts:
             - name: openclaw-data
               mountPath: /home/node/.openclaw
