@@ -272,11 +272,11 @@
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: hermes-free
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
+                model: openrouter/qwen/qwen3-coder:free
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: hermes-free-fallback
               litellm_params:
-                model: openrouter/meta-llama/llama-3.3-70b-instruct
+                model: openrouter/moonshotai/kimi-k2.6:free
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: deepseek-pro
               litellm_params:
