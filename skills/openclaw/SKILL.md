@@ -76,14 +76,32 @@ Usuario (Telegram)
 
 | Capa | Valor |
 |------|-------|
-| Config (`openclaw_model_primary`) | `litellm/gpt-4o` |
-| OpenClaw lo envía a LiteLLM como | `openai/gpt-4o` |
-| LiteLLM alias `openai/gpt-4o` | `openai/gpt-oss-120b:free` + `api_base: openrouter.ai` |
-| Fallback 1 | `openai/nvidia/nemotron-3-super-120b-a12b:free` |
-| Fallback 2 | `openai/qwen/qwen-turbo` (alias `openclaw-cheap`) |
+| Config (`openclaw_model_primary`) | `litellm/openclaw-gemini` |
+| LiteLLM alias `openclaw-gemini` primario | `openrouter/google/gemma-4-31b-it:free` (OPENROUTER key) |
+| LiteLLM alias `openclaw-gemini` secundario | `openrouter/nvidia/nemotron-3-super-120b-a12b:free` (OPENCLAW key) |
+| Fallback chain | `gemma4-free → free2 → deepseek4v-free` |
 | Key en OpenRouter | `OPENCLAW_OPENROUTER_API_KEY` (solo en `ai/litellm-secrets`) |
 
 **OpenClaw nunca ve la API key de OpenRouter.** Solo conoce `sk-hermes-internal`.
+
+### `drop_params: true` — obligatorio para modelos no-Claude
+
+OpenClaw envía `thinking=medium` a LiteLLM. Los modelos no-Anthropic no soportan
+el parámetro `thinking` y pueden devolver respuesta vacía (HTTP 200 con content=null)
+en lugar de error 400. Resultado: LiteLLM NO activa el fallback, y OpenClaw detecta
+`empty response detected` y reintenta una vez.
+
+**Fix**: `drop_params: true` en cada entrada de `openclaw-gemini` en LiteLLM:
+```yaml
+- model_name: openclaw-gemini
+  litellm_params:
+    model: openrouter/google/gemma-4-31b-it:free
+    api_key: os.environ/OPENROUTER_API_KEY
+    drop_params: true   # ← crítico: elimina thinking/budget_tokens
+```
+
+Diferencia de `modify_params: true` (global, solo convierte params Anthropic→OpenAI)
+vs `drop_params: true` (por modelo, elimina params desconocidos antes de enviar).
 
 ### Bug fix: `openai/` prefix + `api_base` (no `openrouter/`)
 
@@ -656,6 +674,85 @@ NetworkPolicy permite egress a `192.168.178.0/24`. OpenClaw puede:
 
 ---
 
+## Stale Spool Lock — bug PID 1 en contenedores (2026-06-01)
+
+### Síntoma
+OpenClaw arranca, recibe mensajes de Telegram (aparecen en el log como
+`Inbound message`), pero NO responde. El spool tiene archivos `*.processing`.
+
+### Causa raíz
+OpenClaw usa un archivo `*.processing` como lock mientras procesa un mensaje.
+Al terminar, lo elimina. Si el pod se reinicia mientras procesa, el archivo queda.
+
+En contenedores, **el proceso principal siempre tiene PID 1**. OpenClaw verifica
+si el proceso que creó el lock sigue vivo consultando si el PID registrado existe.
+Como PID 1 siempre existe en el nuevo pod, el lock nunca se detecta como stale.
+
+**Resultado**: el queue de mensajes queda bloqueado indefinidamente en cada restart.
+
+### Fix permanente (initContainer)
+
+`openclaw-deployment.yaml.j2` tiene un initContainer `init-config` (busybox) que
+ahora incluye:
+```sh
+find /home/node/.openclaw/telegram -name '*.processing' -type f 2>/dev/null | while read f; do
+  mv "$f" "${f%.processing}" && echo "Released stale spool lock: $f"
+done || true
+```
+Convierte `*.processing → *.json` antes de que OpenClaw arranque → queue drena normal.
+
+### Fix manual (si el pod ya está atascado)
+
+```bash
+# Ver locks stale
+kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- \
+  ls /home/node/.openclaw/telegram/ingress-spool-default/
+
+# Liberar el lock (renombrar, no borrar — para que OpenClaw procese el mensaje)
+kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- \
+  mv /home/node/.openclaw/telegram/ingress-spool-default/XXXXXXXXX.json.processing \
+     /home/node/.openclaw/telegram/ingress-spool-default/XXXXXXXXX.json
+```
+Tras el rename, OpenClaw detecta el archivo y lo procesa en segundos.
+
+### Nota sobre LiteLLM restart + Undici pool
+
+Cada vez que LiteLLM se reinicia, el pool HTTP de OpenClaw (Undici/Node.js)
+queda stale y las llamadas al modelo fallan con ECONNREFUSED.
+**Regla**: siempre reiniciar OpenClaw inmediatamente después de reiniciar LiteLLM.
+
+---
+
+## Honcho — Integración memoria
+
+`openclaw-honcho` plugin activado en `plugins.slots.memory`.
+
+| Var | Valor |
+|-----|-------|
+| `openclaw_honcho_url` | `http://honcho-api.honcho.svc.cluster.local` |
+| `openclaw_honcho_workspace` | `openclaw` |
+| `openclaw_honcho_timeout_ms` | `90000` (90s — modelos free toman 18-57s) |
+| API key JWT | `{"alg":"HS256","w":"openclaw"}` — workspace isolado de `hermes` |
+
+**Workspace isolation**: el JWT de OpenClaw codifica `"w":"openclaw"`, el de Hermes
+codifica `"w":"hermes"`. Son memorias completamente separadas.
+
+---
+
+## Ansible — tags LiteLLM-only
+
+```bash
+# Solo LiteLLM (sin tocar Hermes ni OpenClaw):
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags ai-litellm-proxy
+
+# Solo OpenClaw:
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags openclaw
+```
+Tras cambiar LiteLLM config: siempre `kubectl rollout restart deployment/litellm-proxy -n ai`
+y luego `kubectl rollout restart deployment/openclaw -n openclaw`.
+
+---
+
 ## Repo Paths
 
 ```
@@ -671,7 +768,7 @@ roles/install-openclaw/
     ├── openclaw-pvc.yaml.j2
     └── openclaw-secret.yaml.j2
 
-roles/install-litellm-proxy/tasks/main.yml  # aliases openai/gpt-4o, openclaw-*
+roles/install-litellm-proxy/tasks/main.yml  # aliases openclaw-gemini, gemma4-free, etc.
 skills/openclaw/SKILL.md                    # este archivo
 ```
 
