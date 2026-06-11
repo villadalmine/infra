@@ -27,6 +27,40 @@ data:
           }
         }
       },
+{% if openclaw_audio_stt_enabled | default(false) %}
+      "tools": {
+        "media": {
+          "audio": {
+            "enabled": true,
+            "maxBytes": 20971520,
+            "models": [
+              {
+                "provider": "openai",
+                "model": "whisper-1",
+                "baseUrl": "{{ openclaw_stt_base_url }}",
+                "apiKey": "sk-local-whisper",
+                "timeoutSeconds": {{ openclaw_stt_timeout_seconds | default(120) }}
+              }
+            ]
+          }
+        }
+      },
+{% endif %}
+{% if openclaw_tts_enabled | default(false) %}
+      "messages": {
+        "tts": {
+          "auto": "{{ openclaw_tts_auto | default('inbound') }}",
+          "provider": "microsoft",
+          "providers": {
+            "microsoft": {
+              "enabled": true,
+              "voice": "{{ openclaw_tts_voice }}",
+              "lang": "{{ openclaw_tts_lang }}"
+            }
+          }
+        }
+      },
+{% endif %}
       "mcp": {
         "servers": {
           "kubernetes": {

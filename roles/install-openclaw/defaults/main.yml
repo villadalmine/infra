@@ -39,10 +39,11 @@ openclaw_llm_backend: "litellm"
 openclaw_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000"
 openclaw_litellm_master_key: "sk-hermes-internal"
 
-# OpenClaw virtual model names (resolved by LiteLLM routing):
-#   openai/gemini-free  → google/gemma-4-31b-it:free  (primary, OpenClaw adds openai/ prefix)
-#   openclaw-gemini     → google/gemma-4-31b-it:free  (same backend, different alias)
-#   gemini-free2        → google/gemma-3-27b-it:free  (fallback)
+# OpenClaw virtual model names (resolved by LiteLLM routing — ver install-litellm-proxy/tasks/main.yml):
+#   openclaw-gemini     → openai/gpt-oss-20b:free (primary; tool calling sólido) + nemotron:free
+#   gemini-free         → openai/gpt-oss-20b:free + meta-llama/llama-3.3-70b:free
+#   gemini-free2        → nvidia/nemotron-3-super-120b-a12b:free (fallback)
+#   Último fallback de todas las chains: paid-final (deepseek-v4-flash, pago barato)
 # Use provider-prefixed model IDs to avoid client-side provider fallback.
 # Set primary to the OpenRouter model ID exposed via LiteLLM.
 # Default to the virtual model name resolved by LiteLLM so the client does not
@@ -51,7 +52,8 @@ openclaw_litellm_master_key: "sk-hermes-internal"
 openclaw_model_primary: "litellm/openclaw-gemini"
 # Fallbacks (optional) — keep as provider-prefixed where sensible.
 openclaw_model_fallback1: "openrouter/qwen/qwen3-coder:free"
-openclaw_model_fallback2: "openrouter/google/gemini-2.0-flash-exp:free"
+# gemini-2.0-flash-exp:free ya no existe en OpenRouter → gpt-oss-20b:free (jun-2026)
+openclaw_model_fallback2: "openrouter/openai/gpt-oss-20b:free"
 
 # ─── kubernetes-mcp sidecar ──────────────────────────────────────────────────
 # Sidecar container that exposes Kubernetes MCP at http://127.0.0.1:8080/mcp.
@@ -101,6 +103,23 @@ openclaw_rbac_level: "readonly"
 openclaw_telegram_enabled: true
 openclaw_telegram_allowed_users: ""   # overridden in secrets.yml
 openclaw_telegram_dm_policy: "pairing"  # pairing | open
+
+# ─── Audio: STT entrante + TTS saliente — 100% gratis, sin API keys ──────────
+# STT: voice notes de Telegram → whisper-stt in-cluster (OpenAI-compatible).
+#      Deploy con: --tags ai-stt (role install-whisper-stt).
+# TTS: respuestas en audio vía Microsoft Edge neural TTS (sin key, best-effort).
+#      auto: "inbound" = responde con audio SOLO cuando el usuario mandó audio.
+# 2026-06-10: DESACTIVADO — la imagen desplegada (latest-honcho) rechaza el schema
+# tools.media.audio ("models.0: Invalid input") y el gateway NO ARRANCA con esto puesto.
+# Reactivar recién cuando la imagen de OpenClaw se actualice a una versión con
+# soporte de audio (>= v2026.5.16 según skills/whisper-stt) y se valide el schema.
+openclaw_audio_stt_enabled: false
+openclaw_stt_base_url: "http://whisper-stt.ai.svc.cluster.local:9000/v1"
+openclaw_stt_timeout_seconds: 120   # CPU ARM64 — voice notes largos tardan
+openclaw_tts_enabled: false
+openclaw_tts_auto: "inbound"        # off | always | inbound | tagged
+openclaw_tts_voice: "es-AR-TomasNeural"   # alt: es-AR-ElenaNeural (femenina)
+openclaw_tts_lang: "es-AR"
 
 # ─── Agent sandboxing ─────────────────────────────────────────────────────────
 # DinD not supported on K3s without special setup. Keep off.

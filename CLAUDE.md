@@ -5,11 +5,12 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 
 ## Cluster
 
+<!-- IPs verificadas contra el cluster real el 2026-06-10. La fuente de verdad es inventory/hosts.ini. -->
 | | |
 |---|---|
-| K3s servers | `srv-super6c-01-nvme` (.85), `srv-super6c-02-nvme` (.86), `srv-super6c-03-nvme` (.87), `srv-super6c-05-emmc` (.104), `srv-super6c-06-emmc` (.105) |
-| K3s agents | `srv-rk1-nvme-01` (.30), `srv-rk1-nvme-02` (.48), `srv-rk1-nvme-03` (.51), `srv-rk1-nvme-04` (.54) |
-| Standalone | `srv-super6c-04-emmc` (.133) — not in K3s cluster |
+| K3s servers | `srv-super6c-01-nvme` (.120) — único control-plane joined. Pendientes de join: `srv-super6c-02-nvme` (.121), `srv-super6c-04-nvme` (.122), `srv-super6c-05-emmc` (.124), `srv-super6c-06-emmc` (.123) |
+| K3s agents (RK1) | `srv-rk1-nvme-01` (.131), `srv-rk1-nvme-02` (.48), `srv-rk1-nvme-03` (.51), `srv-rk1-nvme-04` (.54) |
+| K3s agents (Pi 4) | `srv-pi-rack1` (.65), `srv-pi-rack2a` (.60 — IP flapea por DHCP, ver Pendientes), `srv-pi-rack2b` (.130) |
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |
@@ -44,8 +45,8 @@ install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-pihole → install-argocd
 → install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
 → install-registry → install-hermes-agent-image
-→ install-litellm-proxy → install-hermes-agent
-→ install-holmes → install-holmes-ui → install-kagent → install-openclaw → install-rknpu-pool
+→ install-litellm-proxy → install-honcho → install-hermes-agent
+→ install-holmes → install-holmes-ui → install-kagent → install-whisper-stt → install-openclaw → install-rknpu-pool
 ```
 
 ## Bootstrap Tags
@@ -76,6 +77,7 @@ all tags up to the layer you need.
 | `openclaw` | OpenClaw personal AI gateway (Telegram + LiteLLM + RBAC) | `networking` + LiteLLM |
 | `ai-honcho` | Self-hosted Honcho memory platform (Postgres + Redis + API + Worker) | `networking` |
 | `ai-npu-pool` | install-rknpu-pool (4× rkllama NPU servers) | `networking`, `longhorn` |
+| `ai-stt` | install-whisper-stt — Whisper in-cluster (OpenAI-compatible, sin API key); STT para voice notes de OpenClaw | `networking` + `longhorn` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -159,6 +161,7 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 | Honcho | `charts/honcho` (local chart) | v3 API | Postgres+Redis+API+Worker, namespace `honcho`, JWT HS256 auth |
 | NAS Admin | `registry.registry:5000/ai/nas-admin` (custom build) | 0.1.0 | ARM64, namespace `storage` |
 | RK1 NPU Pool | `install-rknpu-pool` (custom role) | — | rkllama `ghcr.io/notpunchnox/rkllama:main`, Llama-3.1-8B w8a8, 4× nodes |
+| Whisper STT | `hwdsl2/whisper-server` (multi-arch) | latest | faster-whisper `small` int8, namespace `ai`, OpenAI-compatible `/v1/audio/transcriptions`, sin API key |
 
 Hermes is deployed as a persistent gateway on the high-resource node with a
 mounted `gateway.json` so the webhook platform stays enabled and the pod does
@@ -194,6 +197,7 @@ Read the relevant skill before working on a component.
 | `openclaw` | Personal AI gateway — Telegram bot, LiteLLM routing, RBAC levels, double `message_start` fix |
 | `a2a` | Agent-to-Agent entre OpenClaw y Hermes — messaging bridge MCP, messages_send, events_poll, Honcho compartido, roadmap bidireccional |
 | `honcho` | Self-hosted Honcho memory — JWT HS256 auth, workspace isolation, Alembic init container, Cilium DNAT gotcha (port 8000 not 80) |
+| `whisper-stt` | Whisper STT in-cluster + audio de OpenClaw (voice notes entrantes, TTS Edge saliente, 100% gratis) |
 | `k8s-debug` | Debug pods, network, nodes systematically |
 | `storage` | CIFS/SMB CSI driver, PV/PVC patterns |
 | `longhorn` | Longhorn NVMe — V1 engine, benchmark, migración de servicios, gotchas TuringPi 2 |

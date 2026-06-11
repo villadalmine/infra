@@ -3,7 +3,10 @@ hermes_namespace: ai
 hermes_hostname: hermes.cluster.home
 
 # Model configuration (Forced through LiteLLM)
-hermes_model: "hermes-free"
+# 2026-06-09: hermes-free (qwen3-coder:free) tardaba 181s/llamada → respuestas de 466s
+# → OpenClaw cortaba por timeout (300s) → "Hermes no contesta" en A2A.
+# kimi-free (moonshotai/kimi-k2.6:free): 18-57s/llamada, tool calling nativo (mismo modelo que usa Honcho).
+hermes_model: "kimi-free"
 hermes_temperature: 0.7
 hermes_inference_provider: "openai"
 hermes_openai_api_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
@@ -66,9 +69,12 @@ hermes_mcp_url: "http://127.0.0.1:8080/mcp"
 hermes_mcp_timeout: 120
 hermes_mcp_connect_timeout: 30
 
-# STT — Groq Whisper (free tier). Key goes in secrets.yml.
+# STT — Groq Whisper (free tier) si hermes_groq_api_key está en secrets.yml.
+# Sin key de Groq, fallback automático en el ConfigMap: whisper-stt in-cluster
+# (sin API key, role install-whisper-stt — deploy con `make ai-stt`).
 hermes_stt_provider: "groq"
 hermes_stt_model: "whisper-large-v3-turbo"
+hermes_stt_base_url: "http://whisper-stt.ai.svc.cluster.local:9000/v1"
 
 # kagent MCP — helm, prometheus, cilium ops
 hermes_kagent_mcp_url: "http://kagent-tools.kagent.svc.cluster.local:8084/mcp"

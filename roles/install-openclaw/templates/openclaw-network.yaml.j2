@@ -137,6 +137,17 @@ spec:
       ports:
         - port: 8000
           protocol: TCP
+    # Whisper STT — transcripción de voice notes (in-cluster, sin API key)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+          podSelector:
+            matchLabels:
+              app: whisper-stt
+      ports:
+        - port: 9000
+          protocol: TCP
     # Honcho — self-hosted memory platform (svc port 80 → pod targetPort 8000)
     # NetworkPolicy is evaluated post-DNAT so must use the pod port (8000), not the service port (80)
     - to:

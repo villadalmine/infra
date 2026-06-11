@@ -25,3 +25,8 @@ __pycache__/
 
 # OpenClaw secrets
 roles/install-openclaw/defaults/secrets.yml
+
+# Credenciales temporales para sesiones de Claude (borrar después de usar)
+.kubeconfig-claude
+.kubeconfig
+.sshkey-claude

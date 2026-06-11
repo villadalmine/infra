@@ -180,3 +180,25 @@
     cmd: kubectl rollout status deployment/openclaw -n {{ openclaw_namespace }} --timeout={{ openclaw_rollout_timeout | default("180s") }}
   changed_when: false
   when: openclaw_bypass is changed
+
+# ─── A2A: orden de arranque (2026-06-10) ──────────────────────────────────────
+# Hermes registra sus MCP servers SOLO al arrancar (3 intentos y abandona).
+# En el bootstrap completo Hermes se despliega ANTES que OpenClaw, así que su
+# server "openclaw" (bridge :18790) queda sin registrar. Tras desplegar OpenClaw,
+# reiniciamos Hermes para que registre los 3 servers (kubernetes, kagent, openclaw).
+- name: Check if Hermes deployment exists (A2A restart ordering)
+  ansible.builtin.command:
+    cmd: kubectl get deployment hermes-agent-mcp -n {{ openclaw_hermes_namespace | default('ai') }} --ignore-not-found -o name
+  register: openclaw_hermes_dep
+  changed_when: false
+
+- name: Restart Hermes so it registers the OpenClaw MCP bridge
+  ansible.builtin.command:
+    cmd: kubectl rollout restart deployment/hermes-agent-mcp -n {{ openclaw_hermes_namespace | default('ai') }}
+  when: openclaw_hermes_dep.stdout | trim != ''
+
+- name: Wait for Hermes after A2A ordering restart
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/hermes-agent-mcp -n {{ openclaw_hermes_namespace | default('ai') }} --timeout=300s
+  when: openclaw_hermes_dep.stdout | trim != ''
+  changed_when: false

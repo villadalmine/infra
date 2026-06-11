@@ -34,6 +34,17 @@ data:
       provider: groq
       model: whisper-large-v3-turbo
 
+{% else %}
+    # STT sin API keys: whisper-stt in-cluster (OpenAI-compatible).
+    # transcription_tools lee stt.openai.api_key + base_url del config (fix #4102, >= v2026.5.16).
+    stt:
+      enabled: true
+      provider: openai
+      openai:
+        model: whisper-1
+        base_url: {{ hermes_stt_base_url }}
+        api_key: "sk-local-whisper"
+
 {% endif %}
     mcp_servers:
       kubernetes:

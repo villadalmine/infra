@@ -102,14 +102,14 @@
               model_info:
                 max_input_tokens: 4096
 
-            # ── hermes-qwen → nemotron free (OPENROUTER key, separate from openclaw's OPENCLAW key) ──
+            # ── hermes-qwen → nemotron free + gpt-oss free (OPENROUTER key, separate from openclaw's OPENCLAW key) ──
             - model_name: hermes-qwen
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: hermes-qwen
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
+                model: openrouter/openai/gpt-oss-20b:free
                 api_key: os.environ/OPENROUTER_API_KEY
 
             # ── holmes-llama → cloud free tier (Holmes HOLMES key) ──
@@ -119,8 +119,8 @@
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: holmes-llama
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
-                api_key: os.environ/OPENROUTER_API_KEY
+                model: openrouter/openai/gpt-oss-20b:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
 
             # ── gpt-5.4 & openai/gpt-5.4 → cloud free tier (Holmes alias, HOLMES key) ──
             - model_name: gpt-5.4
@@ -129,16 +129,16 @@
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: gpt-5.4
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
-                api_key: os.environ/OPENROUTER_API_KEY
+                model: openrouter/openai/gpt-oss-20b:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: openai/gpt-5.4
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: openai/gpt-5.4
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
-                api_key: os.environ/OPENROUTER_API_KEY
+                model: openrouter/openai/gpt-oss-20b:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
 
             # ── local-reason → cloud free tier (Holmes alias) ──
             - model_name: local-reason
@@ -147,15 +147,17 @@
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: local-reason
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
-                api_key: os.environ/OPENROUTER_API_KEY
+                model: openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
 
-            # ── openclaw-gemini → gemma4-free + nemotron free ──
+            # ── openclaw-gemini → gpt-oss-120b free (tool calling sólido, verificado PONG 2026-06-09) + nemotron free ──
+            # gemma-4 reemplazado: tool calling poco confiable para agente MCP-heavy.
             # drop_params strips thinking/budget_tokens for non-Claude models (prevents empty response)
+            # Ambas entradas usan OPENCLAW key para atribución de costos correcta en Grafana.
             - model_name: openclaw-gemini
               litellm_params:
-                model: openrouter/google/gemma-4-31b-it:free
-                api_key: os.environ/OPENROUTER_API_KEY
+                model: openrouter/openai/gpt-oss-120b:free
+                api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
                 drop_params: true
             - model_name: openclaw-gemini
               litellm_params:
@@ -163,40 +165,40 @@
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
                 drop_params: true
 
-            # ── gpt-4o & openai/gpt-4o → deepseek v4 via OPENCLAW key ──
+            # ── gpt-4o & openai/gpt-4o → free first (gpt-oss + llama 3.3 70B free) via OPENCLAW key ──
             - model_name: gpt-4o
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
+                model: openrouter/openai/gpt-oss-20b:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: gpt-4o
               litellm_params:
-                model: openrouter/meta-llama/llama-3.3-70b-instruct
+                model: openrouter/meta-llama/llama-3.3-70b-instruct:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: openai/gpt-4o
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
+                model: openrouter/openai/gpt-oss-20b:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: openai/gpt-4o
               litellm_params:
-                model: openrouter/meta-llama/llama-3.3-70b-instruct
+                model: openrouter/meta-llama/llama-3.3-70b-instruct:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
 
-            # ── gemini-free & openai/gemini-free → deepseek v4 via OPENCLAW key ──
+            # ── gemini-free & openai/gemini-free → free (gpt-oss + llama 3.3 70B free) via OPENCLAW key ──
             - model_name: gemini-free
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
+                model: openrouter/openai/gpt-oss-20b:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: gemini-free
               litellm_params:
-                model: openrouter/meta-llama/llama-3.3-70b-instruct
+                model: openrouter/meta-llama/llama-3.3-70b-instruct:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: openai/gemini-free
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-flash
+                model: openrouter/openai/gpt-oss-20b:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: openai/gemini-free
               litellm_params:
-                model: openrouter/meta-llama/llama-3.3-70b-instruct
+                model: openrouter/meta-llama/llama-3.3-70b-instruct:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
 
             # ── OpenRouter Cloud Models (Fallbacks only) ──
@@ -204,9 +206,10 @@
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENROUTER_API_KEY
+            # cheap: qwen-turbo eliminado de OpenRouter (404) → deepseek-v4-flash (pago barato, verificado)
             - model_name: cheap
               litellm_params:
-                model: openrouter/qwen/qwen-turbo
+                model: openrouter/deepseek/deepseek-v4-flash
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: qwen-pro
               litellm_params:
@@ -218,16 +221,16 @@
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: holmes-cheap
               litellm_params:
-                model: openrouter/qwen/qwen-turbo
+                model: openrouter/deepseek/deepseek-v4-flash
                 api_key: os.environ/HOLMES_OPENROUTER_API_KEY
             - model_name: gemini-free2
               litellm_params:
-                model: openai/nvidia/nemotron-3-super-120b-a12b:free
-                api_base: https://openrouter.ai/api/v1
+                model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
+            # kagent-orchestrator: qwen-turbo 404 → gpt-oss-20b free (tool calling)
             - model_name: kagent-orchestrator
               litellm_params:
-                model: openrouter/qwen/qwen-turbo
+                model: openrouter/openai/gpt-oss-20b:free
                 api_key: os.environ/KAGENT_OPENROUTER_API_KEY
             - model_name: free
               litellm_params:
@@ -235,8 +238,7 @@
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: openclaw-cheap
               litellm_params:
-                model: openai/qwen/qwen-turbo
-                api_base: https://openrouter.ai/api/v1
+                model: openrouter/deepseek/deepseek-v4-flash
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: deepseek-free
               litellm_params:
@@ -254,7 +256,7 @@
               litellm_params:
                 model: openrouter/google/gemini-2.0-flash-001
                 api_key: os.environ/OPENROUTER_API_KEY
-            # ── default → nemotron-super free (chain: kimi-free → gemma4-free → deepseek-flash → deepseek-pro) ──
+            # ── default → nemotron-super free (chain: kimi-free → gpt-oss-free → llama70b-free → paid-final) ──
             - model_name: default
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
@@ -277,21 +279,44 @@
               litellm_params:
                 model: openrouter/qwen/qwen3-coder:free
                 api_key: os.environ/OPENROUTER_API_KEY
+            # 2ª entrada balanceada: qwen3-coder:free saturado upstream (timeouts >25s, 2026-06-09)
+            - model_name: hermes-free
+              litellm_params:
+                model: openrouter/openai/gpt-oss-20b:free
+                api_key: os.environ/OPENROUTER_API_KEY
             - model_name: hermes-free-fallback
               litellm_params:
                 model: openrouter/moonshotai/kimi-k2.6:free
                 api_key: os.environ/OPENROUTER_API_KEY
-            - model_name: deepseek-pro
+            # gpt-oss-free: mejor free para código/tool calling (jun-2026, Apache 2.0, ~o3-mini en code)
+            - model_name: gpt-oss-free
               litellm_params:
-                model: openrouter/deepseek/deepseek-v4-pro
+                model: openrouter/openai/gpt-oss-20b:free
                 api_key: os.environ/OPENROUTER_API_KEY
+            - model_name: llama70b-free
+              litellm_params:
+                model: openrouter/meta-llama/llama-3.3-70b-instruct:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            # r1-free: razonador free (no hay deepseek free en jun-2026; nemotron reasoning verificado PONG)
+            - model_name: r1-free
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+                api_key: os.environ/OPENROUTER_API_KEY
+            # OJO: deepseek4v-free es PAGO (deepseek-v4-flash, barato) — nombre histórico.
+            # Se mantiene como alias; en las chains se usa paid-final como último escalón.
             - model_name: deepseek4v-free
               litellm_params:
                 model: openrouter/deepseek/deepseek-v4-flash
                 api_key: os.environ/OPENROUTER_API_KEY
+            # paid-final: ÚNICO escalón pago de las fallback chains (verificado funcionando 2026-05-28)
+            - model_name: paid-final
+              litellm_params:
+                model: openrouter/deepseek/deepseek-v4-flash
+                api_key: os.environ/OPENROUTER_API_KEY
+            # qwen3.6-plus:free ya no existe → qwen3-next-80b (free, verificado en catálogo; a veces 429 upstream)
             - model_name: qwen36-free
               litellm_params:
-                model: openrouter/qwen/qwen3.6-plus:free
+                model: openrouter/qwen/qwen3-next-80b-a3b-instruct:free
                 api_key: os.environ/OPENROUTER_API_KEY
 
             # ── Embedding Models (for Honcho Memory) ──
@@ -308,41 +333,46 @@
               allowed_fails: 3
               cooldown_time: 30
             fallbacks:
-              # Verified working 2026-05-28: free2/deepseek4v-free/nemotron/gemini-free2/holmes-free2
-              # deepseek-pro/gemini-flash/qwen-pro/claude-sonnet: 403 (no credits). cheap/openclaw-cheap: 404 (qwen-turbo removed).
-              - {"hermes-qwen": ["free2", "deepseek4v-free", "nemotron"]}
-              - {"holmes-llama": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"openai/gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"local-reason": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"openclaw-gemini": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"openai/gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"gemini-free": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"openai/gemini-free": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
-              - {"nemotron": ["free2", "deepseek4v-free"]}
-              - {"hermes-free": ["hermes-free-fallback", "deepseek-pro", "free2"]}
-              - {"deepseek4v-free": ["free2", "nemotron"]}
-              - {"default": ["kimi-free", "gemma4-free", "deepseek4v-free", "deepseek-pro"]}
+              # Política: SIEMPRE free primero, paid-final (deepseek-v4-flash) como ÚNICO escalón pago al final.
+              # Free actualizados jun-2026: gpt-oss-free, llama70b-free, r1-free, kimi-free, gemma4-free, free2 (nemotron).
+              - {"hermes-qwen": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"holmes-llama": ["holmes-free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"gpt-5.4": ["holmes-free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"openai/gpt-5.4": ["holmes-free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"local-reason": ["holmes-free2", "r1-free", "gpt-oss-free", "paid-final"]}
+              - {"openclaw-gemini": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"openai/gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"openai/gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
+              # 2026-06-10: kimi-free no tenía chain → 429 upstream dejaba a Hermes y Honcho sin respuesta
+              - {"kimi-free": ["gpt-oss-free", "free2", "llama70b-free", "paid-final"]}
+              - {"deepseek4v-free": ["free2", "gpt-oss-free", "paid-final"]}
+              - {"kagent-orchestrator": ["free2", "llama70b-free", "paid-final"]}
+              - {"default": ["kimi-free", "gpt-oss-free", "llama70b-free", "paid-final"]}
             request_timeout: 120
             num_retries: 1
             context_window_fallbacks:
               # Verified 2026-05-28: free2 handles 33K+ token contexts in ~10s (nemotron-120b, fast)
-              # deepseek-pro/gemini-flash/qwen-pro all return 403 — removed from all chains.
-              - {"hermes-qwen": ["free2", "deepseek4v-free", "nemotron"]}
-              - {"holmes-llama": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"openai/gpt-5.4": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"local-reason": ["holmes-free2", "free2", "deepseek4v-free"]}
-              - {"openclaw-gemini": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"openai/gpt-4o": ["gemma4-free", "free2", "deepseek4v-free"]}
-              - {"rk1-npu-local": ["free2", "deepseek4v-free", "nemotron"]}
-              - {"nemotron": ["free2", "deepseek4v-free"]}
-              - {"hermes-free": ["hermes-free-fallback", "deepseek-pro", "free2"]}
-              - {"deepseek4v-free": ["free2", "nemotron"]}
-              - {"default": ["kimi-free", "gemma4-free", "deepseek4v-free", "deepseek-pro"]}
+              # Contextos: gpt-oss-free/llama70b-free 128K, free2 (nemotron) 33K+ verificado, paid-final 128K.
+              - {"hermes-qwen": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"holmes-llama": ["holmes-free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"gpt-5.4": ["holmes-free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"openai/gpt-5.4": ["holmes-free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"local-reason": ["holmes-free2", "r1-free", "gpt-oss-free", "paid-final"]}
+              - {"openclaw-gemini": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"openai/gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
+              - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
+              - {"kimi-free": ["gpt-oss-free", "free2", "llama70b-free", "paid-final"]}
+              - {"deepseek4v-free": ["free2", "gpt-oss-free", "paid-final"]}
+              - {"kagent-orchestrator": ["free2", "llama70b-free", "paid-final"]}
+              - {"default": ["kimi-free", "gpt-oss-free", "llama70b-free", "paid-final"]}
             set_verbose: true
             success_callback: ["prometheus"]
             failure_callback: ["prometheus"]
@@ -371,6 +401,10 @@
             labels:
               app: litellm-proxy
           spec:
+            # 2026-06-10: pin a RK1 — sin nodeSelector caía en una Pi de 8GB
+            # y el pull de main-latest + la carga del proxy la ahogaban.
+            nodeSelector:
+              kubernetes.io/hostname: "{{ litellm_node_hostname | default('srv-rk1-nvme-04') }}"
             containers:
               - name: litellm-proxy
                 image: ghcr.io/berriai/litellm:main-latest
