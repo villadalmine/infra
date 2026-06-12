@@ -291,7 +291,7 @@ spec:
                   try {
                     const data = JSON.parse(body);
                     console.log('Received Smee webhook:', data);
-                    
+
                     let msg = '';
                     if (data.event === 'github_action') {
                       const statusIcon = data.status === 'success' ? '✅' : '❌';
@@ -299,7 +299,7 @@ spec:
                     } else {
                       msg = `📢 *Smee Webhook Recibido*\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\`;`;
                     }
-                    
+
                     const args = [
                       '/app/openclaw.mjs',
                       'message',
@@ -309,7 +309,7 @@ spec:
                       '--message', msg
                     ];
                     console.log('Executing execFile node with args:', args);
-                    
+
                     execFile('node', args, { cwd: '/app', env: { ...process.env, HOME: '/home/node' } }, (err, stdout, stderr) => {
                       if (err) {
                         console.error('Failed to send message via CLI:', err, stderr);

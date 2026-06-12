@@ -250,6 +250,9 @@ honcho: ## Deploy self-hosted Honcho memory platform (Postgres + Redis + API + W
 openclaw: ## Deploy OpenClaw personal AI gateway (Telegram + LiteLLM + modular RBAC)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags openclaw
 
+ai-stt: ## Deploy in-cluster Whisper STT (voice notes → texto, sin API keys)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-stt
+
 openclaw-rbac: ## Change OpenClaw RBAC level — LEVEL=readonly|operator|admin|cluster-admin
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags openclaw -e "openclaw_rbac_level=$(LEVEL)"
 

@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Whisper STT — in-cluster speech-to-text, OpenAI-compatible API, zero API keys
+# https://github.com/hwdsl2/docker-whisper
+# Image: hwdsl2/whisper-server (multi-arch: amd64 + arm64)
+# Endpoint: POST /v1/audio/transcriptions (drop-in OpenAI Whisper API)
+# Used by OpenClaw to transcribe Telegram voice notes. 100% local, no cost.
+# ─────────────────────────────────────────────────────────────────────────────
+
+whisper_stt_namespace: "ai"
+whisper_stt_image: "hwdsl2/whisper-server"
+whisper_stt_tag: "latest"
+whisper_stt_port: 9000
+
+# Model: small = good Spanish accuracy, ~1.5 GB RAM (int8). Alternatives:
+#   base (faster, less accurate) | medium (~5 GB RAM) | large-v3-turbo (~6 GB RAM)
+whisper_stt_model: "small"
+# Default language for transcription (BCP-47) — "auto" to autodetect.
+whisper_stt_language: "es"
+whisper_stt_threads: 4
+whisper_stt_compute_type: "int8"
+
+# Pin to an RK1 node (RK3588 8-core — much faster CPU inference than CM4).
+whisper_stt_node_hostname: "srv-rk1-nvme-03"
+
+# Model cache PVC (models downloaded once from HuggingFace, then reused)
+whisper_stt_storage_size: "5Gi"
+whisper_stt_storage_class: "longhorn-nvme"
+whisper_stt_storage_role: ""
+
+whisper_stt_cpu_request: "250m"
+whisper_stt_cpu_limit: "4000m"
+whisper_stt_memory_request: "1Gi"
+whisper_stt_memory_limit: "3Gi"
+
+whisper_stt_rollout_timeout: "600s"   # first start downloads the model (~465 MB)

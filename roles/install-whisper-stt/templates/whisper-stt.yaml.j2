@@ -1,0 +1,101 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: whisper-stt-models
+  namespace: {{ whisper_stt_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ whisper_stt_storage_class }}
+  resources:
+    requests:
+      storage: {{ whisper_stt_storage_size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whisper-stt
+  namespace: {{ whisper_stt_namespace }}
+  labels:
+    app: whisper-stt
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # RWO PVC — avoid multi-attach on rollout
+  selector:
+    matchLabels:
+      app: whisper-stt
+  template:
+    metadata:
+      labels:
+        app: whisper-stt
+    spec:
+{% if whisper_stt_node_hostname | default('') != '' %}
+      nodeSelector:
+        kubernetes.io/hostname: {{ whisper_stt_node_hostname }}
+{% endif %}
+      containers:
+        - name: whisper
+          image: {{ whisper_stt_image }}:{{ whisper_stt_tag }}
+          ports:
+            - containerPort: {{ whisper_stt_port }}
+              name: http
+          env:
+            - name: WHISPER_MODEL
+              value: "{{ whisper_stt_model }}"
+            - name: WHISPER_LANGUAGE
+              value: "{{ whisper_stt_language }}"
+            - name: WHISPER_PORT
+              value: "{{ whisper_stt_port }}"
+            - name: WHISPER_THREADS
+              value: "{{ whisper_stt_threads }}"
+            - name: WHISPER_COMPUTE_TYPE
+              value: "{{ whisper_stt_compute_type }}"
+          volumeMounts:
+            - name: models
+              mountPath: /var/lib/whisper
+          resources:
+            requests:
+              cpu: {{ whisper_stt_cpu_request }}
+              memory: {{ whisper_stt_memory_request }}
+            limits:
+              cpu: {{ whisper_stt_cpu_limit }}
+              memory: {{ whisper_stt_memory_limit }}
+          startupProbe:
+            httpGet:
+              path: /v1/models
+              port: http
+            # model download on first boot can take minutes
+            failureThreshold: 60
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /v1/models
+              port: http
+            periodSeconds: 30
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: whisper-stt-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whisper-stt
+  namespace: {{ whisper_stt_namespace }}
+  labels:
+    app: whisper-stt
+spec:
+  type: ClusterIP
+  selector:
+    app: whisper-stt
+  ports:
+    - name: http
+      port: {{ whisper_stt_port }}
+      targetPort: http

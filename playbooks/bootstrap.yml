@@ -158,6 +158,8 @@
       tags: [dex]
     - role: install-kagent
       tags: [kagent, ai-platform]
+    - role: install-whisper-stt
+      tags: [ai-stt, openclaw]
     - role: install-openclaw
       tags: [openclaw]
 

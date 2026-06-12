@@ -37,7 +37,7 @@ make gitops                     # ArgoCD
 make observability              # Prometheus + Grafana + Tempo + Loki + Alloy
 make ai && make ai-holmes && make kagent   # Full AI stack
 make leloir-all            # Leloir agentic incident analysis (Postgres + control plane)
-make openclaw              # Personal AI gateway (Telegram + LiteLLM)
+make openclaw              # Personal AI gateway (Telegram + LiteLLM) — incluye whisper-stt (voice notes) + TTS gratis (Edge)
 make security                   # NeuVector runtime security
 
 # Or everything at once
