@@ -109,14 +109,17 @@ openclaw_telegram_dm_policy: "pairing"  # pairing | open
 #      Deploy con: --tags ai-stt (role install-whisper-stt).
 # TTS: respuestas en audio vía Microsoft Edge neural TTS (sin key, best-effort).
 #      auto: "inbound" = responde con audio SOLO cuando el usuario mandó audio.
-# 2026-06-10: DESACTIVADO — la imagen desplegada (latest-honcho) rechaza el schema
-# tools.media.audio ("models.0: Invalid input") y el gateway NO ARRANCA con esto puesto.
-# Reactivar recién cuando la imagen de OpenClaw se actualice a una versión con
-# soporte de audio (>= v2026.5.16 según skills/whisper-stt) y se valide el schema.
-openclaw_audio_stt_enabled: false
+# 2026-06-12: REACTIVADO — la causa del "models.0: Invalid input" era el campo
+# `apiKey` dentro de tools.media.audio.models[] (el zod schema es .strict() y NO
+# acepta apiKey; sí acepta provider/model/baseUrl/timeoutSeconds/headers).
+# Validado contra el parser real del gateway (imagen latest-honcho digest 13bd3a5d).
+# TTS: el único provider implementado en esta imagen es "microsoft" (alias "edge",
+# node-edge-tts). NO existe provider openai/baseUrl para TTS → TTS local (piper)
+# requiere upgrade de imagen. STT sí es 100% local (whisper-stt in-cluster).
+openclaw_audio_stt_enabled: true
 openclaw_stt_base_url: "http://whisper-stt.ai.svc.cluster.local:9000/v1"
 openclaw_stt_timeout_seconds: 120   # CPU ARM64 — voice notes largos tardan
-openclaw_tts_enabled: false
+openclaw_tts_enabled: true
 openclaw_tts_auto: "inbound"        # off | always | inbound | tagged
 openclaw_tts_voice: "es-AR-TomasNeural"   # alt: es-AR-ElenaNeural (femenina)
 openclaw_tts_lang: "es-AR"

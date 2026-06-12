@@ -71,8 +71,17 @@ kubectl run curl-test --rm -i --restart=Never -n ai --image=curlimages/curl -- \
 
 - **baseUrl debe terminar en `/v1`** — OpenClaw (cliente OpenAI) appendea
   `/audio/transcriptions`. El server expone `/v1/audio/transcriptions`.
-- `apiKey: "sk-local-whisper"` es dummy — el server no exige auth dentro del cluster.
+- **NUNCA pongas `apiKey` dentro de `tools.media.audio.models[]`** — el zod schema
+  de OpenClaw es `.strict()` y NO tiene ese campo → invalida el entry completo y el
+  gateway NO ARRANCA ("models.0: Invalid input"). Campos válidos: provider, model,
+  baseUrl, timeoutSeconds, headers, language, prompt, type(provider|cli).
+  Si el server exigiera auth: usar `headers: {"Authorization": "Bearer ..."}`.
+  (Causa raíz del crash 2026-06-10, resuelta 2026-06-12 — ver docs/audio-honcho-a2a-2026-06-12.md)
+- whisper-stt no exige auth dentro del cluster.
   NO exponer whisper-stt vía HTTPRoute sin `WHISPER_API_KEY`.
+- **TTS local (piper) no es posible** con la imagen actual de OpenClaw: el único
+  speech provider implementado es `microsoft` (alias `edge`, node-edge-tts, cloud
+  gratis, voz es-AR). No hay provider TTS openai/baseUrl. Requiere upgrade de imagen.
 - Edge TTS es best-effort (servicio público de Microsoft sin SLA). Si falla,
   alternativa con la key de OpenRouter ya existente: provider `openrouter`,
   modelo `hexgrad/kokoro-82m` en `messages.tts.providers`.
