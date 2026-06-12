@@ -46,6 +46,17 @@ data:
         api_key: "sk-local-whisper"
 
 {% endif %}
+{% if hermes_tts_enabled | default(false) %}
+    # TTS saliente: edge-tts (Microsoft Edge neural, gratis, sin API key).
+    # El agente lo usa on-demand (tts_tool) y con /voice on por chat.
+    # voice.auto_tts: true = TODAS las respuestas con audio (default: off, on-demand).
+    tts:
+      provider: edge
+      edge:
+        voice: {{ hermes_tts_voice }}
+    voice:
+      auto_tts: {{ hermes_tts_auto | default(false) | lower }}
+{% endif %}
     mcp_servers:
       kubernetes:
         url: {{ hermes_mcp_url }}

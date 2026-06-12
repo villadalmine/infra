@@ -1,4 +1,14 @@
-# Estabilización 2026-06-10 — A2A OpenClaw↔Hermes + Honcho + VIPs
+# Estabilización 2026-06-10/11 — A2A OpenClaw↔Hermes + Honcho + VIPs + TTS
+
+## Addendum 2026-06-11
+
+| Síntoma | Causa raíz | Fix (as-code) |
+|---------|-----------|---------------|
+| A2A "siempre hay error": `Session not found (-32600)` en toda tool hermes__* | MCP de Hermes stateful: cada restart invalidaba la session cacheada por OpenClaw (que no re-handshakea) | `stateless_http = True` en `hermes-static-mcp.yaml.j2`. Verificado con session-id inventada → responde OK |
+| Hermes no puede mandar audio | edge-tts ausente en la imagen; lazy_deps no puede instalar (venv read-only) | initContainer `install-tts` (edge-tts==7.2.7 → PVC `/opt/data/pylibs`) + `PYTHONPATH` + bloque `tts:/voice:` en config.yaml + Dockerfile actualizado. Vars: `hermes_tts_enabled/voice/auto` |
+
+Probar: en Telegram a Hermes: "mandame X en audio" o `/voice on` (todas las respuestas con voz en ese chat).
+
 
 Sesión de diagnóstico y reparación en vivo (vía K8s API). Estado final: **A2A operacional
 en ambas direcciones, memoria Honcho persistente, VIPs y DNS de la LAN restaurados.**

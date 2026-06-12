@@ -21,7 +21,7 @@ COPY . /opt/hermes
 
 # Create venv with uv, install all Python deps, then install Node deps.
 RUN python3 -m venv /opt/venv && \
-    /usr/local/bin/uv pip install --python /opt/venv/bin/python3 --no-cache ".[all]" "python-telegram-bot[job-queue]" "honcho-ai>=2.1.2" && \
+    /usr/local/bin/uv pip install --python /opt/venv/bin/python3 --no-cache ".[all]" "python-telegram-bot[job-queue]" "honcho-ai>=2.1.2" "edge-tts==7.2.7" && \
     npm install --prefer-offline --no-audit && \
     cd /opt/hermes/scripts/whatsapp-bridge && \
     npm install --prefer-offline --no-audit

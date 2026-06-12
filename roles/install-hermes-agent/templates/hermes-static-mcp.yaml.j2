@@ -165,6 +165,29 @@ spec:
               mountPath: /opt/data/.hermes
             - name: hermes-gateway-config
               mountPath: /etc/hermes
+{% if hermes_tts_enabled | default(false) %}
+        # 2026-06-11: edge-tts en el PVC (no en el venv — readOnlyRootFilesystem).
+        # lazy_deps instala en el venv activo y falla con rootfs read-only, así que
+        # lo instalamos acá una vez (idempotente) y el contenedor lo ve vía PYTHONPATH.
+        # Versión pineada == la que espera tools/lazy_deps.py ("tts.edge").
+        - name: install-tts
+          image: {{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              if [ ! -d /opt/data/pylibs/edge_tts ]; then
+                HOME=/tmp /opt/venv/bin/pip install --no-cache-dir \
+                  --target=/opt/data/pylibs "edge-tts=={{ hermes_tts_edge_version }}"
+              fi
+              echo "edge-tts listo en /opt/data/pylibs"
+          volumeMounts:
+            - name: hermes-data
+              mountPath: /opt/data
+            - name: tmp
+              mountPath: /tmp
+{% endif %}
       containers:
         - name: hermes-agent
           image: {{ hermes_registry }}/{{ hermes_image_name }}:{{ hermes_image_tag }}
@@ -184,6 +207,11 @@ spec:
               server.settings.host = '0.0.0.0'
               server.settings.port = 8000
               server.settings.transport_security.enable_dns_rebinding_protection = False
+              # 2026-06-11: stateless — sin esto, cada restart de Hermes invalida la
+              # mcp-session-id cacheada por OpenClaw y TODAS sus tool calls fallan con
+              # "Session not found" (-32600) hasta reiniciar OpenClaw. Stateless = cada
+              # POST es independiente; el A2A sobrevive reinicios en cualquier orden.
+              server.settings.stateless_http = True
 
               @server.tool(name="ask_hermes_agent", description="Pregunta conversacional de cerebro a cerebro a Hermes Agent. Permite hablar directamente con el bucle de razonamiento autónomo de Hermes y sus herramientas locales (kagent, kubernetes read-only, etc.).")
               def ask_hermes_agent(question: str) -> str:
@@ -246,6 +274,11 @@ spec:
           env:
             - name: HOME
               value: /opt/data
+{% if hermes_tts_enabled | default(false) %}
+            # edge-tts instalado por el initContainer install-tts en el PVC
+            - name: PYTHONPATH
+              value: /opt/data/pylibs
+{% endif %}
             - name: HERMES_MODEL
               value: {{ hermes_model }}
             - name: HERMES_TEMPERATURE

@@ -71,6 +71,9 @@ spec:
               set -eux
               # Ensure destination dir exists
               mkdir -p /home/node/.openclaw
+              # Honcho peer map persistence (montado como /home/node/.honcho via subPath)
+              mkdir -p /home/node/.openclaw/.honcho-state
+              chown 1000:1000 /home/node/.openclaw/.honcho-state || true
               # Replace any stale config on the PVC with the authoritative one from the ConfigMap
               if [ -f /etc/openclaw/openclaw.json ]; then
                 cp /etc/openclaw/openclaw.json /home/node/.openclaw/openclaw.json
@@ -200,6 +203,11 @@ spec:
           volumeMounts:
             - name: openclaw-data
               mountPath: /home/node/.openclaw
+            # Peer map del plugin openclaw-honcho (openclaw-peers.json) — sin esto
+            # se pierde el mapeo usuario→memoria en cada restart (memoria "amnésica")
+            - name: openclaw-data
+              mountPath: /home/node/.honcho
+              subPath: .honcho-state
             - name: npm-local
               mountPath: /home/node/.openclaw/npm
             - name: openclaw-config-json
@@ -391,6 +399,9 @@ spec:
           volumeMounts:
             - name: openclaw-data
               mountPath: /home/node/.openclaw
+            - name: openclaw-data
+              mountPath: /home/node/.honcho
+              subPath: .honcho-state
             - name: npm-local
               mountPath: /home/node/.openclaw/npm
             - name: openclaw-config-json
@@ -580,6 +591,9 @@ spec:
           volumeMounts:
             - name: openclaw-data
               mountPath: /home/node/.openclaw
+            - name: openclaw-data
+              mountPath: /home/node/.honcho
+              subPath: .honcho-state
             - name: npm-local
               mountPath: /home/node/.openclaw/npm
             - name: openclaw-config-json

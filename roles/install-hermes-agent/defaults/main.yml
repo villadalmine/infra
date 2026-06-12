@@ -69,6 +69,15 @@ hermes_mcp_url: "http://127.0.0.1:8080/mcp"
 hermes_mcp_timeout: 120
 hermes_mcp_connect_timeout: 30
 
+# ─── TTS — audio saliente en Telegram (edge-tts, gratis, sin API key) ────────
+# El initContainer install-tts instala edge-tts en el PVC (el venv de la imagen
+# es read-only). Para hornearlo en la imagen: rebuild con make ai-hermes-build
+# (el Dockerfile ya lo incluye). hermes_tts_auto: true = todas las respuestas con audio.
+hermes_tts_enabled: true
+hermes_tts_voice: "es-AR-TomasNeural"   # alt: es-AR-ElenaNeural (femenina)
+hermes_tts_auto: false
+hermes_tts_edge_version: "7.2.7"        # pineado: versión que espera tools/lazy_deps.py
+
 # STT — Groq Whisper (free tier) si hermes_groq_api_key está en secrets.yml.
 # Sin key de Groq, fallback automático en el ConfigMap: whisper-stt in-cluster
 # (sin API key, role install-whisper-stt — deploy con `make ai-stt`).

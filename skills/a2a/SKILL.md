@@ -424,6 +424,9 @@ kubectl exec -n ai deploy/hermes-agent-mcp -c hermes-agent -- \
 
 | Bug | Causa | Fix |
 |-----|-------|-----|
+| `Session not found (-32600)` en TODAS las tools hermes__* desde OpenClaw (2026-06-11) | El MCP server de Hermes era stateful: cada restart de Hermes borraba las sessions; OpenClaw cacheaba su `mcp-session-id` del initialize y NUNCA re-handshakea → todas las tool calls fallaban hasta reiniciar OpenClaw | `server.settings.stateless_http = True` en hermes-static-mcp.yaml.j2 — cada POST es independiente, el A2A sobrevive reinicios en cualquier orden. Verificado: tools/call con session-id inventada responde OK |
+| Hermes sin server "openclaw" tras bootstrap completo | Hermes registra MCPs SOLO al arrancar (3 intentos) y en el bootstrap se despliega antes que OpenClaw | install-openclaw ahora reinicia hermes-agent-mcp al final (tasks A2A restart ordering) |
+| Hermes "no TTS engine configured" | edge-tts no está en la imagen y lazy_deps instala en el venv (read-only rootfs) → falla silenciosamente | initContainer `install-tts` instala edge-tts==7.2.7 en el PVC (`/opt/data/pylibs`) + `PYTHONPATH`; config `tts.provider: edge` + `voice.auto_tts`. Baked en Dockerfile para el próximo rebuild |
 | `Honcho NetworkPolicy` | K8s evalúa NetworkPolicy post-DNAT → puerto 8000 (pod), no 80 (service) | egress port 8000 en openclaw-network.yaml.j2 |
 | `events_wait timeout` | messages_send es OUTGOING — no dispara Hermes | usar ask_hermes_agent por turno |
 | `scope upgrade deadlock` | mcp serve necesita scopes que el token no tiene; approval requiere token → chicken-and-egg | paired.json bypass (AGENTS.md) |
