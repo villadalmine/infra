@@ -113,6 +113,49 @@ spec:
               if [ -f "$MCP_PROTO" ]; then
                 sed -i 's/DEFAULT_REQUEST_TIMEOUT_MSEC = 60000/DEFAULT_REQUEST_TIMEOUT_MSEC = 600000/' "$MCP_PROTO" || true
               fi
+              # Patch SSRF para media-understanding (whisper-stt es ClusterIP privada):
+              # el fetch-guard bloquea IPs privadas (SsrFBlockedError) y el schema de
+              # config NO acepta request.allowPrivateNetwork en tools.media.audio.models[]
+              # (solo existe en models.providers.*). Parcheamos el default del resolver
+              # resolvePrivateNetworkAccess (deny -> allow), gateado por env.
+              # Validado contra imagen digest 13bd3a5d — docs/audio-honcho-a2a-2026-06-12.md.
+              if [ "${OPENCLAW_ALLOW_PRIVATE_MEDIA:-0}" = "1" ]; then
+                node -e '
+                  const fs = require("fs");
+                  const files = fs.readdirSync("/app/dist").filter(f => f.startsWith("provider-request-config-") && f.endsWith(".js"));
+                  for (const f of files) {
+                    const p = "/app/dist/" + f;
+                    let s = fs.readFileSync(p, "utf8");
+                    const re = /allowPrivateNetwork:\s*false,(\s*)explicitlyDenied:\s*false/;
+                    if (re.test(s)) {
+                      s = s.replace(re, "allowPrivateNetwork: true,$1explicitlyDenied: false");
+                      fs.writeFileSync(p, s);
+                      console.log("[ssrf-patch] private network allowed by default in " + f);
+                    } else if (/allowPrivateNetwork:\s*true,\s*explicitlyDenied:\s*false/.test(s)) {
+                      console.log("[ssrf-patch] ya aplicado en " + f);
+                    } else {
+                      console.log("[ssrf-patch] WARNING: patron no encontrado en " + f);
+                    }
+                  }
+                ' || true
+                # Fix REAL (validado en vivo 2026-06-12, imagen digest 13bd3a5d):
+                # el bloqueo efectivo NO está en provider-request-config sino en
+                # isBlockedHostnameOrIp() del módulo ssrf — bloquea el host
+                # whisper-stt.ai.svc.cluster.local DOS veces: por sufijo ".local"
+                # (isBlockedHostnameNormalized) y por IP privada del ClusterIP, sin
+                # mirar la policy. Sin esto el voice note se inlinea crudo en el prompt
+                # (267k tokens → "Context overflow") y el agente responde "no puedo
+                # procesar audio". Cortocircuito gateado por el mismo env.
+                SSRF_FILE=$(grep -rl "function isBlockedHostnameOrIp" /app/dist/*.js 2>/dev/null | head -1)
+                if [ -n "$SSRF_FILE" ]; then
+                  if grep -q "OPENCLAW_ALLOW_PRIVATE_MEDIA" "$SSRF_FILE"; then
+                    echo "[ssrf-patch] isBlockedHostnameOrIp ya parcheado"
+                  else
+                    sed -i 's/function isBlockedHostnameOrIp(hostname, policy) {/function isBlockedHostnameOrIp(hostname, policy) { if(process.env.OPENCLAW_ALLOW_PRIVATE_MEDIA==="1")return false;/' "$SSRF_FILE" \
+                      && echo "[ssrf-patch] isBlockedHostnameOrIp cortocircuitado en $SSRF_FILE"
+                  fi
+                fi
+              fi
               # Create symlinks for plugin-skills (required for internal discovery)
               PLUGIN_DIR="/home/node/.openclaw/plugin-skills"
               mkdir -p $PLUGIN_DIR
@@ -125,6 +168,11 @@ spec:
           env:
             - name: NODE_OPTIONS
               value: "--dns-result-order=ipv4first --max-old-space-size=4096"
+{% if openclaw_audio_stt_enabled | default(false) %}
+            # Habilita el patch SSRF del bloque de arranque (whisper-stt es ClusterIP)
+            - name: OPENCLAW_ALLOW_PRIVATE_MEDIA
+              value: "1"
+{% endif %}
             - name: HOME
               value: /home/node
             - name: OPENCLAW_CONFIG_DIR

@@ -1,8 +1,9 @@
 # Análisis: Honcho, A2A y Audio bidireccional — 2026-06-12
 
-Sesión de análisis + acciones. Resultado: **audio de OpenClaw (STT+TTS) REACTIVADO y
-deployado vía Ansible** — la causa raíz del crash era un campo `apiKey` que el schema
-no acepta, no la imagen. Todo verificado contra el parser real del gateway.
+Sesión de análisis + acciones. Resultado: **audio bidireccional (STT+TTS) funcionando
+y VERIFICADO E2E en AMBAS imágenes (OpenClaw y Hermes), deployado vía Ansible, sin
+rebuild.** La causa raíz real fue el SSRF guard de OpenClaw (ver sección 0 — corrección),
+no el apiKey. Verificado con los runtimes reales en los pods de producción.
 
 ---
 
@@ -67,6 +68,51 @@ Verificación de hoy: e2e 10 PASS / 1 FAIL (el falso del session-id) / 2 SKIP, c
 
 ---
 
+## 0. CORRECCIÓN 2026-06-12 (tarde) — la causa raíz real era SSRF, no el apiKey
+
+El análisis previo (abajo) concluyó que el audio quedaba habilitado con quitar `apiKey`.
+**Eso era incompleto: el config parseaba pero el audio NO se transcribía.** Tito siguió
+respondiendo "no puedo procesar mensajes de audio". Diagnóstico en vivo definitivo:
+
+- El voice note llegaba pero NO se transcribía → se inlineaba crudo (base64) en el
+  prompt → `267588 tokens` → `Context overflow` → el agente respondía que no podía.
+- Causa: el **SSRF guard** de OpenClaw (`isBlockedHostnameOrIp` en `dist/ssrf-*.js`)
+  bloquea `whisper-stt.ai.svc.cluster.local` DOS veces: por sufijo `.local` y por IP
+  privada del ClusterIP — sin mirar la policy. El schema de media-understanding
+  (`ConfiguredProviderRequestSchema`) NO expone `allowPrivateNetwork` (solo lo tienen
+  los LLM models), así que **no hay knob de config**.
+- Probado invocando el provider real de OpenClaw contra whisper-stt:
+  `ERR: Blocked hostname or private/internal/special-use IP address`.
+
+**Fix (idempotente, as-code, sin rebuild):** patch sed en el arranque del gateway
+(igual patrón que el del timeout MCP) que cortocircuita `isBlockedHostnameOrIp` cuando
+`OPENCLAW_ALLOW_PRIVATE_MEDIA=1`. En `roles/install-openclaw/templates/openclaw-deployment.yaml.j2`.
+
+### Verificación E2E REAL (no aislada) — ambas imágenes, ambas direcciones
+
+Probado con el comando del runtime de OpenClaw (`openclaw infer ...`, que lee la config
+deployada) y con las funciones Python reales de Hermes, en los pods en producción:
+
+| Imagen | audio→texto | texto→audio | Cómo se verificó |
+|---|---|---|---|
+| **OpenClaw** (Tito) | ✅ | ✅ | `infer audio transcribe` → transcript correcto; `infer tts convert` → mp3 |
+| **Hermes** | ✅ | ✅ | `transcribe_audio()` → transcript correcto; `text_to_speech_tool()` → .ogg |
+
+Audio de prueba generado con edge-tts ("Probando audio a texto…") → whisper-stt lo
+transcribe textual. **Sin rebuild de imagen**: todo vía runtime patches/instalación a PVC.
+
+### Hermes TTS — edge-tts en PVC (NO rebuild)
+
+Hermes tiene `readOnlyRootFilesystem` + venv, así que `lazy_deps` no puede `pip install`
+en runtime. Solución: initContainer `install-tts` instala `edge-tts==7.2.7` (== el pin
+que espera `tools/lazy_deps.py`) a `/opt/data/pylibs` (PVC) con **`--no-deps`** + `srt`
++ `tabulate`, y el contenedor lo ve vía `PYTHONPATH=/opt/data/pylibs`.
+- **`--no-deps` es crítico**: sin él, pip arrastra `pydantic 2.13.4` al PVC y, como
+  PYTHONPATH lo antepone, shadowea el `pydantic 2.12.5` pineado de hermes-agent → rompe
+  el agente. Verificado: con `--no-deps` el agente mantiene 2.12.5 y el tts_tool sintetiza.
+
+---
+
 ## 3. Audio ↔ texto en ambos sentidos
 
 ### Entrante (voz → texto) — 100% LOCAL ✅
@@ -84,8 +130,10 @@ Telegram voice note (OGG/Opus)
 - **OpenClaw**: `messages.tts` provider `microsoft` (alias `edge`) → `node-edge-tts`
   (Microsoft Edge neural, voz `es-AR-TomasNeural`, `auto: inbound`). Gratis pero
   **cloud** (best-effort, sin SLA).
-- **Hermes**: `voice.auto_tts: false` — TTS de Hermes no habilitado (la imagen tiene
-  el flag pero no se validó su pipeline; OpenClaw es el canal de voz primario).
+- **Hermes**: `tts.provider: edge` + `voice.auto_tts: false` (on-demand vía tts_tool;
+  el agente lo usa cuando corresponde, no fuerza audio en cada respuesta). edge-tts
+  instalado en el PVC por el initContainer `install-tts` (ver sección 0). **Verificado:
+  `text_to_speech_tool()` genera .ogg.** Poné `hermes_tts_auto: true` para audio siempre.
 
 ### ¿TTS 100% local (piper)?
 Evaluado contra la imagen desplegada (`openclaw-honcho` digest `13bd3a5d`):
@@ -99,10 +147,10 @@ Evaluado contra la imagen desplegada (`openclaw-honcho` digest `13bd3a5d`):
 
 ---
 
-## 4. Causa raíz del crash de audio (resuelta hoy)
+## 4. Causa raíz del crash de audio inicial (schema strict)
 
-El gateway moría con `tools.media.audio.models.0: Invalid input`. Extraído el zod
-schema real del bundle (`zod-schema.core-*.js`):
+El gateway había muerto antes con `tools.media.audio.models.0: Invalid input`. Extraído
+el zod schema real del bundle (`zod-schema.core-*.js`):
 
 ```js
 MediaUnderstandingModelSchema = object({
@@ -112,36 +160,36 @@ MediaUnderstandingModelSchema = object({
 }).strict()        // ← .strict(): cualquier campo extra invalida TODO el entry
 ```
 
-**No existe `apiKey`** en el schema → nuestro entry con `"apiKey": "sk-local-whisper"`
-invalidaba el modelo completo. Fix: quitar `apiKey` del template (whisper-stt no
-exige auth in-cluster; si hiciera falta: `headers: {"Authorization": "Bearer ..."}`).
+**No existe `apiKey`** en el schema → un entry con `"apiKey": "sk-local-whisper"`
+invalidaba el modelo completo. Fix: quitar `apiKey` del template. ESTO arregló el
+ARRANQUE del gateway, pero NO la transcripción (ver sección 0 — el SSRF era el segundo
+bloqueo, el que impedía que el audio se procesara).
 
 `messages.tts` (TtsConfigSchema, también strict): keys válidas `auto/enabled/mode/
 provider/persona/personas/summaryModel/modelOverrides/providers/prefsPath/
 maxTextLength/timeoutMs`. El bloque original `provider: microsoft` era válido.
 
-Validación: variantes testeadas contra `node dist/index.js gateway` con HOME
-alternativo dentro del contenedor (sin tocar el pod productivo) — la variante sin
-`apiKey` pasa el parse; con `apiKey` falla; `type` debe ser `provider`/`cli`.
-
 ---
 
-## 5. Acciones tomadas (todo como código, idempotente)
+## 5. Acciones tomadas (todo como código, idempotente — sin rebuild)
 
 | Acción | Archivo | Estado |
 |---|---|---|
-| Quitar `apiKey` del bloque audio | `roles/install-openclaw/templates/openclaw-configmap.yaml.j2` | ✅ deployado |
-| Reactivar STT+TTS | `roles/install-openclaw/defaults/main.yml` (`openclaw_audio_stt_enabled/tts_enabled: true`) | ✅ deployado |
-| Deploy | `ansible-playbook --tags openclaw` → `failed=0, changed=15` | ✅ |
-| Restart ordenado | openclaw → hermes (rollout) | ✅ |
-| Verificación | gateway 4/4 Running sin crash; CM vivo con audio+tts; A2A tools/list ambas direcciones | ✅ |
-| Gotcha documentado | `skills/whisper-stt/SKILL.md` | ✅ |
+| Quitar `apiKey` del bloque audio (schema strict) | `roles/install-openclaw/templates/openclaw-configmap.yaml.j2` | ✅ deployado |
+| **SSRF patch — el fix real del STT** (`isBlockedHostnameOrIp` cortocircuitado, env-gated) | `roles/install-openclaw/templates/openclaw-deployment.yaml.j2` | ✅ deployado |
+| Reactivar STT+TTS OpenClaw | `roles/install-openclaw/defaults/main.yml` | ✅ deployado |
+| Hermes TTS: edge-tts==7.2.7 `--no-deps` a PVC + PYTHONPATH | `roles/install-hermes-agent/templates/hermes-static-mcp.yaml.j2` | ✅ deployado |
+| Deploy | `make openclaw` + `make ai-hermes-agent-deploy` → `failed=0` | ✅ |
+| Verificación E2E real (4 rutas) | runtime CLI OpenClaw + funciones Python Hermes | ✅ |
 
 ## 6. Pendientes recomendados
 
 1. **Actualizar `scripts/test-a2a-e2e.sh`** al modo stateless (no exigir `mcp-session-id`).
-2. **TTS local**: rebuild de `openclaw-honcho` con provider TTS OpenAI-compatible →
-   rol `install-piper-tts` (modelos es_ES/es_MX de piper corren bien en RK1).
-3. **Timeout dialectic de Honcho en Hermes** (30s) — investigar si es configurable.
-4. Probar e2e desde Telegram: voice note → transcripción → respuesta en audio
-   (`/tts status` muestra el último intento de TTS).
+2. **Confirmación final por Telegram**: mandar un voice note a @tito_es_tu_bot → debe
+   transcribir y (al haber mandado audio) responder con voz. Es el único tramo que no
+   pude disparar yo (no puedo enviar mensajes de Telegram); el resto del pipeline está
+   verificado componente por componente en los pods de producción.
+3. **TTS 100% local (piper)** sigue requiriendo rebuild de imagen de OpenClaw (su runtime
+   solo trae el provider `microsoft`/edge, que es cloud-gratis). El edge actual es gratis
+   y funciona; el rebuild a piper es opcional para quitar la dependencia de Microsoft.
+4. **Timeout dialectic de Honcho en Hermes** (30s) — investigar si es configurable.

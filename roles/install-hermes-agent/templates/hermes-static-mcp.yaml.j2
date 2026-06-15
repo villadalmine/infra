@@ -178,8 +178,8 @@ spec:
             - |
               set -e
               if [ ! -d /opt/data/pylibs/edge_tts ]; then
-                HOME=/tmp /opt/venv/bin/pip install --no-cache-dir \
-                  --target=/opt/data/pylibs "edge-tts=={{ hermes_tts_edge_version }}"
+                HOME=/tmp /opt/venv/bin/pip install --no-cache-dir --no-deps \
+                  --target=/opt/data/pylibs "edge-tts=={{ hermes_tts_edge_version }}" srt tabulate
               fi
               echo "edge-tts listo en /opt/data/pylibs"
           volumeMounts:
