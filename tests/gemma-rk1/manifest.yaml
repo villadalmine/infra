@@ -1,0 +1,313 @@
+# Tests: Gemma 3 en RK1 — CPU (Ollama+GGUF) vs NPU (rkllama+RKLLM)
+# Namespace: test-gemma
+# CPU → srv-rk1-nvme-03  |  NPU → srv-rk1-nvme-04
+#
+# IMPORTANTE: NPU es exclusivo — escalar rk1-npu-04 en namespace ai a 0
+# antes de desplegar gemma-npu, o rkllm_init falla con EFAULT (errno 14).
+#   kubectl scale deployment rk1-npu-04 -n ai --replicas=0
+#
+# Query CPU:
+#   kubectl exec -n test-gemma deploy/gemma-cpu -- \
+#     sh -c 'OLLAMA_HOST=localhost:8080 ollama run gemma-cpu "Pregunta aquí"'
+#
+# Query NPU:
+#   kubectl exec -n test-gemma deploy/gemma-npu -- \
+#     curl -s -X POST http://localhost:8080/api/generate \
+#     -H 'Content-Type: application/json' \
+#     -d '{"model":"gemma-3-270m-it","prompt":"Pregunta aquí","stream":false}'
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-gemma
+
+# ─────────────────────────────────────────────
+# CPU — Ollama + Gemma 3 1B GGUF (Q4_K_M, 806 MB)
+# Node: srv-rk1-nvme-03
+# Port: 8080 (Ollama API)
+# ─────────────────────────────────────────────
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gemma-cpu-pvc
+  namespace: test-gemma
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: longhorn-nvme
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma-cpu
+  namespace: test-gemma
+  labels:
+    app: gemma-cpu
+    variant: cpu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gemma-cpu
+  template:
+    metadata:
+      labels:
+        app: gemma-cpu
+        variant: cpu
+    spec:
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/hostname: srv-rk1-nvme-03
+      initContainers:
+        - name: model-downloader
+          image: alpine:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              MODEL=/models/google_gemma-3-1b-it-Q4_K_M.gguf
+              if [ -f "$MODEL" ]; then
+                echo "Already present: $(du -sh $MODEL)"; exit 0
+              fi
+              apk add --no-cache wget
+              URL="https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF/resolve/main/google_gemma-3-1b-it-Q4_K_M.gguf"
+              echo "Downloading Gemma 3 1B Q4_K_M GGUF..."
+              wget -O "${MODEL}.tmp" "$URL" && mv "${MODEL}.tmp" "$MODEL"
+              echo "Done: $(du -sh $MODEL)"
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              ollama serve &
+              SERVER_PID=$!
+              echo "Waiting for Ollama to be ready..."
+              until OLLAMA_HOST=localhost:8080 ollama list > /dev/null 2>&1; do sleep 2; done
+              echo "Ollama ready."
+              if ! OLLAMA_HOST=localhost:8080 ollama list 2>&1 | grep -q gemma-cpu; then
+                printf 'FROM /models/google_gemma-3-1b-it-Q4_K_M.gguf\n' > /tmp/Modelfile
+                echo "Registering model from local GGUF..."
+                OLLAMA_HOST=localhost:8080 ollama create gemma-cpu -f /tmp/Modelfile
+                echo "Model gemma-cpu registered."
+              else
+                echo "Model gemma-cpu already registered."
+              fi
+              wait $SERVER_PID
+          env:
+            - name: OLLAMA_MODELS
+              value: /models
+            - name: OLLAMA_HOST
+              value: "0.0.0.0:8080"
+          ports:
+            - containerPort: 8080
+              name: http-api
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "2000m"
+            limits:
+              memory: "8Gi"
+              cpu: "6000m"
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 10
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: gemma-cpu-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma-cpu
+  namespace: test-gemma
+spec:
+  selector:
+    app: gemma-cpu
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http-api
+
+# ─────────────────────────────────────────────
+# NPU — rkllama + Gemma 3 270M RKLLM (w8a8, 629 MB)
+# Node: srv-rk1-nvme-04
+# Port: 8080 (Ollama-compatible API)
+# Requiere privileged: true + /dev/dri hostPath
+# SOLO UN pod por nodo puede usar el NPU (driver RKNN exclusivo)
+# ─────────────────────────────────────────────
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gemma-npu-pvc
+  namespace: test-gemma
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: longhorn-nvme
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gemma-npu-modelfile
+  namespace: test-gemma
+data:
+  Modelfile: |
+    FROM=gemma-3-270m-it_w8a8_g128_rk3588.rkllm
+    HUGGINGFACE_PATH=unsloth/gemma-3-1b-it
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma-npu
+  namespace: test-gemma
+  labels:
+    app: gemma-npu
+    variant: npu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gemma-npu
+  template:
+    metadata:
+      labels:
+        app: gemma-npu
+        variant: npu
+    spec:
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/hostname: srv-rk1-nvme-04
+      initContainers:
+        - name: model-downloader
+          image: ghcr.io/notpunchnox/rkllama:main
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              MODEL_DIR="/opt/rkllama/models/gemma-3-270m-it"
+              MODEL_FILE="${MODEL_DIR}/gemma-3-270m-it_w8a8_g128_rk3588.rkllm"
+              mkdir -p "${MODEL_DIR}"
+              if [ -f "${MODEL_FILE}" ]; then
+                echo "Already present: $(du -sh $MODEL_FILE)"; exit 0
+              fi
+              /opt/venv/bin/python3 -c "
+              from huggingface_hub import hf_hub_url
+              import requests, os
+              repo = 'jamescallander/gemma-3-270m-it_w8a8_g128_rk3588.rkllm'
+              filename = 'gemma-3-270m-it_w8a8_g128_rk3588.rkllm'
+              dest = '${MODEL_FILE}'
+              url = hf_hub_url(repo_id=repo, filename=filename)
+              print(f'URL: {url}', flush=True)
+              with requests.get(url, stream=True) as r:
+                  r.raise_for_status()
+                  total = int(r.headers.get('content-length', 0))
+                  done = 0
+                  with open(dest + '.tmp', 'wb') as f:
+                      for chunk in r.iter_content(chunk_size=8*1024*1024):
+                          if chunk:
+                              f.write(chunk)
+                              done += len(chunk)
+                              if total:
+                                  print(f'{int(done*100/total)}% ({done//1024//1024}/{total//1024//1024} MB)', flush=True)
+              os.rename(dest + '.tmp', dest)
+              print('Done.', flush=True)
+              "
+          volumeMounts:
+            - name: model-storage
+              mountPath: /opt/rkllama/models
+      containers:
+        - name: rkllm-inference
+          image: ghcr.io/notpunchnox/rkllama:main
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 8080
+              name: http-api
+          env:
+            - name: RKLLAMA_MODEL_DEFAULT_NUM_CTX
+              value: "4096"
+            - name: RKLLAMA_MODEL_DEFAULT_MAX_NEW_TOKENS
+              value: "2048"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "1000m"
+            limits:
+              memory: "8Gi"
+              cpu: "4000m"
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: dev-dri
+              mountPath: /dev/dri
+            - name: model-storage
+              mountPath: /opt/rkllama/models
+            - name: modelfile-volume
+              mountPath: /opt/rkllama/models/gemma-3-270m-it/Modelfile
+              subPath: Modelfile
+      volumes:
+        - name: dev-dri
+          hostPath:
+            path: /dev/dri
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: gemma-npu-pvc
+        - name: modelfile-volume
+          configMap:
+            name: gemma-npu-modelfile
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma-npu
+  namespace: test-gemma
+spec:
+  selector:
+    app: gemma-npu
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http-api
