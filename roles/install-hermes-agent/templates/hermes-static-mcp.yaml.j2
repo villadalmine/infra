@@ -177,6 +177,12 @@ spec:
           args:
             - |
               set -e
+              # CRÍTICO: --no-deps. Sin esto pip arrastra pydantic 2.13.4 (dep de
+              # edge-tts) a /opt/data/pylibs y, como PYTHONPATH lo antepone, SHADOWEA
+              # el pydantic 2.12.5 pineado de hermes-agent → rompe imports del agente.
+              # Validado en vivo 2026-06-12: con --no-deps el tts_tool sintetiza .ogg
+              # (success) usando el aiohttp ya presente en la imagen. srt+tabulate son
+              # las únicas deps de runtime que edge-tts realmente necesita.
               if [ ! -d /opt/data/pylibs/edge_tts ]; then
                 HOME=/tmp /opt/venv/bin/pip install --no-cache-dir --no-deps \
                   --target=/opt/data/pylibs "edge-tts=={{ hermes_tts_edge_version }}" srt tabulate

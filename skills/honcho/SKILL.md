@@ -283,6 +283,29 @@ La primera vez, los init containers ejecutan las 24 migraciones Alembic (~30s ex
 
 ---
 
+## Por qué Honcho (y no alternativas)
+
+Honcho es la elección más opinionada de este stack. Hay alternativas más simples
+(mem0, LangChain memory, PostgreSQL propio). Mi opinión sobre por qué Honcho:
+
+**Honcho sí**: tiene un modelo de dialectic reasoning — el deriver LLM sintetiza
+memorias en segundo plano sin bloquear la respuesta del usuario. La memoria no es solo
+"guardar el último mensaje" sino "inferir qué es importante y construir un user profile".
+Para un asistente personal de largo plazo (Tito hablando con el mismo usuario todos los
+días), esto marca diferencia real.
+
+**Honcho no**: el dialectic usa un LLM extra (kimi-free), lo que añade latencia y un
+punto de fallo. Si el LLM del deriver es lento (modelos :free) o no soporta `tool_choice:any`
+(Nemotron), la memoria se "silencia" sin error visible. Honcho es complejo de debuggear.
+
+**Decisión**: Honcho está bien para el caso de uso actual (agente personal conversacional
+a largo plazo). Si el stack fuera una API pública con miles de usuarios, usaría algo más
+simple. Pero para UN usuario conversando diario con Tito, el overhead vale.
+
+**Sobre el modelo del deriver**: `kimi-free` (Moonshot kimi-k2.6:free) es el único
+modelo :free que ha demostrado soportar `tool_choice: any` sin problemas. Si hay que
+cambiar, elegir un modelo con soporte nativo de Anthropic tool use. Nemotron nunca.
+
 ## Gotcha — `tool_choice: "any"` rechazado por Nemotron/OpenRouter
 
 **Síntoma:** OpenClaw muestra "⚠️ Something went wrong while processing your request" en cada mensaje.
@@ -302,6 +325,23 @@ Modelos confirmados como problemáticos: Nemotron (`nvidia/nemotron-3-super-120b
 Modelos confirmados como funcionando: kimi-k2.6:free, Kimi, modelos con soporte nativo de Anthropic tool_choice.
 
 ---
+
+## Gotcha — Peer map de OpenClaw fuera del PVC (memoria "amnésica")
+
+**Síntoma:** las memorias se guardan en Honcho (Postgres tiene los datos) pero
+después de cada restart del pod, Tito no recuerda nada y arranca de cero.
+
+**Causa raíz:** el plugin `openclaw-honcho` guarda su peer map (mapeo
+chat/usuario → peer/session IDs de Honcho) en `/home/node/.honcho/openclaw-peers.json`.
+El PVC `openclaw-data` solo montaba `/home/node/.openclaw` → el peer map vivía
+en el filesystem efímero del contenedor → en cada restart se perdía el mapeo
+y el plugin creaba peers/sessions nuevos, dejando huérfanas las memorias viejas.
+
+**Fix (2026-06-10):** `openclaw-deployment.yaml.j2` monta además
+`/home/node/.honcho` desde el mismo PVC con `subPath: .honcho-state`
+(en gateway, sidecar y MCP bridge). El init container crea el directorio con
+ownership 1000:1000. Las memorias pre-fix siguen en Postgres pero quedaron
+asociadas a peers viejos — se reconstruyen con el uso.
 
 ## Gotcha — Cilium evalúa NetworkPolicy POST-DNAT
 

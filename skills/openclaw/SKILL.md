@@ -431,6 +431,106 @@ initContainers:
 
 ---
 
+## Audio — STT (voz→texto) y TTS (texto→voz)
+
+OpenClaw soporta audio bidireccional via Telegram: voice notes entrantes se transcriben,
+y si configuraste TTS, las respuestas salen también como audio.
+
+### Arquitectura de audio
+
+```
+Telegram voice note (OGG/Opus)
+  → OpenClaw tools.media.audio (provider "openai", baseUrl custom)
+  → http://whisper-stt.ai.svc.cluster.local:9000/v1/audio/transcriptions
+  → transcript reemplaza el body del mensaje
+
+Respuesta de texto
+  → messages.tts (provider "microsoft", voz es-AR-TomasNeural)
+  → node-edge-tts → voice note Telegram
+```
+
+### SSRF Guard — el bloqueo oculto de ClusterIP privadas
+
+**Causa raíz del fallo de STT** (descubierta 2026-06-12): OpenClaw tiene un guard SSRF
+(`isBlockedHostnameOrIp` en `dist/ssrf-*.js`) que bloquea **silenciosamente** cualquier
+request a hostnames `.local` o IPs privadas. `whisper-stt.ai.svc.cluster.local` activa
+el bloqueo DOS veces: por sufijo `.local` + por la IP de ClusterIP.
+
+**El resultado sin fix**: el voice note no se transcribe — se inlinea crudo en el prompt
+(~267k tokens) → `Context overflow` → el agente responde "no puedo procesar audio".
+No aparece ningún error en los logs; parece que el agent simplemente no puede procesar audio.
+
+**Fix**: env var `OPENCLAW_ALLOW_PRIVATE_MEDIA=1` + sed patch al arranque del gateway que
+cortocircuita `isBlockedHostnameOrIp` cuando esa var está seteada.
+
+**Por qué sed en lugar de fix upstream**: no tenemos acceso al código fuente ni podemos
+hacer rebuild (la imagen se buildea con kaniko en el cluster, el proceso tarda 15+ min).
+El schema `MediaUnderstandingModelSchema` tampoco tiene `allowPrivateNetwork` (solo existe
+en el schema de modelos LLM, no de media). El patch sed es frágil pero verificable:
+busca el patrón exacto y falla gently (`|| true`) si no lo encuentra.
+
+### `apiKey` en media.audio — campo inválido (NUNCA)
+
+El schema del gateway es `.strict()`. El bloque `tools.media.audio.models[]` NO acepta
+`apiKey`. Poner `"apiKey": "cualquier-cosa"` invalida el entry entero → el gateway no arranca.
+Si el server STT exigiera auth: usar `headers: {"Authorization": "Bearer <key>"}` (sí está en el schema).
+
+### Variables Ansible para audio
+
+| Var | Default | Nota |
+|-----|---------|------|
+| `openclaw_audio_stt_enabled` | `false` | Activa el SSRF patch + config STT |
+| `openclaw_stt_base_url` | `http://whisper-stt.ai.svc.cluster.local:9000/v1` | Endpoint interno Whisper |
+| `openclaw_tts_auto` | `inbound` | `always`=siempre audio, `off`=desactivar |
+| `openclaw_tts_voice` | `es-AR-TomasNeural` | Cualquier voz Edge neural |
+
+**TTS 100% local (piper)**: no es posible con la imagen actual. El único speech provider
+implementado es `microsoft` (alias `edge`, cloud-gratis). Para TTS local hace falta rebuild.
+
+### Verificación
+
+```bash
+# El pod tiene OPENCLAW_ALLOW_PRIVATE_MEDIA=1
+kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- env | grep PRIVATE
+# → OPENCLAW_ALLOW_PRIVATE_MEDIA=1
+
+# El patch SSRF se aplicó al arrancar
+kubectl logs -n openclaw deploy/openclaw -c openclaw-gateway | grep ssrf-patch
+# → [ssrf-patch] isBlockedHostnameOrIp cortocircuitado en ssrf-*.js
+
+# Test real: transcribir desde dentro del pod
+kubectl exec -n openclaw deploy/openclaw -c openclaw-gateway -- \
+  node -e 'const fs=require("fs"),https=require("https"),http=require("http");
+    const buf=Buffer.from("RIFF..."); // audio de prueba
+    console.log("seria largo, mejor con node infer audio")'
+# Más fácil: enviar un voice note real por Telegram y ver los logs:
+kubectl logs -n openclaw deploy/openclaw -c openclaw-gateway --follow | grep -i "audio\|transcript\|stt"
+```
+
+---
+
+## Smee Webhook Relay (container smee-client)
+
+**Qué hace**: escucha el canal Smee (`openclaw_smee_url`) y re-formatea los webhooks
+de GitHub Actions como mensajes Telegram enviados via OpenClaw CLI.
+
+**Por qué un container separado (no un plugin)**: el CLI de OpenClaw (`openclaw message send`)
+es la forma canónica de inyectar mensajes sin usar el gateway HTTP. Usar un plugin requeriría
+rebuild de imagen; el container extra es declarativo y se despliega con Ansible.
+
+**Por qué Smee y no un webhook directo**: el cluster usa Cilium L2 + IP pública dinámica.
+Smee.io actúa como relay estable. No es ideal para producción (punto de fallo externo), pero
+para notificaciones de CI es aceptable. La alternativa correcta sería un tunnel (ngrok/cloudflare)
+o un Ingress con IP estática.
+
+```bash
+# Ver webhook relay
+kubectl logs -n openclaw deploy/openclaw -c smee-client --tail=20
+# Esperado: "Smee adapter listening on port 18000..."
+```
+
+---
+
 ## Troubleshooting — MCP connectivity
 
 ### ¿Está cargando tools del MCP?

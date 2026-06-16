@@ -84,7 +84,7 @@ La distinción importante: `ask_hermes_agent("DEBATE...")` no llama una función
 
 ---
 
-## Arquitectura actual (2026-05-28)
+## Arquitectura actual (verificado 2026-06-12)
 
 ```
 Usuario (Telegram @tito_es_tu_bot)
@@ -92,7 +92,7 @@ Usuario (Telegram @tito_es_tu_bot)
     ▼
 OpenClaw (Tito) — namespace: openclaw, node: srv-rk1-nvme-02
     │ pod: openclaw-* (4 containers)
-    │   ├─ openclaw-gateway     :18789  — AI gateway, Telegram, Honcho memory
+    │   ├─ openclaw-gateway     :18789  — AI gateway, Telegram, Honcho memory, STT/TTS
     │   ├─ kubernetes-mcp       :8080   — K8s MCP sidecar
     │   ├─ smee-client          —       — webhook relay GitHub→Telegram
     │   └─ openclaw-mcp-bridge  :18790  — bridge.js stateful (Node.js)
@@ -129,14 +129,47 @@ Honcho (namespace: honcho, :80 → pod :8000)
 
 ---
 
-## Estado por dirección (2026-05-28)
+## Estado por dirección (2026-06-12)
 
 | Dirección | Estado | Detalle |
 |-----------|--------|---------|
-| **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` PONG en **9s** (era 37s). E2E 13/13 PASS. |
+| **OpenClaw → Hermes** | ✅ Operacional | `ask_hermes_agent` PONG en **9s** (era 37s). Hermes MCP stateless. |
 | **Hermes → OpenClaw** | ✅ Operacional | bridge.js stateful: no supergateway. Session key fijo, sentAt filter, getEvents() helper. |
-| **Honcho memoria** | ✅ Ambos | `[plugins] Honcho memory ready` en ambos pods |
+| **Audio STT (voz→texto)** | ✅ Operacional | whisper-stt in-cluster (2026-06-12). Fix: SSRF guard parcheado con `OPENCLAW_ALLOW_PRIVATE_MEDIA=1`. |
+| **Audio TTS (texto→voz)** | ✅ Operacional | edge-tts Microsoft (OpenClaw: node-edge-tts; Hermes: edge-tts en PVC via initContainer). |
+| **Honcho memoria** | ✅ Ambos | `[plugins] Honcho memory ready` en ambos pods. Peer map en PVC (no amnésico). |
 | **Scope upgrade** | ✅ Resuelto | paired.json bypass aplicado (ver AGENTS.md) |
+
+### Fix aplicado: Hermes MCP stateless (2026-06-11)
+
+**Síntoma**: todas las herramientas `hermes__*` desde OpenClaw fallaban con `Session not found (-32600)` después de reiniciar Hermes, sin reiniciar OpenClaw. Error cada vez que Hermes se actualizaba o crasheaba.
+
+**Causa raíz**: el MCP server de Hermes era **stateful** por defecto: guardaba una sesión en memoria por cada cliente `initialize`. OpenClaw cacheaba su `mcp-session-id` del primer handshake y no volvía a hacer `initialize` (el protocolo asume que las sesiones son persistentes). Un restart de Hermes borraba las sesiones en memoria → OpenClaw enviaba el session-id viejo → 404/error.
+
+**Fix**: `server.settings.stateless_http = True` en `hermes-static-mcp.yaml.j2`. En modo stateless, el server no mantiene sesiones — cada POST `/mcp` es completamente independiente. El session-id de la cabecera `mcp-session-id` es ignorado.
+
+**Por qué stateless es la elección correcta**: el A2A debe ser resiliente a reinicios en cualquier orden. Si Hermes y OpenClaw se reinician independientemente (actualizaciones, crashloops), no deberían necesitar coordinación manual. Stateless logra eso a costo cero en este caso de uso (una sola conexión, sin push asíncrono del server). El único trade-off es que las notificaciones push del server no funcionan — pero el messaging bridge no las usa.
+
+### Fix aplicado: Hermes TTS edge-tts en PVC (2026-06-11)
+
+**Síntoma**: `text_to_speech_tool()` fallaba con `no tts engine configured`. Los logs de Hermes mostraban que `lazy_deps.py` intentaba `pip install edge-tts` pero fallaba.
+
+**Causa raíz**: el container de Hermes tiene `readOnlyRootFilesystem: true`. `lazy_deps.py` instala dependencias en el venv activo al ser invocado; como el venv está en la imagen (read-only), la instalación falla. No hay error visible — `lazy_deps` captura la excepción y el TTS simplemente no está disponible.
+
+**Fix**: initContainer `install-tts` que instala `edge-tts==7.2.7` con `--no-deps` en el PVC (`/opt/data/pylibs`). El container principal lo ve via `PYTHONPATH=/opt/data/pylibs`.
+
+**Por qué `--no-deps` es crítico**: `edge-tts` depende de `pydantic` (versión 2.13.4). Sin `--no-deps`, pip la arrastra al PVC. Como `PYTHONPATH` antepone `/opt/data/pylibs` al Python path, el pydantic 2.13.4 shadowea el 2.12.5 pineado de la imagen → `ImportError` en los módulos de Hermes → el agente no arranca. Con `--no-deps`, solo se instala `edge-tts` + `srt` + `tabulate` (sus deps de runtime que no están en la imagen). Verificado en vivo que el agente mantiene 2.12.5 y el TTS funciona.
+
+**Por qué PVC y no emptyDir**: emptyDir se pierde en cada restart → la instalación se repite en cada boot (~30s). El PVC persiste la instalación; el initContainer hace un check `if [ ! -d pylibs/edge_tts ]` y sale en milisegundos si ya está instalado.
+
+### Fix aplicado: audio STT SSRF guard (2026-06-12)
+
+Ver `skills/openclaw/SKILL.md#audio--stt-voztexto-y-tts-textovoz` para la causa raíz completa.
+Resumen: `whisper-stt.ai.svc.cluster.local` era bloqueada por el SSRF guard de OpenClaw
+dos veces (sufijo `.local` + IP privada). El voice note se inlineaba crudo → context overflow.
+Fix: sed patch al arrancar + `OPENCLAW_ALLOW_PRIVATE_MEDIA=1`.
+
+El análisis completo está en `docs/audio-honcho-a2a-2026-06-12.md`.
 
 ### Fix aplicado: ask_hermes_agent timeout (2026-05-28, inicial)
 

@@ -215,6 +215,22 @@ kubectl port-forward -n test-gemma svc/gemma-npu 8080:8080 &
 kubectl port-forward -n test-gemma svc/gemma-cpu 8081:8080 &
 ```
 
+## ¿Vale la pena el NPU? Mi opinión
+
+El NPU RK3588 es una herramienta de nicho. Vale para latencia local baja y privacidad;
+no vale para calidad de conversación. El error común es usarlo como sustituto de un LLM
+grande — no lo es. Es mejor pensarlo como un co-procesador de clasificación/filtrado que
+corre en paralelo con el stack LLM principal (LiteLLM + OpenRouter).
+
+**El caso de uso que justifica los 4 nodos NPU en este cluster**: un pipeline de voz
+100% local donde Whisper (CPU RK1) transcribe y Gemma NPU clasifica la intención antes
+de rutear al LLM correcto. Zero latencia de red, zero costo, funciona offline. Eso es
+suficiente para justificar el hardware ya existente.
+
+**Lo que NO justifica**: reemplazar claude-sonnet para conversación general. Gemma 270M
+da respuestas de 5-20 palabras con calidad irregular. No hay ROI en usar el NPU para
+razonamiento complejo cuando LiteLLM + modelos :free son gratuitos y de alta calidad.
+
 ## Casos de uso donde el NPU vale la pena
 
 ### Vale la pena ✅
