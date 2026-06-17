@@ -652,3 +652,89 @@ empty vars (`failed_when: false`) — resulting in empty OPENROUTER_API_KEY.
 - The sidecar `kubernetes-mcp-server` exposes port 8080 → Hermes connects via `http://127.0.0.1:8080/mcp`.
 - `hermes-secrets` Secret and `hermes-gateway-config` ConfigMap are created by the Ansible template on every deploy.
 - Use `/mcp` for the Kubernetes MCP HTTP endpoint in Hermes configs.
+
+---
+
+## OpenCode CLI — uso desde línea de comandos
+
+OpenCode v1.4.0. Config leída en este orden (la primera que exista gana):
+1. `~/.config/opencode/opencode.json` o `~/.config/opencode/opencode.jsonc` (global)
+2. `./opencode.json` o `./opencode.jsonc` (proyecto — este repo)
+
+> **`opencode.local.json` NO existe** en v1.4.0 — solo `.json` y `.jsonc`.
+
+### Modos de uso
+
+```bash
+# Modo interactivo (TUI) — desde el directorio del repo
+opencode
+
+# Non-interactive: prompt único, resultado por stdout, sale al terminar
+opencode run "¿Cuántos pods hay en el namespace ai?"
+
+# Con modelo específico (--model provider/alias)
+opencode run --model litellm/kimi-free "Responde en una línea: qué modelo eres"
+
+# Modo interactivo forzando un modelo distinto al default del config
+opencode --model litellm/claude-sonnet
+```
+
+### Formato `--model`
+
+Siempre `provider/alias`. El provider es la clave en `opencode.json → provider`:
+
+```
+litellm/default          # Claude Sonnet vía OpenRouter (default del repo)
+litellm/kimi-free        # Kimi K2.6 — MEJOR free (18-57s, tool calling nativo)
+litellm/gpt-oss-free     # GPT-OSS 20B (free, ~o3-mini calidad)
+litellm/nemotron         # Nemotron Super 120B (free)
+litellm/nemotron-ultra   # Nemotron Ultra 550B (free, 1M ctx — latencia alta en free tier)
+litellm/llama70b-free    # Llama 3.3 70B (free, 131K ctx)
+litellm/rk1-npu-local    # Llama 3.1 8B NPU — 4× RK1 in-cluster, 0 costo, ctx 4K
+litellm/claude-sonnet    # Claude Sonnet 4.5 (de pago, vía OpenRouter)
+litellm/claude-opus      # Claude Opus 4 (de pago)
+litellm/gemini-flash     # Gemini Flash (vía OpenRouter)
+litellm/cheap            # Qwen Turbo (más barato)
+litellm/free             # qwen3-coder:free con fallback chain
+```
+
+### LiteLLM local vs in-cluster
+
+`opencode.json` apunta a `http://localhost:4000/v1`. Dos formas de tenerlo activo:
+
+**Opción A — Local (workstation):**
+```bash
+# En una terminal separada:
+mise run litellm          # o: make litellm
+# LiteLLM escucha en :4000, usa setup/litellm/config.yaml
+```
+
+**Opción B — In-cluster (sin correr LiteLLM local):**
+```bash
+# Port-forward al servicio del cluster (mantener abierto en background):
+kubectl port-forward -n ai svc/litellm-proxy 4000:4000 &
+
+# Luego opencode usa el LiteLLM del cluster transparentemente
+opencode run --model litellm/kimi-free "tu prompt aquí"
+```
+
+> API key unificada: `sk-hermes-internal` (en `opencode.json`, `setup/litellm/config.yaml`,
+> y `~/.config/opencode/opencode.jsonc`).
+
+### MCP servers activos en el repo
+
+`opencode.json` activa dos MCP:
+- **kubernetes** (`npx kubernetes-mcp-server@latest`) — pods, logs, events, namespace list
+- **cluster-advisor** (`python mcp/cluster-advisor/server.py`) — knowledge graph del cluster
+
+El MCP de kubernetes requiere `~/.kube/config` válido (creado por `make core`).
+
+### Gotchas conocidos
+
+| Problema | Causa | Fix |
+|---|---|---|
+| `No connected db.` al hacer streaming | LiteLLM ≥1.82 sin PostgreSQL | `allow_requests_on_db_unavailable: true` (ya en el role) |
+| API key `sk-infra-local` no funciona | LiteLLM espera `sk-hermes-internal` como master key | Actualizar en todos los configs (ya hecho) |
+| Context7 MCP demora 23-30s en arrancar | npm download timeout | Desactivar en `~/.config/opencode/opencode.jsonc` → `"enabled": false` |
+| Multiple `opencode run` bloqueados | SQLite lock en `~/.local/share/opencode/opencode.db` | `kill -9 $(pgrep -f ".opencode")` antes de correr nuevo proceso |
+| `ProviderModelNotFoundError` | Provider desconocido o alias no en config | Verificar que el alias esté en `opencode.json → provider.litellm.models` |
