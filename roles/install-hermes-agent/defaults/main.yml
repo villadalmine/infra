@@ -3,9 +3,11 @@ hermes_namespace: ai
 hermes_hostname: hermes.cluster.home
 
 # Model configuration (Forced through LiteLLM)
-# 2026-06-09: hermes-free (qwen3-coder:free) tardaba 181s/llamada → respuestas de 466s
-# → OpenClaw cortaba por timeout (300s) → "Hermes no contesta" en A2A.
-# kimi-free (moonshotai/kimi-k2.6:free): 18-57s/llamada, tool calling nativo (mismo modelo que usa Honcho).
+# 2026-06-09: hermes-free (qwen3-coder:free) tardaba 181s/llamada → respuestas de 466s.
+# 2026-06-17: nemotron-ultra (550B) probado — latencia free tier 25+ min → descartado.
+#             gpt-oss-free (20B) → 429 frecuentes sin fallback propio → también descartado como primary.
+# kimi-free (kimi-k2.6:free): 18-57s/llamada, tool calling nativo — sigue siendo el mejor.
+# Fallback chain: kimi-free → gpt-oss-free → free2 → llama70b-free → paid-final
 hermes_model: "kimi-free"
 hermes_temperature: 0.7
 hermes_inference_provider: "openai"

@@ -267,6 +267,11 @@
               litellm_params:
                 model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
                 api_key: os.environ/OPENROUTER_API_KEY
+            # nemotron-ultra: 550B params, 1M ctx, jun-2026 — Hermes primary desde 2026-06-17
+            - model_name: nemotron-ultra
+              litellm_params:
+                model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+                api_key: os.environ/OPENROUTER_API_KEY
             - model_name: kimi-free
               litellm_params:
                 model: openrouter/moonshotai/kimi-k2.6:free
@@ -328,6 +333,9 @@
 
           litellm_settings:
             modify_params: true
+            # allow_requests_on_db_unavailable: sin PostgreSQL configurado, LiteLLM ≥1.82 bloquea
+            # streaming con 400 "No connected db." — esto lo bypasea.
+            allow_requests_on_db_unavailable: true
             router_settings:
               routing_strategy: least_busy
               allowed_fails: 3
@@ -350,6 +358,10 @@
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               # 2026-06-10: kimi-free no tenía chain → 429 upstream dejaba a Hermes y Honcho sin respuesta
               - {"kimi-free": ["gpt-oss-free", "free2", "llama70b-free", "paid-final"]}
+              # 2026-06-17: nemotron-ultra (Hermes primary) — fallback a kimi-free si timeout/429
+              - {"nemotron-ultra": ["kimi-free", "gpt-oss-free", "free2", "llama70b-free", "paid-final"]}
+              # gpt-oss-free no tenía chain propia → 429 sin fallback; ahora cae a kimi-free
+              - {"gpt-oss-free": ["kimi-free", "llama70b-free", "free2", "paid-final"]}
               - {"deepseek4v-free": ["free2", "gpt-oss-free", "paid-final"]}
               - {"kagent-orchestrator": ["free2", "llama70b-free", "paid-final"]}
               - {"default": ["kimi-free", "gpt-oss-free", "llama70b-free", "paid-final"]}
@@ -370,6 +382,8 @@
               - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               - {"kimi-free": ["gpt-oss-free", "free2", "llama70b-free", "paid-final"]}
+              - {"nemotron-ultra": ["kimi-free", "gpt-oss-free", "free2", "llama70b-free", "paid-final"]}
+              - {"gpt-oss-free": ["kimi-free", "llama70b-free", "free2", "paid-final"]}
               - {"deepseek4v-free": ["free2", "gpt-oss-free", "paid-final"]}
               - {"kagent-orchestrator": ["free2", "llama70b-free", "paid-final"]}
               - {"default": ["kimi-free", "gpt-oss-free", "llama70b-free", "paid-final"]}
@@ -474,6 +488,26 @@
             port: 4000
             targetPort: 4000
         type: ClusterIP
+
+- name: Create LiteLLM HTTPRoute
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: litellm-proxy
+        namespace: "{{ litellm_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "litellm.cluster.home"
+        rules:
+          - backendRefs:
+              - name: litellm-proxy
+                port: 4000
 
 - name: Check if monitoring namespace exists
   ansible.builtin.command:

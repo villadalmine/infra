@@ -97,6 +97,6 @@ litellm_settings:
   drop_params: true        # ignore unsupported params instead of erroring
 
 general_settings:
-  master_key: "sk-infra-local"
+  master_key: "sk-hermes-internal"
   # Uncomment to see full request/response logs (useful for debugging):
   # set_verbose: true

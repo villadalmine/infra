@@ -65,7 +65,12 @@
     values:
       crds:
         enabled: true   # install cert-manager CRDs as part of the Helm release
-  when: not cm_deployed
+      config:
+        apiVersion: controller.config.cert-manager.io/v1alpha1
+        kind: ControllerConfiguration
+        enableGatewayAPI: true   # gateway-shim: cert-manager issues TLS for Gateway API Gateways
+  # Idempotent: always run helm upgrade --install so config changes (e.g. enabling
+  # Gateway API) are reconciled on re-runs, not only on first install.
 
 - name: Wait for cert-manager controller rollout
   ansible.builtin.command:

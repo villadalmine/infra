@@ -7,7 +7,7 @@
       "name": "LiteLLM (local — start with: mise run litellm)",
       "options": {
         "baseURL": "http://localhost:4000/v1",
-        "apiKey": "sk-infra-local"
+        "apiKey": "sk-hermes-internal"
       },
       "models": {
         "default": {
@@ -36,6 +36,30 @@
         },
         "cheap": {
           "name": "Cheap (qwen-turbo via OpenRouter)",
+          "tools": true
+        },
+        "kimi-free": {
+          "name": "Kimi K2.6 (free, 18-57s, tool calling nativo)",
+          "tools": true
+        },
+        "nemotron-ultra": {
+          "name": "Nemotron Ultra 550B (free, 1M ctx)",
+          "tools": true
+        },
+        "gpt-oss-free": {
+          "name": "GPT-OSS 20B (free, tool calling, ~o3-mini)",
+          "tools": true
+        },
+        "nemotron": {
+          "name": "Nemotron Super 120B (free)",
+          "tools": true
+        },
+        "rk1-npu-local": {
+          "name": "Llama 3.1 8B NPU (4x RK1, 0 costo, ctx 4K)",
+          "tools": true
+        },
+        "llama70b-free": {
+          "name": "Llama 3.3 70B (free, 131K ctx)",
           "tools": true
         }
       }
