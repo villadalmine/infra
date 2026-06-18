@@ -269,6 +269,50 @@ razonamiento complejo cuando LiteLLM + modelos :free son gratuitos y de alta cal
 4. **Modelos grandes (>4B)** — Llama 3.1 8B en NPU tarda ~800s en cargar y consume
    casi toda la LPDDR4X. Para inferencia pesada, usar el t7910 con GPU.
 
+## Uso desde OpenCode / LiteLLM
+
+El pool está expuesto como `rk1-npu-local` en LiteLLM (4× entradas en round-robin).
+Acceso desde OpenCode:
+
+```bash
+# Desde cualquier directorio (provider 'litellm' en ~/.config/opencode/config.json)
+opencode run --model litellm/rk1-npu-local "pregunta"
+
+# Desde el repo infra (provider 'litellm-cluster' en opencode.local.json)
+opencode run --model litellm-cluster/rk1-npu-local "pregunta"
+```
+
+Config en `opencode.json` / `opencode.local.json`:
+```json
+"rk1-npu-local": { "name": "Llama 3.1 8B NPU", "tools": false }
+```
+`"tools": false` es obligatorio — enviar tool definitions sube el request a ~62K tokens,
+excediendo el límite de 4K de rkllama y activando el fallback chain de LiteLLM.
+
+## Fix de streaming SSE (rkllama bug — 2026-06-17)
+
+**Bug**: rkllama llamaba `ollama_chat_stream_to_openai_chat_completions_chunks([chunk])`
+una vez por chunk SSE. Cada llamada generaba un UUID nuevo → el streaming parser de
+`@ai-sdk` descarta texto cuando los IDs difieren entre chunks.
+
+**Fix**: initContainer `patch-streaming` en cada pod que parchea `format_utils.py`
+al arrancar: genera un solo `_cid` por stream y lo pasa a todos los chunks.
+
+Archivo parchado: `/opt/rkllama/build/lib/rkllama/api/format_utils.py`
+Verificar que el patch se aplicó:
+```bash
+kubectl logs -n ai deploy/rk1-npu-01 -c patch-streaming
+# debe mostrar: "Patch applied"
+```
+
+Si rkllama actualiza su imagen y rompe el pattern match:
+```bash
+# Copiar format_utils.py actual del pod para ver el nuevo código
+kubectl exec -n ai deploy/rk1-npu-01 -- \
+  cat /opt/rkllama/build/lib/rkllama/api/format_utils.py
+```
+Luego actualizar el `old =` string en el initContainer del template `rk1-npu-pool.yaml.j2`.
+
 ## Gotchas operacionales
 
 - **`imagePullPolicy: Always` en init containers** → re-pull en cada boot, lento.

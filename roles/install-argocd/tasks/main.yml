@@ -76,7 +76,8 @@
         params:
           # Serve plain HTTP internally — TLS terminated at the Gateway
           server.insecure: "true"
-  when: not argocd_deployed
+  # Idempotente: corre siempre `helm upgrade --install`, así un bump de
+  # argocd_version se reconcilia en re-runs (no solo en la instalación inicial).
 
 - name: Wait for ArgoCD server rollout
   ansible.builtin.command:

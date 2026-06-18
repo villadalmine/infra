@@ -56,6 +56,76 @@ spec:
       # max_new_tokens controls max output length
       # Download model on first boot — idempotent: skips if .rkllm already exists
       initContainers:
+        - name: patch-streaming
+          image: "{{ rknpu_image_name }}:{{ rknpu_image_tag }}"
+          imagePullPolicy: IfNotPresent
+          command:
+            - python3
+            - -c
+            - |
+              import re, uuid, time
+              path = '/opt/rkllama/build/lib/rkllama/api/format_utils.py'
+              with open(path) as f:
+                  src = f.read()
+
+              # Add optional completion_id/created params so stream_chunks can pass one ID
+              src = src.replace(
+                  'def ollama_chat_stream_to_openai_chat_completions_chunks(ollama_stream_lines):',
+                  'def ollama_chat_stream_to_openai_chat_completions_chunks(ollama_stream_lines, completion_id=None, created=None):'
+              )
+              src = src.replace(
+                  'def ollama_generate_stream_to_openai_completions_chunks(ollama_stream_lines):',
+                  'def ollama_generate_stream_to_openai_completions_chunks(ollama_stream_lines, completion_id=None, created=None):'
+              )
+              # Use the passed ID if provided, otherwise generate a new one
+              src = src.replace(
+                  '    completion_id = f"chatcmpl-{uuid.uuid4().hex}"\n    created = int(time.time())\n    for line in ollama_stream_lines:',
+                  '    completion_id = completion_id or f"chatcmpl-{uuid.uuid4().hex}"\n    created = created or int(time.time())\n    for line in ollama_stream_lines:'
+              )
+              # Generate ONE ID per stream in handle_ollama_response and pass it down
+              old = (
+                  '        def stream_chunks():\n'
+                  '            # Read the Flask Response iterable (bytes or str)\n'
+                  '            for raw in response.response:\n'
+                  '                # Ensure bytes are decoded\n'
+                  '                if isinstance(raw, bytes):\n'
+                  '                    raw = raw.decode("utf-8")\n'
+                  '                raw = raw.strip()\n'
+                  '                if raw:\n'
+                  '                    # CHeck if cht or generate response\n'
+                  '                    if is_chat:\n'
+                  '                        yield from ollama_chat_stream_to_openai_chat_completions_chunks([raw])\n'
+                  '                    else:\n'
+                  '                        yield from ollama_generate_stream_to_openai_completions_chunks([raw])'
+              )
+              new = (
+                  '        def stream_chunks():\n'
+                  '            # Single consistent ID — rkllama generates unique UUID per chunk,\n'
+                  '            # which breaks @ai-sdk streaming parsers expecting one ID per response\n'
+                  '            _cid = f"chatcmpl-{uuid.uuid4().hex}"\n'
+                  '            _ts = int(time.time())\n'
+                  '            for raw in response.response:\n'
+                  '                if isinstance(raw, bytes):\n'
+                  '                    raw = raw.decode("utf-8")\n'
+                  '                raw = raw.strip()\n'
+                  '                if raw:\n'
+                  '                    if is_chat:\n'
+                  '                        yield from ollama_chat_stream_to_openai_chat_completions_chunks([raw], _cid, _ts)\n'
+                  '                    else:\n'
+                  '                        yield from ollama_generate_stream_to_openai_completions_chunks([raw], _cid, _ts)'
+              )
+              if old in src:
+                  src = src.replace(old, new)
+                  print('Patch applied')
+              else:
+                  print('WARN: pattern not found, writing unpatched file')
+              import os
+              os.makedirs('/patched', exist_ok=True)
+              with open('/patched/format_utils.py', 'w') as f:
+                  f.write(src)
+          volumeMounts:
+            - name: patched-format-utils
+              mountPath: /patched
         - name: model-downloader
           image: "{{ rknpu_image_name }}:{{ rknpu_image_tag }}"
           imagePullPolicy: IfNotPresent
@@ -140,6 +210,9 @@ spec:
             - name: modelfile-volume
               mountPath: /opt/rkllama/models/{{ rknpu_model_name }}/Modelfile
               subPath: Modelfile
+            - name: patched-format-utils
+              mountPath: /opt/rkllama/build/lib/rkllama/api/format_utils.py
+              subPath: format_utils.py
       volumes:
         - name: dev-dri
           hostPath:
@@ -152,6 +225,8 @@ spec:
         - name: modelfile-volume
           configMap:
             name: {{ node.name }}-modelfile
+        - name: patched-format-utils
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

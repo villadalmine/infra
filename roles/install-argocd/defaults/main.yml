@@ -1,3 +1,5 @@
-argocd_version: "9.4.17"   # ArgoCD app version v3.3.6, supports K8s v1.35
+argocd_version: "9.5.21"   # chart 9.5.21 = ArgoCD v3.4.3 (último estable, 11-jun-2026).
+                           # v3.5.x está en RC todavía → no hay chart estable; se queda en 3.4.x.
+                           # Para chequear: `helm search repo argo/argo-cd --versions | head -3`
 argocd_namespace: argocd
 argocd_hostname: "argocd.cluster.home"

@@ -71,8 +71,9 @@
             #     api_base: http://192.168.178.90:11436/v1
             #     api_key: "dummy"
 
-            # ── Local TuringPi 2 RK1 NPU Pool (Primary routes for ALL services) ──
-            # 4x RK1 Nodes running Llama-3.1-8B-Instruct on RKNPU (instantly available, 0 cost)
+            # ── Local TuringPi 2 RK1 NPU Pool (4× round-robin, 0 cost) ──
+            # Llama-3.1-8B-Instruct w8a8 on RKNPU. Streaming UUID-per-chunk bug fixed
+            # via initContainer patch in install-rknpu-pool (format_utils.py).
             - model_name: rk1-npu-local
               litellm_params:
                 model: openai/llama-3.1-8b-instruct
