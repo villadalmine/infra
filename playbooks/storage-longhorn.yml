@@ -67,6 +67,33 @@
         opts: defaults,noatime
         state: "{{ 'present' if nvme_mountpoint.rc == 0 else 'mounted' }}"
 
+# Single-disk / hypervisor nodes (srv-t7910): no dedicated device — Longhorn uses a DIRECTORY on
+# the existing root filesystem. They still need the Longhorn node prereqs (open-iscsi/iscsid for
+# volume attach) and the directory to exist.
+- name: Prepare directory storage on hypervisor nodes
+  hosts: longhorn_dir_nodes
+  become: yes
+  gather_facts: yes
+  vars:
+    longhorn_dir_path: "/var/lib/longhorn"
+  tasks:
+    - name: Install Longhorn node prerequisites (open-iscsi, nfs client)
+      ansible.builtin.package:
+        name:
+          - open-iscsi
+          - nfs-common
+        state: present
+    - name: Ensure iscsid is running (required for Longhorn volume attach)
+      ansible.builtin.service:
+        name: iscsid
+        state: started
+        enabled: yes
+    - name: Ensure the Longhorn data directory exists
+      ansible.builtin.file:
+        path: "{{ longhorn_dir_path }}"
+        state: directory
+        mode: "0755"
+
 - name: Deploy Longhorn
   hosts: localhost
   connection: local
