@@ -26,7 +26,13 @@
           storage: rk1-longhorn                          # → longhorn-manager corre acá = nodo Longhorn (puede attachear)
           node.longhorn.io/create-default-disk: "config"
         annotations:
-          node.longhorn.io/default-disks-config: '[{"name":"local-dir","path":"{{ longhorn_dir_path }}","allowScheduling":true,"storageReserved":{{ longhorn_dir_reserved_bytes }},"tags":{{ longhorn_dir_tags | to_json }},"diskType":"filesystem"}]'
+          # Pure literal string (no Jinja): a templated value here gets native_concat-coerced
+          # into a Python list, and Node annotations must be map[string]string → server rejects
+          # it ("cannot unmarshal array ... of type string"). Keep in sync with defaults/main.yml
+          # (longhorn_dir_path=/var/lib/longhorn, reserved=161061273600 ~150Gi, tags=["nvme"]).
+          # The authoritative disk config is the typed Longhorn Node CR patch below; this annotation
+          # only seeds the initial create-default-disk.
+          node.longhorn.io/default-disks-config: '[{"name":"local-dir","path":"/var/lib/longhorn","allowScheduling":true,"storageReserved":161061273600,"tags":["nvme"],"diskType":"filesystem"}]'
   loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
 
 - name: Ensure longhorn-csi-plugin DaemonSet runs on all nodes (Helm does not update nodeSelector reliably)
