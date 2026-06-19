@@ -178,10 +178,26 @@
     src: storageclass-v2.yaml.j2
     dest: /tmp/longhorn-storageclass.yaml
 
-- name: Apply Longhorn StorageClass
-  kubernetes.core.k8s:
-    state: present
-    src: /tmp/longhorn-storageclass.yaml
+# StorageClass.parameters are immutable: if the rendered SC changed a parameter (e.g. adding
+# diskSelector: nvme), a plain apply fails with "updates to parameters are forbidden". Recreate
+# it on that failure. Idempotent: in steady state the apply succeeds and the rescue never runs.
+- name: Apply Longhorn StorageClass (recreate when parameters changed)
+  block:
+    - name: Apply Longhorn StorageClass
+      kubernetes.core.k8s:
+        state: present
+        src: /tmp/longhorn-storageclass.yaml
+  rescue:
+    - name: Delete existing StorageClass (parameters are immutable)
+      kubernetes.core.k8s:
+        api_version: storage.k8s.io/v1
+        kind: StorageClass
+        name: longhorn-nvme
+        state: absent
+    - name: Recreate Longhorn StorageClass with new parameters
+      kubernetes.core.k8s:
+        state: present
+        src: /tmp/longhorn-storageclass.yaml
 
 - name: Render fio benchmark pod
   template:
