@@ -89,6 +89,19 @@
   become: true
   register: k3s_etcd_member
 
+- name: Detect the installed k3s version (drives rolling upgrades)
+  ansible.builtin.command: k3s --version
+  register: k3s_installed_raw
+  failed_when: false
+  changed_when: false
+
+- name: Determine whether a k3s version upgrade is needed
+  # True only when k3s is installed AND the running version differs from k3s_version.
+  # This lets a k3s_version bump re-run the installer even though the state-based
+  # guards (etcd-member / already-Ready / on-VIP) would otherwise skip it.
+  ansible.builtin.set_fact:
+    k3s_needs_upgrade: "{{ (k3s_installed_raw.rc == 0) and (k3s_version not in (k3s_installed_raw.stdout | default(''))) }}"
+
 - name: Download the K3s install script
   ansible.builtin.get_url:
     url: https://get.k3s.io

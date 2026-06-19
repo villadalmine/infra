@@ -30,7 +30,7 @@
   failed_when: false
   changed_when: false
 
-- name: Install or reconfigure the K3s agent (registers via the HAProxy VIP)
+- name: Install, reconfigure, or upgrade the K3s agent (registers via the HAProxy VIP)
   ansible.builtin.shell: |
     /bin/bash -c 'set -o pipefail; /tmp/k3s-install.sh'
   environment:
@@ -38,8 +38,8 @@
     INSTALL_K3S_EXEC: "{{ k3s_agent_exec }}"
     K3S_TOKEN: "{{ k3s_token }}"
   become: true
-  when: k3s_agent_active.stdout != 'active' or k3s_agent_on_vip.rc != 0
-  changed_when: k3s_agent_active.stdout != 'active' or k3s_agent_on_vip.rc != 0
+  when: k3s_agent_active.stdout != 'active' or k3s_agent_on_vip.rc != 0 or (k3s_needs_upgrade | default(false))
+  changed_when: k3s_agent_active.stdout != 'active' or k3s_agent_on_vip.rc != 0 or (k3s_needs_upgrade | default(false))
 
 - name: Ensure the K3s agent is started and enabled
   ansible.builtin.systemd:
@@ -47,4 +47,14 @@
     state: started
     enabled: true
   become: true
+  changed_when: false
+
+- name: Wait for this agent to report Ready (rolling-upgrade safety with serial=1)
+  ansible.builtin.command: k3s kubectl get node {{ inventory_hostname }} --no-headers
+  delegate_to: "{{ groups['server_nodes'][0] }}"
+  become: true
+  register: k3s_agent_ready
+  until: k3s_agent_ready.rc == 0 and (k3s_agent_ready.stdout.split() | length > 1) and k3s_agent_ready.stdout.split()[1] == 'Ready'
+  retries: 24
+  delay: 5
   changed_when: false

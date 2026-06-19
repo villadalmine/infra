@@ -1,5 +1,5 @@
 k3s_token: myrandompassword
-k3s_version: v1.35.2+k3s1
+k3s_version: v1.35.5+k3s1
 k3s_kubeconfig_mode: "644"
 
 # HA control-plane VIP — agents and the external kubeconfig target the K3s API

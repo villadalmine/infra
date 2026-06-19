@@ -33,7 +33,7 @@
     - k3s_server_active.stdout == 'active'
     - not k3s_already_member
 
-- name: Join this node as an additional control-plane server
+- name: Join or upgrade this control-plane server
   ansible.builtin.shell: |
     /bin/bash -c 'set -o pipefail; /tmp/k3s-install.sh'
   environment:
@@ -42,8 +42,8 @@
     K3S_TOKEN: "{{ k3s_token }}"
     K3S_KUBECONFIG_MODE: "{{ k3s_kubeconfig_mode }}"
   become: true
-  when: not k3s_already_member
-  changed_when: not k3s_already_member
+  when: (not k3s_already_member) or (k3s_needs_upgrade | default(false))
+  changed_when: (not k3s_already_member) or (k3s_needs_upgrade | default(false))
 
 - name: Ensure the K3s server is started and enabled
   ansible.builtin.systemd:

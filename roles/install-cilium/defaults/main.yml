@@ -1,4 +1,4 @@
-cilium_version: "1.19.2"
+cilium_version: "1.19.5"
 cilium_namespace: kube-system
 
 # API server address used by Cilium's kube-proxy replacement.
