@@ -1,0 +1,22 @@
+# Move master etcd data dirs from eMMC to NVMe, in place, preserving each etcd member.
+#
+# SAFE BY CONSTRUCTION:
+#   - serial: 1        → only ONE master is taken down at a time (etcd keeps quorum)
+#   - the role asserts >=2 other Ready etcd members before stopping k3s on a node
+#   - the data dir is preserved (renamed aside) before the NVMe is formatted
+#
+# Recommended: migrate the disposable join node first, then the init node:
+#   ansible-playbook playbooks/migrate-etcd-nvme.yml -i inventory/hosts.ini --limit srv-super6c-02-nvme
+#   # validate, then:
+#   ansible-playbook playbooks/migrate-etcd-nvme.yml -i inventory/hosts.ini --limit srv-super6c-01-nvme
+#
+# Idempotent: re-running on a node already on NVMe is a no-op.
+
+- name: Migrate master etcd data dirs from eMMC to NVMe (one master at a time)
+  hosts: etcd_nvme_nodes
+  become: true
+  serial: 1
+  gather_facts: true
+  roles:
+    - role: migrate-etcd-to-nvme
+      tags: [migrate-etcd-nvme]

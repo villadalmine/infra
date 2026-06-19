@@ -1,12 +1,28 @@
-# Getthe list of services on the system, leverage when deciding to install k3s
+# install-k3s — idempotent K3s deployment with an HA control plane
+# (3 masters, embedded etcd) and HAProxy-VIP-registered agents.
+#
+# Node role is driven entirely by inventory groups:
+#   server_nodes[0]    → the SINGLE cluster-init node (bootstraps embedded etcd)
+#   server_join_nodes  → additional control-plane nodes (join the etcd cluster)
+#   agent_nodes        → workers; register through the HAProxy VIP for HA
+#
+# Idempotency is STATE-based, not flag-based — re-runs converge to changed=0:
+#   - init migrates SQLite→etcd only while .../db/etcd/member is absent
+#   - join wipes+joins only while the node is not already a Ready cluster member
+#   - agent (re)installs only when inactive or not yet pointing at the VIP
+#
+# See CLAUDE.md "Bootstrap role order" and skills/k3s/SKILL.md.
+
+# ----------------------------------------------------------------------------
+# Common host prep (every k3s node)
+# ----------------------------------------------------------------------------
 - name: Populate service facts
   ansible.builtin.service_facts:
-
 
 - name: Establecer el hostname usando hostnamectl
   ansible.builtin.command: "hostnamectl set-hostname {{ inventory_hostname }}"
   become: true
-  changed_when: false # Agregamos esto para que Ansible no lo marque siempre como "changed" si ya tiene el nombre correcto.
+  changed_when: false  # ya tiene el nombre correcto → no marcar siempre changed
 
 - name: Asegurar que el nodo pueda resolver su propio nombre en /etc/hosts
   ansible.builtin.lineinfile:
@@ -26,7 +42,6 @@
   become: true
   notify: Reload systemd sysctl
   when: "'k3s_nodes' in group_names"
-
 
 - name: Freeze RK1 kernel and driver packages (never auto-update — breaks custom rockchip kernel)
   ansible.builtin.dpkg_selections:
@@ -51,117 +66,48 @@
     - "'rk1_nodes' in group_names"
   failed_when: false
 
-- name: Check if K3s server is running
+# ----------------------------------------------------------------------------
+# State detection — drives every idempotency guard in the included task files
+# ----------------------------------------------------------------------------
+- name: Check whether the K3s server service is active
   ansible.builtin.command:
     cmd: systemctl is-active k3s
   register: k3s_server_active
   failed_when: false
   changed_when: false
 
-- name: Download K3s installation script on Server node(s)
-  ansible.builtin.get_url:
-    url: https://get.k3s.io
-    dest: /tmp/k3s-install.sh
-    mode: "0755"
-  become: true
-  when:
-    - "'server_nodes' in group_names"
-  changed_when: "'server_nodes' in group_names"
-
-- name: Install K3s server
-  ansible.builtin.shell: |
-    /bin/bash -c 'set -o pipefail; /tmp/k3s-install.sh'
-  environment:
-    INSTALL_K3S_VERSION: "{{ k3s_version }}"
-    INSTALL_K3S_EXEC: "{{ k3s_server_exec }}"
-    K3S_KUBECONFIG_MODE: "{{ k3s_kubeconfig_mode }}"
-  when:
-    - "'server_nodes' in group_names"
-  changed_when: "'server_nodes' in group_names"
-
-- name: Ensure K3s server is started
-  ansible.builtin.systemd:
-    name: k3s
-    state: started
-    enabled: true
-  when:
-    - "'server_nodes' in group_names"
-  changed_when: false
-
-- name: Check if K3s agent is running
+- name: Check whether the K3s agent service is active
   ansible.builtin.command:
     cmd: systemctl is-active k3s-agent
   register: k3s_agent_active
   failed_when: false
   changed_when: false
 
-- name: Download k3s and install script on Agent node(s)
+- name: Check whether embedded etcd is already initialised (SQLite→etcd migration done)
+  ansible.builtin.stat:
+    path: /var/lib/rancher/k3s/server/db/etcd/member
+  become: true
+  register: k3s_etcd_member
+
+- name: Download the K3s install script
   ansible.builtin.get_url:
     url: https://get.k3s.io
     dest: /tmp/k3s-install.sh
     mode: "0755"
+    force: false  # idempotent: don't re-download on every run
   become: true
-  when:
-    - "'agent_nodes' in group_names"
-    - "k3s_agent_active.stdout != 'active'"
-  changed_when: "'agent_nodes' in group_names"
 
-- name: Install K3s agent
-  ansible.builtin.shell: |
-    /bin/bash -c 'set -o pipefail; /tmp/k3s-install.sh'
-  environment:
-    INSTALL_K3S_VERSION: "{{ k3s_version }}"
-    INSTALL_K3S_EXEC: "{{ k3s_agent_exec }}"
-  when:
-    - "'agent_nodes' in group_names"
-    - "k3s_agent_active.stdout != 'active'"
-  changed_when: "'agent_nodes' in group_names"
+# ----------------------------------------------------------------------------
+# Dispatch by node role (mutually exclusive)
+# ----------------------------------------------------------------------------
+- name: Configure the cluster-init (first control-plane) node
+  ansible.builtin.include_tasks: server-init.yml
+  when: inventory_hostname == groups['server_nodes'][0]
 
-- name: Ensure K3s agent is started
-  ansible.builtin.systemd:
-    name: k3s-agent
-    state: started
-    enabled: true
-  when:
-    - "'agent_nodes' in group_names"
-    - "k3s_agent_active.stdout != 'active'"
-  changed_when: false
+- name: Configure additional control-plane (join) nodes
+  ansible.builtin.include_tasks: server-join.yml
+  when: inventory_hostname in (groups['server_join_nodes'] | default([]))
 
-- name: Install K3s agent
-  ansible.builtin.shell: |
-    /bin/bash -c 'set -o pipefail; /tmp/k3s-install.sh'
-  environment:
-    INSTALL_K3S_VERSION: "{{ k3s_version }}"
-    INSTALL_K3S_EXEC: "{{ k3s_agent_exec }}"
-  when:
-    - "'agent_nodes' in group_names"
-    - "k3s_agent_active.stdout != 'active'"
-  changed_when: "'agent_nodes' in group_names"
-
-- name: Ensure K3s agent is started
-  ansible.builtin.systemd:
-    name: k3s-agent
-    state: started
-    enabled: true
-  when:
-    - "'agent_nodes' in group_names"
-    - "k3s_agent_active.stdout != 'active'"
-  changed_when: false
-
-- name: Wait for K3s API to be ready
-  ansible.builtin.command:
-    cmd: k3s kubectl get nodes
-  become: true
-  register: k3s_api_ready
-  until: k3s_api_ready.rc == 0
-  retries: 24
-  delay: 5
-  when: "'server_nodes' in group_names"
-  changed_when: false
-
-- name: Ensure server node has worker role label
-  ansible.builtin.command:
-    cmd: k3s kubectl label node --selector kubernetes.io/hostname={{ ansible_facts['hostname'] }} node-role.kubernetes.io/worker=worker --overwrite
-  become: true
-  when: "'server_nodes' in group_names"
-  changed_when: false
+- name: Configure agent (worker) nodes
+  ansible.builtin.include_tasks: agent.yml
+  when: inventory_hostname in (groups['agent_nodes'] | default([]))

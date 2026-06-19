@@ -1,0 +1,132 @@
+# Move /var/lib/rancher (k3s data dir + embedded etcd) from eMMC to NVMe in place.
+# See roles/migrate-etcd-to-nvme/defaults/main.yml for the contract. Run one node at a time.
+
+- name: Check what device currently backs the k3s data dir
+  ansible.builtin.command: findmnt -nT {{ mig_datadir }} -o SOURCE
+  register: mig_src
+  changed_when: false
+  failed_when: false
+
+- name: Determine whether the data dir is already on NVMe
+  ansible.builtin.set_fact:
+    mig_on_nvme: "{{ '/dev/nvme' in (mig_src.stdout | default('')) }}"
+
+- name: Pick a SURVIVING master to run cluster queries against (never this node)
+  # The node being migrated has its apiserver down while k3s is stopped, so all
+  # delegated kubectl calls must target a different, live control-plane node.
+  ansible.builtin.set_fact:
+    mig_query_host: >-
+      {{ ((groups['server_nodes'] + groups['server_join_nodes'])
+          | difference([inventory_hostname]) | first) }}
+
+- name: Report — data dir already on NVMe (nothing to migrate)
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ mig_datadir }} already on NVMe ({{ mig_src.stdout }})."
+  when: mig_on_nvme
+
+- name: Migrate the k3s data dir from eMMC to NVMe (preserving etcd member identity)
+  when: not mig_on_nvme
+  block:
+    - name: Verify the NVMe partition exists
+      ansible.builtin.stat:
+        path: "{{ mig_nvme_partition }}"
+      register: mig_part
+      failed_when: not mig_part.stat.exists
+
+    - name: Confirm this node is a Ready etcd member before taking it down
+      # STATUS is column 2 of `get node --no-headers` — robust vs jsonpath quoting
+      # being eaten by the command module's shlex parsing.
+      ansible.builtin.command: k3s kubectl get node {{ inventory_hostname }} --no-headers
+      delegate_to: "{{ mig_query_host }}"
+      register: mig_pre_ready
+      changed_when: false
+      failed_when: >-
+        mig_pre_ready.rc != 0
+        or (mig_pre_ready.stdout.split() | length < 2)
+        or mig_pre_ready.stdout.split()[1] != 'Ready'
+
+    - name: Verify the rest of the control plane can hold quorum without this node
+      ansible.builtin.shell: >-
+        set -o pipefail;
+        k3s kubectl get nodes -l node-role.kubernetes.io/etcd=true --no-headers
+        | awk '$2=="Ready" && $1!="{{ inventory_hostname }}"' | wc -l
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ mig_query_host }}"
+      register: mig_other_etcd
+      changed_when: false
+      failed_when: (mig_other_etcd.stdout | int) < 2   # need >=2 other Ready etcd members for quorum
+
+    - name: Stop k3s (etcd member goes down — quorum held by the other masters)
+      ansible.builtin.systemd:
+        name: k3s
+        state: stopped
+
+    - name: Rename the eMMC data dir aside (rename = instant, no extra space)
+      ansible.builtin.command: mv {{ mig_datadir }} {{ mig_backup_dir }}
+      args:
+        creates: "{{ mig_backup_dir }}"
+
+    - name: Wipe stale filesystem signatures (old Longhorn remnants) on the NVMe
+      ansible.builtin.command: wipefs --all {{ mig_nvme_partition }}
+      changed_when: true
+
+    - name: Create a fresh ext4 filesystem labelled {{ mig_nvme_label }}
+      community.general.filesystem:
+        fstype: "{{ mig_nvme_fstype }}"
+        dev: "{{ mig_nvme_partition }}"
+        opts: "-L {{ mig_nvme_label }}"
+        force: true
+
+    - name: Recreate the data-dir mountpoint
+      ansible.builtin.file:
+        path: "{{ mig_datadir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount the NVMe at the data dir and persist it in fstab (by LABEL)
+      ansible.posix.mount:
+        path: "{{ mig_datadir }}"
+        src: "LABEL={{ mig_nvme_label }}"
+        fstype: "{{ mig_nvme_fstype }}"
+        opts: defaults,noatime
+        state: mounted
+
+    - name: Copy the preserved data dir onto the NVMe (-a keeps the etcd member identity)
+      ansible.builtin.command: cp -a {{ mig_backup_dir }}/. {{ mig_datadir }}/
+      changed_when: true
+
+# --- always-on (outside the guard) so a mid-run failure still leaves k3s started ---
+- name: Ensure k3s is started and enabled
+  ansible.builtin.systemd:
+    name: k3s
+    state: started
+    enabled: true
+
+- name: Wait for this node to report Ready again (etcd member re-synced)
+  ansible.builtin.command: k3s kubectl get node {{ inventory_hostname }} --no-headers
+  delegate_to: "{{ groups['server_nodes'][0] }}"
+  register: mig_post_ready
+  until: mig_post_ready.rc == 0 and (mig_post_ready.stdout.split() | length > 1) and mig_post_ready.stdout.split()[1] == 'Ready'
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Confirm the data dir is now on NVMe
+  ansible.builtin.command: findmnt -nT {{ mig_datadir }} -o SOURCE
+  register: mig_final
+  changed_when: false
+  failed_when: "'/dev/nvme' not in mig_final.stdout"
+
+- name: Report migration result
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: data dir now on {{ mig_final.stdout }} — etcd member re-synced. Backup kept at {{ mig_backup_dir }} (delete after you verify)."
+
+# Opt-in cleanup — only runs with -e mig_delete_backup=true. The "Confirm the data dir
+# is now on NVMe" task above already failed the play if we were not on NVMe, so reaching
+# here means the migration is verified and the backup is safe to drop.
+- name: Delete the pre-migration eMMC backup (opt-in)
+  ansible.builtin.file:
+    path: "{{ mig_backup_dir }}"
+    state: absent
+  when: mig_delete_backup | default(false) | bool

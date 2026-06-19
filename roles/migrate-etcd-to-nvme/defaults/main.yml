@@ -1,0 +1,21 @@
+# migrate-etcd-to-nvme — move an EXISTING master's k3s data dir from eMMC to NVMe
+# in place, preserving the embedded-etcd member identity (member ID + WAL).
+#
+# Unlike a wipe+rejoin, this keeps the same etcd member, so there is NO ghost member
+# and NO need for etcdctl/member-remove. The member just goes "down" for the duration
+# of the copy; the other masters keep quorum.
+#
+# RUN ONE NODE AT A TIME (--limit <node>) so the cluster never loses etcd quorum:
+#   ansible-playbook playbooks/migrate-etcd-nvme.yml -i inventory/hosts.ini --limit srv-super6c-02-nvme
+#
+# Idempotent: if the data dir is already on NVMe, the whole migration block is skipped.
+
+mig_nvme_partition: /dev/nvme0n1p1
+mig_datadir: /var/lib/rancher
+mig_nvme_label: k3s-data
+mig_nvme_fstype: ext4
+# The original eMMC datadir is renamed here (kept as a rollback until you delete it).
+mig_backup_dir: /var/lib/rancher.pre-nvme
+# Opt-in: delete the backup once you've verified the NVMe migration.
+# Run with: -e mig_delete_backup=true
+mig_delete_backup: false

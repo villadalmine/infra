@@ -2,20 +2,34 @@ k3s_token: myrandompassword
 k3s_version: v1.35.2+k3s1
 k3s_kubeconfig_mode: "644"
 
+# HA control-plane VIP — agents and the external kubeconfig target the K3s API
+# through this address so the loss of any single master is transparent.
+# Served by HAProxy on srv-pi-rack2b (see [haproxy_nodes] + roles/install-haproxy).
+# Authoritative value lives in inventory [all:vars]; this is a fallback default.
+k3s_ha_vip: "192.168.178.130"
+
 # Kernel tuning for fsnotify/inotify-heavy workloads (Pi-hole, file watchers,
 # config reloaders, etc.). Applied to every k3s node during bootstrap.
-k3s_sysctl_inotify_max_user_watches: 524288
-k3s_sysctl_inotify_max_user_instances: 512
+k3s_sysctl_inotify_max_user_watches: 1048576
+# 512 was too low for dense nodes (GPU node running many vcluster + ESO + cilium pods):
+# the HAMi device-plugin crashed with "couldn't initialize inotify: too many open files".
+# Bumped to 8192 (the root-UID inotify pool is shared by k3s + containerd + all privileged pods).
+k3s_sysctl_inotify_max_user_instances: 8192
 
-k3s_server_exec: >
+# Common control-plane flags, shared by the cluster-init node and every join node.
+# The token is passed via the K3S_TOKEN env var (not inline) so the SAME exec string
+# works for init (`--cluster-init`) and join (`--server https://<init>:6443`).
+# `--tls-san {{ k3s_ha_vip }}` puts the VIP in every master's serving cert so that
+# kubectl/agents reaching the API through HAProxy (TCP passthrough) pass TLS verification.
+k3s_server_exec: >-
   --flannel-backend=none
   --disable-network-policy
   --write-kubeconfig-mode 644
   --disable servicelb
-  --token {{ k3s_token }}
   --disable-cloud-controller
   --disable-kube-proxy
   --disable traefik
+  --tls-san {{ k3s_ha_vip }}
 
-# k3s_agent_exec: "agent --server https://{{ hostvars['srv-rk1-01'].ansible_host }}:6443 --token {{ k3s_token }}"
-k3s_agent_exec: "agent --server https://{{ hostvars[groups['server_nodes'][0]]['ansible_host'] }}:6443 --token {{ k3s_token }}"
+# Agents register through the HAProxy VIP for control-plane HA. Token via K3S_TOKEN env.
+k3s_agent_exec: "agent --server https://{{ k3s_ha_vip }}:6443"

@@ -1,0 +1,13 @@
+# install-haproxy — TCP load balancer fronting the K3s control-plane API (HA VIP).
+# Runs on [haproxy_nodes] (srv-pi-rack2b). Agents and the external kubeconfig target
+# this node's IP on haproxy_api_bind_port; HAProxy passes the TLS connection straight
+# through to whichever master is healthy.
+
+haproxy_api_bind_port: 6443
+haproxy_stats_port: 9000
+
+# Inventory groups whose hosts are control-plane API backends. Rendered into the
+# config in order; adding a master to the inventory + re-running updates the LB.
+haproxy_master_groups:
+  - server_nodes
+  - server_join_nodes

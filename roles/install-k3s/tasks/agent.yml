@@ -1,0 +1,50 @@
+# Worker node: register through the HAProxy VIP for control-plane HA.
+#
+# A node that currently runs a (standalone/orphan) K3s *server* but belongs in
+# agent_nodes — e.g. the eMMC super6c nodes — is wiped first, then installed as an
+# agent. Idempotent: re-runs act only when the agent is inactive or not yet
+# pointing at the VIP.
+#
+# Note: reconfiguring an existing agent restarts k3s-agent (kubelet) — pods keep
+# running, the node briefly goes NotReady and re-registers. Drive this per-node
+# (serial / --limit) when migrating live agents.
+
+- name: Uninstall a K3s server running on a node that should be an agent
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s-uninstall.sh
+  become: true
+  when: k3s_server_active.stdout == 'active'
+
+- name: Re-check the agent active state (after a possible server uninstall)
+  ansible.builtin.command:
+    cmd: systemctl is-active k3s-agent
+  register: k3s_agent_active
+  failed_when: false
+  changed_when: false
+
+- name: Detect whether the agent already targets the HAProxy VIP
+  ansible.builtin.command:
+    cmd: grep -Fq "{{ k3s_ha_vip }}:6443" /etc/systemd/system/k3s-agent.service
+  become: true
+  register: k3s_agent_on_vip
+  failed_when: false
+  changed_when: false
+
+- name: Install or reconfigure the K3s agent (registers via the HAProxy VIP)
+  ansible.builtin.shell: |
+    /bin/bash -c 'set -o pipefail; /tmp/k3s-install.sh'
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: "{{ k3s_agent_exec }}"
+    K3S_TOKEN: "{{ k3s_token }}"
+  become: true
+  when: k3s_agent_active.stdout != 'active' or k3s_agent_on_vip.rc != 0
+  changed_when: k3s_agent_active.stdout != 'active' or k3s_agent_on_vip.rc != 0
+
+- name: Ensure the K3s agent is started and enabled
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: started
+    enabled: true
+  become: true
+  changed_when: false

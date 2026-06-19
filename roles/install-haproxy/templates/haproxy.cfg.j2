@@ -1,0 +1,53 @@
+#
+# Managed by Ansible — roles/install-haproxy. Do NOT edit by hand.
+# TCP passthrough load balancer for the K3s control-plane API (HA VIP).
+# Backends are rendered from {{ haproxy_master_groups | join(', ') }}.
+#
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    maxconn 4096
+    daemon
+
+defaults
+    log     global
+    mode    tcp
+    option  tcplog
+    option  dontlognull
+    # Make failover transparent: if the chosen backend can't be reached, retry the
+    # request on a DIFFERENT backend instead of returning 503 to the client.
+    retries 2
+    option  redispatch
+    timeout connect 5s
+    # Long client/server timeouts so kubectl watch / exec / port-forward / logs -f
+    # (long-lived streams) are not cut every 30s.
+    timeout client  1h
+    timeout server  1h
+    timeout check   3s
+
+frontend k3s_api
+    bind *:{{ haproxy_api_bind_port }}
+    mode tcp
+    default_backend k3s_masters
+
+backend k3s_masters
+    mode tcp
+    balance roundrobin
+    # HTTP health check over TLS: the k3s apiserver requires auth, so a LIVE apiserver
+    # answers /readyz with 401 (a dead one refuses the connection). Expecting 401 marks
+    # a node UP only while its apiserver is actually serving — better than a bare TCP check.
+    option httpchk GET /readyz
+    http-check expect status 401
+    default-server check check-ssl verify none inter 2s fall 2 rise 2 downinter 2s
+{% for group in haproxy_master_groups %}
+{% for host in groups[group] | default([]) %}
+    server {{ host }} {{ hostvars[host]['ansible_host'] }}:6443
+{% endfor %}
+{% endfor %}
+
+frontend stats
+    bind *:{{ haproxy_stats_port }}
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 10s

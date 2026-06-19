@@ -1,0 +1,19 @@
+# prepare-etcd-nvme — ensure the k3s data dir (and thus embedded etcd) lives on NVMe.
+#
+# Runs on [etcd_nvme_nodes]: super6c masters that physically have an NVMe disk.
+# etcd is fsync-heavy; on eMMC the WAL wears the chip and adds commit latency, so the
+# control-plane datastore must sit on NVMe.
+#
+# SAFE + idempotent:
+#   - if /var/lib/rancher is already on NVMe        → no-op
+#   - if a live k3s datastore sits on a non-NVMe disk → SKIP (the etcd→NVMe rotation
+#     uninstalls k3s first; this role never clobbers a live datadir)
+#   - only when the datadir is empty AND not on NVMe → wipe + mkfs + mount
+#
+# The NVMe on these nodes carries stale Longhorn remnants (longhorn-disk.cfg, replicas/)
+# from a pre-redeploy config — Longhorn now lives only on the RK1 nodes, so wiping is safe.
+
+etcd_nvme_partition: /dev/nvme0n1p1
+etcd_nvme_mountpoint: /var/lib/rancher
+etcd_nvme_label: k3s-data
+etcd_nvme_fstype: ext4

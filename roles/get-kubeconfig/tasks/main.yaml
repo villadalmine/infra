@@ -6,10 +6,11 @@
 
 - name: Fetch kubeconfig from server to localhost
   # ARCHITECTURE NOTE:
-  # We delegate only to the first control-plane node (server_nodes[0]) rather than looping over all masters.
-  # Because this cluster DOES NOT support a control-plane API behind a High Availability (HA) service
-  # (e.g. an external LoadBalancer/VIP), fetching certificates from multiple independent nodes would
-  # overwrite the client config locally, resulting in mismatched certificates and x509 "unknown authority" errors.
+  # We delegate to the cluster-init node (server_nodes[0]) to read the kubeconfig + cluster CA.
+  # The shared kubeconfig is then pointed at the HAProxy VIP (k3s_ha_vip), not a single node,
+  # so kubectl survives the loss of any one master. This works because every master carries the
+  # VIP in its serving cert via `--tls-san {{ k3s_ha_vip }}` (set in install-k3s), so the TLS
+  # passthrough through HAProxy verifies cleanly against the same cluster CA.
   ansible.builtin.fetch:
     src: /etc/rancher/k3s/k3s.yaml
     dest: ~/.kube/config
@@ -17,11 +18,13 @@
   delegate_to: "{{ groups['server_nodes'][0] }}"
   changed_when: false
 
-- name: Replace localhost reference with IP name
+- name: Point the kubeconfig at the HA control-plane VIP
+  # k3s_ha_vip lives in inventory [all:vars]; the implicit localhost does NOT inherit
+  # those, so read it from a real inventory host (the haproxy node) via hostvars.
   ansible.builtin.replace:
     path: ~/.kube/config
     regexp: "127.0.0.1"
-    replace: "{{ hostvars[groups['server_nodes'][0]]['ansible_host'] }}"
+    replace: "{{ hostvars[groups['haproxy_nodes'][0]]['k3s_ha_vip'] }}"
 
 - name: Set permissions on kubeconfig file
   ansible.builtin.file:

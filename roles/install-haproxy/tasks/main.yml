@@ -1,0 +1,29 @@
+# Deploy HAProxy as the K3s control-plane API VIP (TCP passthrough).
+# Idempotent: the templated config renders deterministically from the inventory,
+# `validate` rejects a broken config before it touches the running service, and the
+# reload handler only fires when the rendered file actually changes.
+
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Render the HAProxy config for the K3s API VIP
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: "0644"
+    validate: "haproxy -c -f %s"  # fail without disturbing the running LB if invalid
+  become: true
+  notify: Reload HAProxy
+
+- name: Ensure HAProxy is started and enabled
+  ansible.builtin.systemd:
+    name: haproxy
+    state: started
+    enabled: true
+  become: true
+  changed_when: false

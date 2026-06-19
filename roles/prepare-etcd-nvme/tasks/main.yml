@@ -1,0 +1,77 @@
+# Ensure /var/lib/rancher (k3s data dir + embedded etcd) is backed by the NVMe.
+# State-based idempotency — see roles/prepare-etcd-nvme/defaults/main.yml for the contract.
+
+- name: Check what device currently backs the k3s data dir
+  ansible.builtin.command: findmnt -nT {{ etcd_nvme_mountpoint }} -o SOURCE
+  register: etcd_nvme_dd_src
+  changed_when: false
+  failed_when: false
+
+- name: Determine whether the data dir is already on NVMe
+  ansible.builtin.set_fact:
+    etcd_nvme_already: "{{ '/dev/nvme' in (etcd_nvme_dd_src.stdout | default('')) }}"
+
+- name: Check whether a live (non-NVMe) k3s datastore is present
+  ansible.builtin.stat:
+    path: "{{ etcd_nvme_mountpoint }}/k3s/server/db"
+  register: etcd_nvme_k3s_db
+
+- name: Report — data dir already on NVMe (converged, nothing to do)
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ etcd_nvme_mountpoint }} already on NVMe ({{ etcd_nvme_dd_src.stdout }})."
+  when: etcd_nvme_already
+
+- name: Report — live k3s datastore on a non-NVMe disk; rotation must uninstall k3s first
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: live k3s datastore on a non-NVMe disk —
+      NVMe prep SKIPPED to avoid clobbering it. Run the etcd→NVMe rotation
+      (uninstall k3s on this node first), then re-run this role.
+  when:
+    - not etcd_nvme_already
+    - etcd_nvme_k3s_db.stat.exists
+
+- name: Verify the NVMe partition exists before formatting
+  ansible.builtin.stat:
+    path: "{{ etcd_nvme_partition }}"
+  register: etcd_nvme_part_stat
+  when:
+    - not etcd_nvme_already
+    - not etcd_nvme_k3s_db.stat.exists
+
+- name: Prepare and mount the NVMe for the k3s data dir
+  when:
+    - not etcd_nvme_already
+    - not etcd_nvme_k3s_db.stat.exists
+    - etcd_nvme_part_stat.stat.exists | default(false)
+  block:
+    - name: Wipe stale filesystem signatures (old Longhorn remnants) on the NVMe
+      ansible.builtin.command: wipefs --all {{ etcd_nvme_partition }}
+      changed_when: true
+
+    - name: Create a fresh ext4 filesystem labelled {{ etcd_nvme_label }}
+      community.general.filesystem:
+        fstype: "{{ etcd_nvme_fstype }}"
+        dev: "{{ etcd_nvme_partition }}"
+        opts: "-L {{ etcd_nvme_label }}"
+        force: true
+
+    - name: Ensure the data-dir mountpoint exists
+      ansible.builtin.file:
+        path: "{{ etcd_nvme_mountpoint }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount the NVMe at the k3s data dir and persist it in fstab (by LABEL)
+      ansible.posix.mount:
+        path: "{{ etcd_nvme_mountpoint }}"
+        src: "LABEL={{ etcd_nvme_label }}"
+        fstype: "{{ etcd_nvme_fstype }}"
+        opts: defaults,noatime
+        state: mounted
+
+    - name: Confirm the data dir is now on NVMe
+      ansible.builtin.command: findmnt -nT {{ etcd_nvme_mountpoint }} -o SOURCE
+      register: etcd_nvme_confirm
+      changed_when: false
+      failed_when: "'/dev/nvme' not in etcd_nvme_confirm.stdout"

@@ -1,0 +1,73 @@
+# Additional control-plane node: join the embedded-etcd cluster.
+#
+# An orphaned standalone server (its own single-node SQLite cluster) is detected by
+# NOT being a Ready member of the real cluster, then wiped and re-joined. Idempotent:
+# once this node is a Ready member, nothing below runs.
+#
+# Joins target the init node's fixed IP (not the VIP): the init is always up while we
+# add the initial masters, and once a node is an etcd peer it no longer needs a
+# bootstrap endpoint. Agents (not servers) are the ones that ride the HAProxy VIP.
+
+- name: Check whether this node is already a Ready member of the cluster
+  # STATUS is column 2 of `get node --no-headers`. (jsonpath with quoted filters gets
+  # mangled by the command module's shlex parsing — see migrate-etcd-to-nvme.)
+  ansible.builtin.command: k3s kubectl get node {{ inventory_hostname }} --no-headers
+  delegate_to: "{{ groups['server_nodes'][0] }}"
+  become: true
+  register: k3s_join_node
+  failed_when: false
+  changed_when: false
+
+- name: Determine whether this node is already a Ready cluster member
+  ansible.builtin.set_fact:
+    k3s_already_member: >-
+      {{ k3s_join_node.rc == 0
+         and (k3s_join_node.stdout.split() | length > 1)
+         and k3s_join_node.stdout.split()[1] == 'Ready' }}
+
+- name: Uninstall the orphaned standalone K3s server before joining
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s-uninstall.sh
+  become: true
+  when:
+    - k3s_server_active.stdout == 'active'
+    - not k3s_already_member
+
+- name: Join this node as an additional control-plane server
+  ansible.builtin.shell: |
+    /bin/bash -c 'set -o pipefail; /tmp/k3s-install.sh'
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: "{{ k3s_server_exec }} --server https://{{ hostvars[groups['server_nodes'][0]]['ansible_host'] }}:6443"
+    K3S_TOKEN: "{{ k3s_token }}"
+    K3S_KUBECONFIG_MODE: "{{ k3s_kubeconfig_mode }}"
+  become: true
+  when: not k3s_already_member
+  changed_when: not k3s_already_member
+
+- name: Ensure the K3s server is started and enabled
+  ansible.builtin.systemd:
+    name: k3s
+    state: started
+    enabled: true
+  become: true
+  changed_when: false
+
+- name: Wait for this control-plane node to report Ready
+  ansible.builtin.command:
+    cmd: k3s kubectl get node {{ inventory_hostname }} --no-headers
+  delegate_to: "{{ groups['server_nodes'][0] }}"
+  become: true
+  register: k3s_join_ready
+  # STATUS is the 2nd column; matches "Ready" but not "NotReady".
+  until: k3s_join_ready.rc == 0 and (k3s_join_ready.stdout.split() | length > 1) and k3s_join_ready.stdout.split()[1] == 'Ready'
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Ensure the join node carries the worker role label
+  ansible.builtin.command:
+    cmd: k3s kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker=worker --overwrite
+  delegate_to: "{{ groups['server_nodes'][0] }}"
+  become: true
+  changed_when: false
