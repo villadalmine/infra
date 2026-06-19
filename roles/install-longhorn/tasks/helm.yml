@@ -101,9 +101,11 @@
 # remove all replicas first"), so removal is two phases: disable, then delete. Tagging the default
 # disk and deleting local-dir must be SEPARATE requests — bundling a delete makes the webhook reject
 # the whole patch. local-dir never scheduled anything (FS-collision), so it has no replicas to evict.
-# NOTE: no merge_type here. The default typed merge coerces storageReserved to int64 via the CRD
-# schema; forcing merge_type: merge sends a raw JSON merge patch where the templated value stays a
-# string and the webhook rejects it ("cannot unmarshal string into ... storageReserved of int64").
+# Template the whole disks dict as a VALUE, not as a mapping KEY: Ansible does not template nested
+# dict keys inside `definition`, so "{{ ... }}": as a key is sent literally and Longhorn creates a
+# bogus disk named with the raw Jinja. Build the patch dict in vars (key renders there) and pass it
+# as the value. No merge_type: the default typed merge coerces storageReserved to int64 via the CRD
+# schema (a raw JSON merge patch would send it as a string and the webhook rejects it).
 - name: Tag the default Longhorn disk (nvme) + reserve on hypervisor nodes
   kubernetes.core.k8s:
     state: patched
@@ -114,11 +116,10 @@
         name: "{{ item.item }}"
         namespace: "{{ longhorn_namespace }}"
       spec:
-        disks:
-          "{{ item.resources[0].spec.disks | dict2items | selectattr('key', 'match', 'default-disk-') | map(attribute='key') | first }}":
-            allowScheduling: true
-            storageReserved: "{{ longhorn_dir_reserved_bytes }}"
-            tags: "{{ longhorn_dir_tags }}"
+        disks: "{{ _tag_patch }}"
+  vars:
+    _default_name: "{{ item.resources[0].spec.disks | dict2items | selectattr('key', 'match', 'default-disk-') | map(attribute='key') | first }}"
+    _tag_patch: "{{ {_default_name: {'allowScheduling': true, 'storageReserved': longhorn_dir_reserved_bytes | int, 'tags': longhorn_dir_tags}} }}"
   loop: "{{ lh_dir_node_check.results }}"
   loop_control:
     label: "{{ item.item }}"
