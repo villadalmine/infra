@@ -2,3 +2,12 @@ longhorn_namespace: "longhorn-system"
 longhorn_chart_version: "1.11.2"
 
 longhorn_run_benchmark: false
+
+# Hypervisor / single-disk nodes (group [longhorn_dir_nodes], e.g. srv-t7910): they have no
+# dedicated storage device, so the Longhorn disk is a DIRECTORY on the existing root filesystem
+# (diskType: filesystem, same as the rk1 — the only difference is the path is a dir, not a mount).
+# storageReserved protects the shared OS/k8s disk so Longhorn never fills it. Tagged "nvme" so the
+# longhorn-vm StorageClass (diskSelector=nvme) can keep a replica LOCAL on the hypervisor (fast VM I/O).
+longhorn_dir_path: "/var/lib/longhorn"
+longhorn_dir_reserved_bytes: 354334801920   # ~330Gi reserved for OS/k8s/GPU on the shared SSD; tune per node
+longhorn_dir_tags: ["nvme"]

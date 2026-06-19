@@ -14,6 +14,21 @@
           node.longhorn.io/default-disks-config: '[{"name":"nvme-fs","path":"/mnt/nvme","allowScheduling":true,"tags":["nvme"],"diskType":"filesystem"}]'
   loop: "{{ groups['rk1_nodes'] | default([]) }}"
 
+- name: Label single-disk/hypervisor nodes for Longhorn (DIRECTORY disk on the shared SSD)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Node
+      metadata:
+        name: "{{ item }}"
+        labels:
+          storage: rk1-longhorn                          # → longhorn-manager corre acá = nodo Longhorn (puede attachear)
+          node.longhorn.io/create-default-disk: "config"
+        annotations:
+          node.longhorn.io/default-disks-config: '[{"name":"local-dir","path":"{{ longhorn_dir_path }}","allowScheduling":true,"storageReserved":{{ longhorn_dir_reserved_bytes }},"tags":{{ longhorn_dir_tags | to_json }},"diskType":"filesystem"}]'
+  loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
+
 - name: Ensure longhorn-csi-plugin DaemonSet runs on all nodes (Helm does not update nodeSelector reliably)
   kubernetes.core.k8s:
     state: patched
@@ -61,6 +76,39 @@
             tags:
               - nvme
   loop: "{{ groups['rk1_nodes'] | default([]) }}"
+
+- name: Wait for Longhorn to register single-disk/hypervisor nodes
+  kubernetes.core.k8s_info:
+    api_version: longhorn.io/v1beta2
+    kind: Node
+    namespace: "{{ longhorn_namespace }}"
+    name: "{{ item }}"
+  register: lh_dir_node_check
+  until: lh_dir_node_check.resources | length > 0
+  retries: 20
+  delay: 10
+  loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
+
+- name: Ensure DIRECTORY disk registered on single-disk/hypervisor nodes (storageReserved protects the OS)
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: longhorn.io/v1beta2
+      kind: Node
+      metadata:
+        name: "{{ item }}"
+        namespace: "{{ longhorn_namespace }}"
+      spec:
+        disks:
+          local-dir:
+            allowScheduling: true
+            diskDriver: ""
+            diskType: filesystem
+            evictionRequested: false
+            path: "{{ longhorn_dir_path }}"
+            storageReserved: "{{ longhorn_dir_reserved_bytes }}"
+            tags: "{{ longhorn_dir_tags }}"
+  loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
 
 - name: Add Longhorn Helm repository
   kubernetes.core.helm_repository:
