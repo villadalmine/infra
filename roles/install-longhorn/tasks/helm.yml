@@ -115,6 +115,13 @@
             storageReserved: "{{ longhorn_dir_reserved_bytes }}"
             tags: "{{ longhorn_dir_tags }}"
   loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
+  # On a freshly registered node the disk spec/status is still syncing and the longhorn
+  # validating webhook rejects edits ("disks ... are being syncing, retry later", 403).
+  # Retry through that window so the run is idempotent on first-time node registration.
+  register: lh_dir_disk_patch
+  until: lh_dir_disk_patch is succeeded
+  retries: 12
+  delay: 10
 
 - name: Add Longhorn Helm repository
   kubernetes.core.helm_repository:
