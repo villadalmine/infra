@@ -9,5 +9,7 @@ longhorn_run_benchmark: false
 # storageReserved protects the shared OS/k8s disk so Longhorn never fills it. Tagged "nvme" so the
 # longhorn-vm StorageClass (diskSelector=nvme) can keep a replica LOCAL on the hypervisor (fast VM I/O).
 longhorn_dir_path: "/var/lib/longhorn"
-longhorn_dir_reserved_bytes: 354334801920   # ~330Gi reserved for OS/k8s/GPU on the shared SSD; tune per node
+# ~150Gi reserved for OS/k8s/GPU-models on the shared 455G SSD (t7910 uses ~104G) → Longhorn gets
+# ~305G for VM-disk replicas. Tune per node: raise if the GPU/LLM models grow back a lot.
+longhorn_dir_reserved_bytes: 161061273600
 longhorn_dir_tags: ["nvme"]
