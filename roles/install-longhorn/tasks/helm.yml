@@ -14,7 +14,12 @@
           node.longhorn.io/default-disks-config: '[{"name":"nvme-fs","path":"/mnt/nvme","allowScheduling":true,"tags":["nvme"],"diskType":"filesystem"}]'
   loop: "{{ groups['rk1_nodes'] | default([]) }}"
 
-- name: Label single-disk/hypervisor nodes for Longhorn (DIRECTORY disk on the shared SSD)
+# Single-disk / hypervisor nodes (srv-t7910): the Longhorn data dir lives ON the root filesystem
+# (no dedicated device). Longhorn keys disks by filesystem UUID and refuses two disks on the same
+# FS (DiskFilesystemChanged). So we do NOT add our own dir disk — that collides with the default
+# disk Longhorn already maintains at defaultDataPath. Instead we let Longhorn create its single
+# default disk (create-default-disk=true) and then TAG that disk nvme + set reserved (task below).
+- name: Label single-disk/hypervisor nodes for Longhorn (single default disk on the shared root FS)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -24,15 +29,7 @@
         name: "{{ item }}"
         labels:
           storage: rk1-longhorn                          # → longhorn-manager corre acá = nodo Longhorn (puede attachear)
-          node.longhorn.io/create-default-disk: "config"
-        annotations:
-          # Pure literal string (no Jinja): a templated value here gets native_concat-coerced
-          # into a Python list, and Node annotations must be map[string]string → server rejects
-          # it ("cannot unmarshal array ... of type string"). Keep in sync with defaults/main.yml
-          # (longhorn_dir_path=/var/lib/longhorn, reserved=161061273600 ~150Gi, tags=["nvme"]).
-          # The authoritative disk config is the typed Longhorn Node CR patch below; this annotation
-          # only seeds the initial create-default-disk.
-          node.longhorn.io/default-disks-config: '[{"name":"local-dir","path":"/var/lib/longhorn","allowScheduling":true,"storageReserved":161061273600,"tags":["nvme"],"diskType":"filesystem"}]'
+          node.longhorn.io/create-default-disk: "true"   # auto default disk at defaultDataPath (/var/lib/longhorn); no second disk
   loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
 
 - name: Ensure longhorn-csi-plugin DaemonSet runs on all nodes (Helm does not update nodeSelector reliably)
@@ -83,41 +80,46 @@
               - nvme
   loop: "{{ groups['rk1_nodes'] | default([]) }}"
 
-- name: Wait for Longhorn to register single-disk/hypervisor nodes
+- name: Wait for Longhorn to register single-disk/hypervisor nodes (and their default disk)
   kubernetes.core.k8s_info:
     api_version: longhorn.io/v1beta2
     kind: Node
     namespace: "{{ longhorn_namespace }}"
     name: "{{ item }}"
   register: lh_dir_node_check
-  until: lh_dir_node_check.resources | length > 0
-  retries: 20
+  until:
+    - lh_dir_node_check.resources | length > 0
+    - lh_dir_node_check.resources[0].spec.disks | dict2items | selectattr('key', 'match', 'default-disk-') | list | length > 0
+  retries: 30
   delay: 10
   loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
 
-- name: Ensure DIRECTORY disk registered on single-disk/hypervisor nodes (storageReserved protects the OS)
+# One disk per filesystem: tag Longhorn's own default disk (on the root FS) with nvme + set
+# storageReserved, and delete any duplicate dir disk we created in earlier runs (merge patch,
+# null deletes the key). This is what lets the longhorn-vm StorageClass (diskSelector: nvme)
+# keep a local VM-disk replica on the hypervisor without a DiskFilesystemChanged collision.
+- name: Tag the default Longhorn disk (nvme) + reserve, drop duplicate dir disk (hypervisor nodes)
   kubernetes.core.k8s:
     state: patched
+    merge_type: merge
     definition:
       apiVersion: longhorn.io/v1beta2
       kind: Node
       metadata:
-        name: "{{ item }}"
+        name: "{{ item.item }}"
         namespace: "{{ longhorn_namespace }}"
       spec:
-        disks:
-          local-dir:
-            allowScheduling: true
-            diskDriver: ""
-            diskType: filesystem
-            evictionRequested: false
-            path: "{{ longhorn_dir_path }}"
-            storageReserved: "{{ longhorn_dir_reserved_bytes }}"
-            tags: "{{ longhorn_dir_tags }}"
-  loop: "{{ groups['longhorn_dir_nodes'] | default([]) }}"
+        disks: "{{ _patch_disks }}"
+  vars:
+    _disks_now: "{{ item.resources[0].spec.disks }}"
+    _default_name: "{{ _disks_now | dict2items | selectattr('key', 'match', 'default-disk-') | map(attribute='key') | first }}"
+    _default_patched: "{{ _disks_now[_default_name] | combine({'allowScheduling': true, 'storageReserved': longhorn_dir_reserved_bytes | int, 'tags': longhorn_dir_tags}) }}"
+    _patch_disks: "{{ {_default_name: _default_patched} | combine({'local-dir': none} if 'local-dir' in _disks_now else {}) }}"
+  loop: "{{ lh_dir_node_check.results }}"
+  loop_control:
+    label: "{{ item.item }}"
   # On a freshly registered node the disk spec/status is still syncing and the longhorn
   # validating webhook rejects edits ("disks ... are being syncing, retry later", 403).
-  # Retry through that window so the run is idempotent on first-time node registration.
   register: lh_dir_disk_patch
   until: lh_dir_disk_patch is succeeded
   retries: 12
