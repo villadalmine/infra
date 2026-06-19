@@ -1,0 +1,86 @@
+---
+# install-crossplane — runs on localhost (kubeconfig + asdf shims on PATH).
+# Idempotent: helm upgrade --install, declarative apply of Function + RBAC.
+
+- name: Wait for the cluster API to be reachable from localhost
+  ansible.builtin.command:
+    cmd: kubectl get nodes
+  register: xp_api_check
+  until: xp_api_check.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+
+- name: Install/upgrade Crossplane (Helm)
+  kubernetes.core.helm:
+    name: crossplane
+    chart_ref: crossplane
+    chart_repo_url: "{{ crossplane_chart_repo }}"
+    chart_version: "{{ crossplane_chart_version }}"
+    release_namespace: "{{ crossplane_namespace }}"
+    create_namespace: true
+    wait: true
+    timeout: 10m
+
+- name: Wait for the Crossplane deployment to be available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ crossplane_namespace }}"
+    name: crossplane
+  register: xp_deploy
+  until: >
+    xp_deploy.resources | length > 0 and
+    (xp_deploy.resources[0].status.availableReplicas | default(0)) >= 1
+  retries: 30
+  delay: 10
+
+- name: Install the patch-and-transform composition function
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: pkg.crossplane.io/v1
+      kind: Function
+      metadata:
+        name: function-patch-and-transform
+      spec:
+        package: "{{ crossplane_function_pnt_image }}"
+
+- name: Wait for the function to become Healthy
+  kubernetes.core.k8s_info:
+    api_version: pkg.crossplane.io/v1
+    kind: Function
+    name: function-patch-and-transform
+  register: xp_fn
+  until: >
+    xp_fn.resources | length > 0 and
+    (xp_fn.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Healthy')
+      | selectattr('status', 'equalto', 'True') | list | length > 0)
+  retries: 30
+  delay: 10
+
+# Crossplane v2: composing non-Crossplane resources (CAPI Cluster, KubevirtCluster,
+# KubeadmControlPlane, MachineDeployment, …) requires explicit RBAC. Grant it via a
+# ClusterRole aggregated into Crossplane's own ClusterRole.
+- name: Grant Crossplane RBAC to compose Cluster API resources
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: crossplane-compose-capi
+        labels:
+          rbac.crossplane.io/aggregate-to-crossplane: "true"
+      rules:
+        - apiGroups: "{{ crossplane_capi_api_groups }}"
+          resources: ["*"]
+          verbs: ["*"]
+
+- name: Show how to verify Crossplane
+  ansible.builtin.debug:
+    msg:
+      - "Crossplane {{ crossplane_chart_version }} ready. Verify:  kubectl get pods -n {{ crossplane_namespace }}"
+      - "Verify function:  kubectl get function function-patch-and-transform"
+      - "Next: apply the XRD + Composition (fleet-demo/), then a namespaced XHostCluster."

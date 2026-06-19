@@ -1,0 +1,224 @@
+# Crossplane v2 Composition — composes the Cluster API + KubeVirt objects DIRECTLY.
+#
+# v2 highlights shown here:
+#   - Composition still uses apiextensions.crossplane.io/v1 (only the XRD moved to /v2).
+#   - mode: Pipeline + function-patch-and-transform (native patch&transform was removed in v2).
+#   - It composes CAPI CRDs (Cluster, KubevirtCluster, KubeadmControlPlane, …) with NO
+#     provider-kubernetes Object wrapper — v2 can compose any resource. (RBAC for this is
+#     granted by the install-crossplane role: ClusterRole crossplane-compose-capi.)
+#
+# Naming: every object's name derives from the XR name (metadata.name) so multiple
+# HostClusters in a namespace never collide and all cross-references line up:
+#   <xr>                 → Cluster, KubevirtCluster
+#   <xr>-control-plane   → KubeadmControlPlane, KubevirtMachineTemplate (CP)
+#   <xr>-md-0            → MachineDeployment, KubeadmConfigTemplate, KubevirtMachineTemplate (worker)
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: hostcluster-kubevirt
+spec:
+  compositeTypeRef:
+    apiVersion: fleet.homelab.io/v1alpha1
+    kind: HostCluster
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+
+          # ---------- Cluster ----------
+          - name: cluster
+            base:
+              apiVersion: cluster.x-k8s.io/v1beta1
+              kind: Cluster
+              spec:
+                clusterNetwork:
+                  pods: { cidrBlocks: ["10.243.0.0/16"] }
+                  services: { cidrBlocks: ["10.95.0.0/16"] }
+                controlPlaneRef:
+                  apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+                  kind: KubeadmControlPlane
+                infrastructureRef:
+                  apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+                  kind: KubevirtCluster
+            patches:
+              - { type: FromCompositeFieldPath, fromFieldPath: metadata.name, toFieldPath: metadata.name }
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.controlPlaneRef.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-control-plane" } }]
+              - { type: FromCompositeFieldPath, fromFieldPath: metadata.name, toFieldPath: spec.infrastructureRef.name }
+              # expose the generated cluster name back on the XR status
+              - { type: ToCompositeFieldPath, fromFieldPath: metadata.name, toFieldPath: status.clusterName }
+
+          # ---------- KubevirtCluster (infra) ----------
+          - name: kubevirtcluster
+            base:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+              kind: KubevirtCluster
+              spec:
+                controlPlaneServiceTemplate:
+                  spec:
+                    type: ClusterIP
+            patches:
+              - { type: FromCompositeFieldPath, fromFieldPath: metadata.name, toFieldPath: metadata.name }
+
+          # ---------- KubeadmControlPlane ----------
+          - name: controlplane
+            base:
+              apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+              kind: KubeadmControlPlane
+              spec:
+                machineTemplate:
+                  infrastructureRef:
+                    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+                    kind: KubevirtMachineTemplate
+                kubeadmConfigSpec:
+                  clusterConfiguration:
+                    networking: { dnsDomain: cluster.local }
+                  initConfiguration:
+                    nodeRegistration:
+                      criSocket: /var/run/containerd/containerd.sock
+                      kubeletExtraArgs: {}
+                  joinConfiguration:
+                    nodeRegistration:
+                      criSocket: /var/run/containerd/containerd.sock
+                      kubeletExtraArgs: {}
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-control-plane" } }]
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.machineTemplate.infrastructureRef.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-control-plane" } }]
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.controlPlaneReplicas, toFieldPath: spec.replicas }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.kubernetesVersion, toFieldPath: spec.version }
+
+          # ---------- KubevirtMachineTemplate (control plane) ----------
+          - name: cp-machinetemplate
+            base:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+              kind: KubevirtMachineTemplate
+              spec:
+                template:
+                  spec:
+                    virtualMachineTemplate:
+                      spec:
+                        runStrategy: Always
+                        template:
+                          spec:
+                            evictionStrategy: External
+                            domain:
+                              cpu: { cores: 2 }
+                              memory: { guest: 4Gi }
+                              devices:
+                                disks:
+                                  - name: containervolume
+                                    disk: { bus: virtio }
+                            volumes:
+                              - name: containervolume
+                                containerDisk:
+                                  image: quay.io/capk/ubuntu-2404-container-disk:v1.31.0
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-control-plane" } }]
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.cpuCores, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.domain.cpu.cores }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.memory, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.domain.memory.guest }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.nodeImage, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.volumes[0].containerDisk.image }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.vmNodeHostname, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.nodeSelector["kubernetes.io/hostname"] }
+
+          # ---------- MachineDeployment (workers) ----------
+          - name: machinedeployment
+            base:
+              apiVersion: cluster.x-k8s.io/v1beta1
+              kind: MachineDeployment
+              spec:
+                selector:
+                  matchLabels: {}
+                template:
+                  spec:
+                    bootstrap:
+                      configRef:
+                        apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+                        kind: KubeadmConfigTemplate
+                    infrastructureRef:
+                      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+                      kind: KubevirtMachineTemplate
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-md-0" } }]
+              - { type: FromCompositeFieldPath, fromFieldPath: metadata.name, toFieldPath: spec.clusterName }
+              - { type: FromCompositeFieldPath, fromFieldPath: metadata.name, toFieldPath: spec.template.spec.clusterName }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.workerReplicas, toFieldPath: spec.replicas }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.kubernetesVersion, toFieldPath: spec.template.spec.version }
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.template.spec.bootstrap.configRef.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-md-0" } }]
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.template.spec.infrastructureRef.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-md-0" } }]
+
+          # ---------- KubevirtMachineTemplate (worker) ----------
+          - name: md-machinetemplate
+            base:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+              kind: KubevirtMachineTemplate
+              spec:
+                template:
+                  spec:
+                    virtualMachineTemplate:
+                      spec:
+                        runStrategy: Always
+                        template:
+                          spec:
+                            evictionStrategy: External
+                            domain:
+                              cpu: { cores: 2 }
+                              memory: { guest: 4Gi }
+                              devices:
+                                disks:
+                                  - name: containervolume
+                                    disk: { bus: virtio }
+                            volumes:
+                              - name: containervolume
+                                containerDisk:
+                                  image: quay.io/capk/ubuntu-2404-container-disk:v1.31.0
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-md-0" } }]
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.cpuCores, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.domain.cpu.cores }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.memory, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.domain.memory.guest }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.nodeImage, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.volumes[0].containerDisk.image }
+              - { type: FromCompositeFieldPath, fromFieldPath: spec.vmNodeHostname, toFieldPath: spec.template.spec.virtualMachineTemplate.spec.template.spec.nodeSelector["kubernetes.io/hostname"] }
+
+          # ---------- KubeadmConfigTemplate (worker bootstrap) ----------
+          - name: md-bootstrap
+            base:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              spec:
+                template:
+                  spec:
+                    joinConfiguration:
+                      nodeRegistration:
+                        criSocket: /var/run/containerd/containerd.sock
+                        kubeletExtraArgs: {}
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms: [{ type: string, string: { type: Format, fmt: "%s-md-0" } }]

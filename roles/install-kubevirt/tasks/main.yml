@@ -1,0 +1,89 @@
+---
+# install-kubevirt — runs on localhost (kubeconfig + asdf shims, like the other
+# cluster-level roles). Idempotent: apply is declarative; CR waits are no-ops once
+# KubeVirt is Available.
+
+- name: Wait for the cluster API to be reachable from localhost
+  ansible.builtin.command:
+    cmd: kubectl get nodes
+  register: kv_api_check
+  until: kv_api_check.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+
+- name: Apply the KubeVirt operator (release manifest)
+  kubernetes.core.k8s:
+    state: present
+    src: "https://github.com/kubevirt/kubevirt/releases/download/{{ kubevirt_version }}/kubevirt-operator.yaml"
+
+- name: Wait for the KubeVirt operator deployment to be available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: kubevirt
+    name: virt-operator
+  register: kv_operator
+  until: >
+    kv_operator.resources | length > 0 and
+    (kv_operator.resources[0].status.availableReplicas | default(0)) >= 1
+  retries: 30
+  delay: 10
+
+- name: Create/patch the KubeVirt CR (pin VM workloads to the x86 KVM node)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: kubevirt.io/v1
+      kind: KubeVirt
+      metadata:
+        name: kubevirt
+        namespace: kubevirt
+      spec:
+        certificateRotateStrategy: {}
+        imagePullPolicy: IfNotPresent
+        # Pin the VM-hosting components (virt-handler DaemonSet, virt-launcher pods)
+        # to the x86 node. infra components (virt-api, virt-controller) run anywhere.
+        workloads:
+          nodePlacement:
+            nodeSelector: "{{ kubevirt_node_selector }}"
+        configuration:
+          developerConfiguration:
+            useEmulation: "{{ kubevirt_use_emulation | bool }}"
+            featureGates: "{{ kubevirt_feature_gates }}"
+
+- name: Wait for KubeVirt to report Available (all components deployed)
+  kubernetes.core.k8s_info:
+    api_version: kubevirt.io/v1
+    kind: KubeVirt
+    namespace: kubevirt
+    name: kubevirt
+  register: kv_cr
+  until: >
+    kv_cr.resources | length > 0 and
+    (kv_cr.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Available')
+      | selectattr('status', 'equalto', 'True') | list | length > 0)
+  retries: 60
+  delay: 10
+
+# --- Optional CDI (only if you switch CAPK to DataVolume disks) -------------
+- name: Apply CDI operator + CR (optional)
+  when: kubevirt_cdi_enabled | bool
+  block:
+    - name: Apply the CDI operator
+      kubernetes.core.k8s:
+        state: present
+        src: "https://github.com/kubevirt/containerized-data-importer/releases/download/{{ kubevirt_cdi_version }}/cdi-operator.yaml"
+    - name: Apply the CDI CR
+      kubernetes.core.k8s:
+        state: present
+        src: "https://github.com/kubevirt/containerized-data-importer/releases/download/{{ kubevirt_cdi_version }}/cdi-cr.yaml"
+
+- name: Show how to verify KubeVirt
+  ansible.builtin.debug:
+    msg:
+      - "KubeVirt {{ kubevirt_version }} installed; VM workloads pinned to {{ kubevirt_node_selector }}."
+      - "Verify:  kubectl -n kubevirt get kv kubevirt -o jsonpath='{.status.phase}'   # → Deployed"
+      - "Verify:  kubectl -n kubevirt get pods -o wide                                 # virt-handler only on srv-t7910"
+      - "On srv-t7910:  ls -l /dev/kvm   # must exist for real virtualization"

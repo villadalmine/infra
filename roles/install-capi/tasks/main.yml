@@ -1,0 +1,65 @@
+---
+# install-capi — IMPERATIVE ALTERNATIVE to the GitOps path (NO clusterctl).
+# Runs on localhost (kubeconfig + asdf shims). Idempotent (helm upgrade + declarative CRs).
+# Prefer the GitOps path (ArgoCD) unless you specifically want Ansible to own CAPI.
+
+- name: Wait for the cluster API to be reachable from localhost
+  ansible.builtin.command:
+    cmd: kubectl get nodes
+  register: capi_api_check
+  until: capi_api_check.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+
+- name: Install/upgrade the Cluster API Operator (Helm — replaces clusterctl init)
+  kubernetes.core.helm:
+    name: cluster-api-operator
+    chart_ref: cluster-api-operator
+    chart_repo_url: "{{ capi_operator_chart_repo }}"
+    chart_version: "{{ capi_operator_chart_version }}"
+    release_namespace: "{{ capi_operator_namespace }}"
+    create_namespace: true
+    wait: true
+    timeout: 10m
+    values:
+      cert-manager:
+        enabled: false   # reuse the cluster's existing jetstack cert-manager
+
+- name: Apply the provider CRs (operator materialises the real CAPI CRDs + controllers)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      - apiVersion: operator.cluster.x-k8s.io/v1alpha2
+        kind: CoreProvider
+        metadata: { name: cluster-api, namespace: capi-system }
+        spec: "{{ {'version': capi_core_version} if capi_core_version else {} }}"
+      - apiVersion: operator.cluster.x-k8s.io/v1alpha2
+        kind: BootstrapProvider
+        metadata: { name: kubeadm, namespace: capi-kubeadm-bootstrap-system }
+        spec: "{{ {'version': capi_bootstrap_version} if capi_bootstrap_version else {} }}"
+      - apiVersion: operator.cluster.x-k8s.io/v1alpha2
+        kind: ControlPlaneProvider
+        metadata: { name: kubeadm, namespace: capi-kubeadm-control-plane-system }
+        spec: "{{ {'version': capi_controlplane_version} if capi_controlplane_version else {} }}"
+      - apiVersion: operator.cluster.x-k8s.io/v1alpha2
+        kind: InfrastructureProvider
+        metadata: { name: kubevirt, namespace: capk-system }
+        spec: "{{ {'version': capi_kubevirt_version} if capi_kubevirt_version else {} }}"
+
+- name: Wait for the CAPI core CRD to be installed by the operator
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: clusters.cluster.x-k8s.io
+  register: capi_core_crd
+  until: capi_core_crd.resources | length > 0
+  retries: 30
+  delay: 10
+
+- name: Show how to verify CAPI
+  ansible.builtin.debug:
+    msg:
+      - "CAPI installed via the operator (no clusterctl). Verify:  kubectl get providers -A"
+      - "CRDs:  kubectl get crd | grep cluster.x-k8s.io   (clusters, machines, kubevirtclusters…)"
+      - "GitOps equivalent: platform/addons/cluster-api-operator.yaml + fleet/config/capi-providers.yaml"

@@ -1,0 +1,168 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: remote-workspace
+  namespace: {{ remote_workspace_namespace }}
+type: Opaque
+stringData:
+  code-password: "{{ remote_workspace_code_password }}"
+  webdav-user: "{{ remote_workspace_webdav_user }}"
+  webdav-password: "{{ remote_workspace_webdav_password }}"
+  cloudflared-token: "{{ remote_workspace_cloudflared_token }}"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: remote-workspace-data
+  namespace: {{ remote_workspace_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ remote_workspace_storage_class }}
+  resources:
+    requests:
+      storage: {{ remote_workspace_storage_size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remote-workspace
+  namespace: {{ remote_workspace_namespace }}
+  labels:
+    app: remote-workspace
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # RWO PVC shared by both containers in this pod
+  selector:
+    matchLabels:
+      app: remote-workspace
+  template:
+    metadata:
+      labels:
+        app: remote-workspace
+    spec:
+{% if remote_workspace_node_hostname | default('') != '' %}
+      nodeSelector:
+        kubernetes.io/hostname: {{ remote_workspace_node_hostname }}
+{% endif %}
+      containers:
+        # ─── VS Code in the browser ───────────────────────────────────────────
+        - name: code-server
+          image: {{ remote_workspace_code_image }}:{{ remote_workspace_code_tag }}
+          ports:
+            - containerPort: {{ remote_workspace_code_port }}
+              name: code
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: "America/Argentina/Buenos_Aires"
+            - name: PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: remote-workspace
+                  key: code-password
+            - name: DEFAULT_WORKSPACE
+              value: "/config/workspace"
+          volumeMounts:
+            - name: data
+              mountPath: /config
+          resources:
+            requests:
+              cpu: {{ remote_workspace_code_cpu_request }}
+              memory: {{ remote_workspace_code_memory_request }}
+            limits:
+              cpu: {{ remote_workspace_code_cpu_limit }}
+              memory: {{ remote_workspace_code_memory_limit }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: code
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: code
+            periodSeconds: 30
+        # ─── WebDAV over the same files (Finder mount on the Mac) ──────────────
+        - name: webdav
+          image: {{ remote_workspace_webdav_image }}:{{ remote_workspace_webdav_tag }}
+          args:
+            - "serve"
+            - "webdav"
+            - "/data/workspace"
+            - "--addr=:{{ remote_workspace_webdav_port }}"
+            - "--user=$(WEBDAV_USER)"
+            - "--pass=$(WEBDAV_PASS)"
+          env:
+            - name: WEBDAV_USER
+              valueFrom:
+                secretKeyRef:
+                  name: remote-workspace
+                  key: webdav-user
+            - name: WEBDAV_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: remote-workspace
+                  key: webdav-password
+          ports:
+            - containerPort: {{ remote_workspace_webdav_port }}
+              name: webdav
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: remote-workspace-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: remote-workspace
+  namespace: {{ remote_workspace_namespace }}
+  labels:
+    app: remote-workspace
+spec:
+  type: ClusterIP
+  selector:
+    app: remote-workspace
+  ports:
+    - name: code
+      port: {{ remote_workspace_code_port }}
+      targetPort: code
+    - name: webdav
+      port: {{ remote_workspace_webdav_port }}
+      targetPort: webdav
+{% if remote_workspace_code_internal_host | default('') != '' %}
+---
+# Optional: reach code-server from your home LAN without the tunnel.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: remote-workspace
+  namespace: {{ remote_workspace_namespace }}
+  labels:
+    app: remote-workspace
+spec:
+  parentRefs:
+    - name: cluster-gateway
+      namespace: gateway
+  hostnames:
+    - "{{ remote_workspace_code_internal_host }}"
+  rules:
+    - backendRefs:
+        - name: remote-workspace
+          port: {{ remote_workspace_code_port }}
+{% endif %}

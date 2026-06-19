@@ -130,3 +130,25 @@ make nas-admin
 Auth mode: `basic` (default) or `oidc` (GitHub OAuth via oauth2-proxy sidecar) — set `nas_admin_auth_mode`.
 
 **Features:** PV list (SMB-filtered, orphan detection + **delete orphaned PVs**), PVC list (all namespaces, pod owner, delete with confirm), NAS file browser (mounts NAS share ReadOnly via dedicated PVC in `storage` ns).
+
+## Remote Workspace (Claude personal desde laptop con Zscaler)
+
+Acceso a **tu Claude personal + tus proyectos** desde una laptop corporativa
+bloqueada por Zscaler, usando **solo el browser**. code-server (VS Code en
+browser) + WebDAV (disco montable en Finder) + cloudflared (túnel saliente que
+pasa Zscaler vía Cloudflare). Del lado de la laptop no se instala nada.
+
+> Frontera: workspace y disco **personales**. No subas código del empleador.
+
+**Deploy:**
+```bash
+# 1) Completá roles/install-remote-workspace/defaults/secrets.yml (gitignored):
+#    password de code-server, user/pass WebDAV, token del Cloudflare Tunnel.
+# 2) En Cloudflare Zero Trust: creá el tunnel, mapeá claude.tudominio → :8443 y
+#    files.tudominio → :8080, protegé con Cloudflare Access.
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags remote-workspace
+```
+
+**Acceso:** `https://claude.tudominio.com` (VS Code + terminal `claude`),
+`https://files.tudominio.com` (WebDAV, montar en Finder con ⌘K).
+Guía completa: `skills/remote-workspace/SKILL.md`.

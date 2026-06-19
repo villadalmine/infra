@@ -194,3 +194,9 @@
       tags: [nas-admin]
     - role: install-headlamp
       tags: [headlamp, ai]
+
+    # Remote workspace — code-server + WebDAV + cloudflared tunnel.
+    # Reach your personal Claude + projects from a locked-down (Zscaler) laptop
+    # through a browser only. See skills/remote-workspace/SKILL.md
+    - role: install-remote-workspace
+      tags: [remote-workspace]

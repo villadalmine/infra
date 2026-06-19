@@ -81,6 +81,7 @@ all tags up to the layer you need.
 | `ai-npu-pool` | install-rknpu-pool (4× rkllama NPU servers) | `networking`, `longhorn` |
 | `ai-stt` | install-whisper-stt — Whisper in-cluster (OpenAI-compatible, sin API key); STT para voice notes de OpenClaw | `networking` + `longhorn` |
 | `tailscale` | install-tailscale — Tailscale subnet router on any idle node for remote access (demo, travel). See `skills/remote-access/SKILL.md` | — (standalone, no deps) |
+| `remote-workspace` | install-remote-workspace — code-server (VS Code en browser) + WebDAV + cloudflared tunnel. Acceso a tu Claude personal + proyectos desde laptop con Zscaler, solo con browser. See `skills/remote-workspace/SKILL.md` | `networking` + `longhorn` |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -145,8 +146,8 @@ git diff --cached | grep -iE "(api_key|token|password|secret)\s*[=:]\s*['\"]?[a-
 
 | Component | Helm Chart | Version | App Version |
 |---|---|---|---|
-| K3s | — | v1.35.2+k3s1 | — |
-| Cilium | `cilium/cilium` | 1.19.2 | 1.19.2 |
+| K3s | — | v1.35.5+k3s1 | — |
+| Cilium | `cilium/cilium` | 1.19.5 | 1.19.5 |
 | cert-manager | `jetstack/cert-manager` | v1.20.1 | v1.20.1 |
 | kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | 82.18.0 | v0.89.0 |
 | Tempo | `grafana-community/tempo` | 1.26.7 | 2.10.1 |
@@ -208,6 +209,7 @@ Read the relevant skill before working on a component.
 | `nas-admin` | NAS admin panel — FastAPI+HTMX+Helm, Kaniko build, auth options |
 | `ai-memory` | Guidelines for cross-session AI Memory persistence |
 | `remote-access` | Acceso remoto al cluster (demo, viaje) — Tailscale subnet router (recomendado), HAProxy+MikroTik, SSH tunnel. Rol: `install-tailscale`, tag: `tailscale` |
+| `remote-workspace` | Claude personal + proyectos desde laptop corporativa con Zscaler — code-server + WebDAV + cloudflared. Solo browser del lado cliente. Rol: `install-remote-workspace`, tag: `remote-workspace` |
 
 ## AI Tools (self-contained)
 

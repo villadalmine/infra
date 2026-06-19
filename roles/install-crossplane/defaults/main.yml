@@ -1,0 +1,26 @@
+---
+# install-crossplane — Crossplane v2 on the management cluster, configured to
+# COMPOSE Cluster API resources directly (no provider-kubernetes shim).
+#
+# Why v2 matters here:
+#   - v2 XRs are NAMESPACED and there are NO claims (the XR you create IS the request).
+#   - v2 can compose ANY Kubernetes resource — including a CAPI `Cluster` — directly.
+#   - native patch-and-transform was REMOVED → Compositions run a function pipeline,
+#     so we install function-patch-and-transform.
+#   - v2 requires FULLY-QUALIFIED package images (registry + repo + tag).
+
+crossplane_namespace: "crossplane-system"
+crossplane_chart_repo: "https://charts.crossplane.io/stable"
+crossplane_chart_version: "2.3.0"   # check: helm search repo crossplane-stable/crossplane
+
+# Composition function. v2 needs a fully-qualified image. Verify latest tag at:
+#   https://github.com/crossplane-contrib/function-patch-and-transform/releases
+crossplane_function_pnt_image: "xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.9.0"
+
+# API groups Crossplane must be allowed to compose (CAPI is not a Crossplane type,
+# so v2 requires explicit RBAC granted via an aggregated ClusterRole).
+crossplane_capi_api_groups:
+  - cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io
+  - bootstrap.cluster.x-k8s.io
+  - controlplane.cluster.x-k8s.io

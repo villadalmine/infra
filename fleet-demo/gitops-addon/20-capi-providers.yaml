@@ -1,0 +1,42 @@
+# Declarative CAPI providers — the Cluster API Operator reconciles these into the
+# same controllers + CRDs that `clusterctl init` would install imperatively.
+# sync-wave 1 → applied after the operator is up. Bump `version:` + sync = upgrade.
+#
+# Leave version empty to track the operator's default/latest; pin for reproducibility.
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: CoreProvider
+metadata:
+  name: cluster-api
+  namespace: capi-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec: {}        # version: "v1.11.0"
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: BootstrapProvider
+metadata:
+  name: kubeadm
+  namespace: capi-kubeadm-bootstrap-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec: {}
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: ControlPlaneProvider
+metadata:
+  name: kubeadm
+  namespace: capi-kubeadm-control-plane-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec: {}
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: InfrastructureProvider
+metadata:
+  name: kubevirt
+  namespace: capk-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  version: "v0.11.1"      # CAPK — check the releases page

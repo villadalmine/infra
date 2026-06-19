@@ -78,6 +78,27 @@ kubectl get nodes                                # must keep working via the VIP
 ssh dalmine@<master> "sudo systemctl start k3s"
 ```
 
+### Rolling version upgrade (zero downtime)
+**k3s:** bump `k3s_version` in `roles/install-k3s/defaults/main.yml`, then roll one node
+at a time (control-plane first, quorum + VIP hold the API):
+```bash
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags core -e k3s_install_serial=1
+```
+install-k3s detects version drift (`k3s --version` vs `k3s_version`) and re-runs the
+installer even though the state guards would skip it; each node waits Ready before the next.
+
+**Cilium:** bump `cilium_version` in `roles/install-cilium/defaults/main.yml`, then:
+```bash
+ansible-playbook playbooks/bootstrap.yml -i inventory/hosts.ini --tags networking
+```
+`helm upgrade` + `rollOutCiliumPods` restart the DaemonSet; the BPF datapath persists in
+the kernel, so there's no network outage. **Upgrade Cilium BEFORE k8s if k8s would move
+out of Cilium's tested range.**
+
+**Version ceiling:** Cilium 1.19.x supports k8s **1.32–1.35 only**. Going to k8s 1.36
+needs Cilium 1.20.x, which is still pre-release — so the cluster stays on the 1.35 line
+(latest k3s `v1.35.5+k3s1`, Cilium `1.19.5`) until Cilium 1.20 is stable.
+
 ## Gotchas (learned the hard way)
 
 - **`option redispatch` is mandatory on the VIP.** Without it, when round-robin picks a

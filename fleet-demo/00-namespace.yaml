@@ -1,0 +1,7 @@
+# Namespace that holds the fleet objects.
+# Crossplane v2 XRs are NAMESPACED, and the CAPI resources the XR composes are
+# created in the SAME namespace as the XR (no cluster-scoped claim indirection).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleet

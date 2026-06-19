@@ -1,0 +1,33 @@
+# Opt-in fleet stack: turn the EXISTING homelab cluster into a Cluster API
+# management cluster with KubeVirt + CAPK + Crossplane v2, so you can create
+# workload (host) clusters as VMs on srv-t7910.
+#
+# NOT wired into bootstrap.yml — run explicitly:
+#   ansible-playbook playbooks/fleet-kubevirt.yml -i inventory/hosts.ini
+#
+# Selective:
+#   --tags kubevirt | capi | crossplane
+#
+# After it finishes, apply the demo manifests (see ../fleet-demo/README.md):
+#   kubectl apply -f fleet-demo/00-namespace.yaml
+#   kubectl apply -f fleet-demo/10-xrd-hostcluster.yaml
+#   kubectl apply -f fleet-demo/20-composition-hostcluster.yaml
+#   kubectl apply -f fleet-demo/50-hostcluster-example.yaml
+
+- name: Install KubeVirt + CAPI/CAPK + Crossplane v2 (fleet provisioning stack)
+  hosts: localhost
+  gather_facts: true
+  environment:
+    PATH: "{{ lookup('env','HOME') }}/.asdf/shims:{{ lookup('env','HOME') }}/.asdf/bin:{{ lookup('env','PATH') }}"
+  roles:
+    - role: install-kubevirt
+      tags: [fleet, kubevirt]
+    # CAPI is installed by ArgoCD (GitOps), NOT here:
+    #   platform/addons/cluster-api-operator.yaml  → the operator (Helm)
+    #   fleet/config/capi-providers.yaml           → provider CRs → operator installs the CRDs
+    # The install-capi role is the IMPERATIVE alternative (also no clusterctl); enable it
+    # only if you are NOT using ArgoCD:
+    # - role: install-capi
+    #   tags: [fleet, capi]
+    - role: install-crossplane
+      tags: [fleet, crossplane]

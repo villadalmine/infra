@@ -1,0 +1,20 @@
+---
+# install-capi — IMPERATIVE ALTERNATIVE (no clusterctl). Installs the Cluster API
+# Operator via Helm and applies the provider CRs. Use this ONLY if you are NOT doing
+# GitOps. The CHOSEN path is GitOps: ArgoCD installs the operator
+# (platform/addons/cluster-api-operator.yaml) + provider CRs (fleet/config/
+# capi-providers.yaml). Both paths avoid clusterctl entirely.
+#
+# How the CRDs appear (either path): the operator installs its own CRDs (CoreProvider,
+# InfrastructureProvider, …); applying those provider CRs makes the operator download
+# and install the REAL CAPI CRDs + controllers (clusters.cluster.x-k8s.io, kubevirt…).
+
+capi_operator_namespace: "capi-operator-system"
+capi_operator_chart_repo: "https://kubernetes-sigs.github.io/cluster-api-operator"
+capi_operator_chart_version: "0.21.0"   # verify: helm search repo capi-operator/cluster-api-operator
+
+# Provider versions. Empty = operator default/latest. Pin for reproducibility.
+capi_core_version: ""            # e.g. "v1.11.0"
+capi_bootstrap_version: ""       # kubeadm
+capi_controlplane_version: ""    # kubeadm
+capi_kubevirt_version: "v0.11.1" # CAPK — check releases page

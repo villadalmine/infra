@@ -1,0 +1,33 @@
+---
+# install-kubevirt — KubeVirt operator + CR on the existing cluster (management).
+# Lets CAPK (Cluster API Provider KubeVirt) create workload-cluster nodes as VMs.
+#
+# VM-hosting components (virt-handler / virt-launcher) are PINNED to the x86 node
+# (srv-t7910) because it is the only node with real KVM (VT-x). The ARM CM4/RK1/Pi
+# nodes do not host VMs — virt-handler simply will not run there.
+
+# KubeVirt release. v1.8 is built for k8s 1.35 (supports 1.35/1.34/1.33).
+# ⚠️ The cluster is moving to k8s 1.36.1 → use the KubeVirt release whose support
+# matrix lists 1.36 (v1.9+ when available). Check the matrix before bumping:
+#   https://github.com/kubevirt/kubevirt/blob/main/docs/kubernetes-compatibility.md
+kubevirt_version: "v1.8.0"
+
+# Optional CDI (Containerized Data Importer) — only needed for DataVolume-based
+# disks. CAPK uses ephemeral containerDisks by default, so CDI is OFF here.
+kubevirt_cdi_enabled: false
+kubevirt_cdi_version: "v1.62.0"
+
+# Pin every VM-hosting workload to the x86 KVM node.
+# hostname label is the most reliable selector; change if the node is renamed.
+kubevirt_node_selector:
+  kubernetes.io/hostname: srv-t7910
+
+# t7910 has VT-x → run real KVM (NOT software emulation). Set true only if you
+# ever target a node without nested/hardware virt (much slower).
+kubevirt_use_emulation: false
+
+# Feature gates needed by CAPK workload clusters.
+kubevirt_feature_gates:
+  - DataVolumes        # harmless if CDI off; needed if you later add CDI disks
+  - LiveMigration
+  - Snapshot

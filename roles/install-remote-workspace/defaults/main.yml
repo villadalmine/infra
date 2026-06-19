@@ -1,0 +1,54 @@
+---
+# ─── install-remote-workspace ─────────────────────────────────────────────────
+# code-server (VS Code in browser) + rclone WebDAV sidecar + cloudflared tunnel.
+# Goal: reach your PERSONAL Claude + projects from a locked-down corporate laptop
+# through Zscaler, using only a browser on the client side. Nothing is installed
+# on the corporate machine — it just visits an HTTPS URL served via Cloudflare.
+#
+# Boundary (by design): this is YOUR personal workspace and YOUR disk. Do not put
+# employer code here.
+
+remote_workspace_namespace: "workspace"
+
+# ─── Storage (shared between code-server and WebDAV) ──────────────────────────
+remote_workspace_storage_class: "longhorn-nvme"
+remote_workspace_storage_role: "install-longhorn"
+remote_workspace_storage_size: "50Gi"
+
+# ─── Scheduling ───────────────────────────────────────────────────────────────
+# Pin to a node with spare CPU/RAM. Empty = let the scheduler decide.
+remote_workspace_node_hostname: ""
+
+# ─── code-server ──────────────────────────────────────────────────────────────
+# linuxserver image is multi-arch (arm64 ok). Home is /config (on the PVC), so
+# `claude` installed via the native installer persists across restarts.
+remote_workspace_code_image: "lscr.io/linuxserver/code-server"
+remote_workspace_code_tag: "latest"
+remote_workspace_code_port: 8443
+remote_workspace_code_cpu_request: "500m"
+remote_workspace_code_memory_request: "1Gi"
+remote_workspace_code_cpu_limit: "4"
+remote_workspace_code_memory_limit: "6Gi"
+# Internal LAN hostname (optional, via cluster-gateway). Reachable on your home
+# network without the tunnel.
+remote_workspace_code_internal_host: "code.cluster.home"
+
+# ─── rclone WebDAV (Finder mount on the Mac) ──────────────────────────────────
+remote_workspace_webdav_image: "rclone/rclone"
+remote_workspace_webdav_tag: "latest"
+remote_workspace_webdav_port: 8080
+
+# ─── cloudflared (the tunnel that gets you out past Zscaler) ───────────────────
+# Token-based / remotely-managed tunnel: routing (hostname → service) is set in
+# the Cloudflare Zero Trust dashboard, not here. cloudflared only needs the token.
+remote_workspace_cloudflared_image: "cloudflare/cloudflared"
+remote_workspace_cloudflared_tag: "latest"
+remote_workspace_cloudflared_replicas: 2
+
+remote_workspace_rollout_timeout: "300s"
+
+# ─── Secrets (real values live in defaults/secrets.yml — gitignored) ──────────
+# remote_workspace_code_password
+# remote_workspace_webdav_user
+# remote_workspace_webdav_password
+# remote_workspace_cloudflared_token

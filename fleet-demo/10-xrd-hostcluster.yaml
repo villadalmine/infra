@@ -1,0 +1,60 @@
+# Crossplane v2 XRD — defines the HostCluster API.
+#
+# v2 changes vs v1:
+#   - apiVersion is apiextensions.crossplane.io/v2 (was /v1)
+#   - scope: Namespaced  → the XR lives in a namespace
+#   - NO claim. In v1 you'd define claimNames and users created a namespaced Claim
+#     while the XR was cluster-scoped. In v2 the namespaced XR IS the user-facing
+#     request — `HostCluster` is what a platform user applies. Simpler, one object.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: hostclusters.fleet.homelab.io
+spec:
+  scope: Namespaced          # v2: namespaced XR, no claim
+  group: fleet.homelab.io
+  names:
+    kind: HostCluster
+    plural: hostclusters
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                kubernetesVersion:
+                  type: string
+                  description: k8s version for the workload cluster (must have a CAPK container-disk tag).
+                  default: "v1.31.0"
+                controlPlaneReplicas:
+                  type: integer
+                  default: 1
+                workerReplicas:
+                  type: integer
+                  default: 1
+                cpuCores:
+                  type: integer
+                  default: 2
+                memory:
+                  type: string
+                  default: "4Gi"
+                vmNodeHostname:
+                  type: string
+                  description: hostname label the VMs are pinned to (must have real KVM).
+                  default: "srv-t7910"
+                nodeImage:
+                  type: string
+                  description: CAPK container-disk image; tag must match kubernetesVersion.
+                  default: "quay.io/capk/ubuntu-2404-container-disk:v1.31.0"
+              required:
+                - kubernetesVersion
+            status:
+              type: object
+              properties:
+                clusterName:
+                  type: string

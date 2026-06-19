@@ -1,0 +1,185 @@
+# ============================================================================
+# RAW Cluster API + KubeVirt (CAPK) workload cluster — the "no Crossplane" path.
+# Apply this directly to prove CAPK works end to end, independent of Crossplane.
+# The Crossplane Composition (20-composition-hostcluster.yaml) composes EXACTLY
+# these objects — this file is the human-readable reference of what it generates.
+#
+# CANONICAL SOURCE: regenerate this with clusterctl (it always matches the
+# installed provider contract):
+#   export CAPK_GUEST_K8S_VERSION=v1.31.0
+#   export NODE_VM_IMAGE_TEMPLATE=quay.io/capk/ubuntu-2404-container-disk:v1.31.0
+#   export CRI_PATH=/var/run/containerd/containerd.sock
+#   clusterctl generate cluster host-a -n fleet \
+#     --infrastructure kubevirt \
+#     --kubernetes-version v1.31.0 \
+#     --control-plane-machine-count 1 --worker-machine-count 1 > raw-capi-cluster.yaml
+#
+# ⚠️ Check that the container-disk tag exists for your k8s version:
+#   https://quay.io/repository/capk/ubuntu-2404-container-disk?tab=tags
+# The VM pods are pinned to srv-t7910 (only node with real KVM).
+# After the control plane is Ready you MUST install a CNI in the workload cluster
+# (it stays NotReady until then) — see README.md.
+# ============================================================================
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: host-a
+  namespace: fleet
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["10.243.0.0/16"]      # workload-cluster pod CIDR (don't clash w/ homelab)
+    services:
+      cidrBlocks: ["10.95.0.0/16"]       # workload-cluster service CIDR
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: host-a-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    kind: KubevirtCluster
+    name: host-a
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtCluster
+metadata:
+  name: host-a
+  namespace: fleet
+spec:
+  # The workload API server is fronted by a Service in the management cluster.
+  # ClusterIP is fine for a homelab demo (reachable in-cluster); use LoadBalancer
+  # (Cilium LB-IPAM) if you want to reach it from your workstation.
+  controlPlaneServiceTemplate:
+    spec:
+      type: ClusterIP
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: host-a-control-plane
+  namespace: fleet
+spec:
+  replicas: 1                              # bump to 3 for an HA workload control plane
+  version: v1.31.0                         # ← B (upgrade) changes THIS + the disk image
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+      kind: KubevirtMachineTemplate
+      name: host-a-control-plane
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      networking:
+        dnsDomain: cluster.local
+    initConfiguration:
+      nodeRegistration:
+        criSocket: /var/run/containerd/containerd.sock
+        kubeletExtraArgs: {}
+    joinConfiguration:
+      nodeRegistration:
+        criSocket: /var/run/containerd/containerd.sock
+        kubeletExtraArgs: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtMachineTemplate
+metadata:
+  name: host-a-control-plane
+  namespace: fleet
+spec:
+  template:
+    spec:
+      virtualMachineTemplate:
+        metadata:
+          namespace: fleet
+        spec:
+          runStrategy: Always
+          template:
+            spec:
+              # Pin the VM (virt-launcher pod) to the x86 KVM node.
+              nodeSelector:
+                kubernetes.io/hostname: srv-t7910
+              evictionStrategy: External
+              domain:
+                cpu:
+                  cores: 2
+                memory:
+                  guest: 4Gi
+                devices:
+                  disks:
+                    - name: containervolume
+                      disk:
+                        bus: virtio
+              volumes:
+                - name: containervolume
+                  containerDisk:
+                    image: quay.io/capk/ubuntu-2404-container-disk:v1.31.0
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: host-a-md-0
+  namespace: fleet
+spec:
+  clusterName: host-a
+  replicas: 1
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: host-a
+      version: v1.31.0
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: host-a-md-0
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        kind: KubevirtMachineTemplate
+        name: host-a-md-0
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtMachineTemplate
+metadata:
+  name: host-a-md-0
+  namespace: fleet
+spec:
+  template:
+    spec:
+      virtualMachineTemplate:
+        metadata:
+          namespace: fleet
+        spec:
+          runStrategy: Always
+          template:
+            spec:
+              nodeSelector:
+                kubernetes.io/hostname: srv-t7910
+              evictionStrategy: External
+              domain:
+                cpu:
+                  cores: 2
+                memory:
+                  guest: 4Gi
+                devices:
+                  disks:
+                    - name: containervolume
+                      disk:
+                        bus: virtio
+              volumes:
+                - name: containervolume
+                  containerDisk:
+                    image: quay.io/capk/ubuntu-2404-container-disk:v1.31.0
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: host-a-md-0
+  namespace: fleet
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          criSocket: /var/run/containerd/containerd.sock
+          kubeletExtraArgs: {}

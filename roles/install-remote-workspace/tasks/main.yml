@@ -1,0 +1,65 @@
+---
+# ─── Load secrets (gitignored) ────────────────────────────────────────────────
+- name: Load remote-workspace secrets
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+
+- name: Fail early if secrets are still placeholders
+  ansible.builtin.assert:
+    that:
+      - "'CHANGE_ME' not in remote_workspace_code_password"
+      - "'CHANGE_ME' not in remote_workspace_webdav_password"
+      - "'CHANGE_ME' not in remote_workspace_cloudflared_token"
+    fail_msg: >-
+      Fill roles/install-remote-workspace/defaults/secrets.yml with real values
+      (code password, webdav password, and the Cloudflare tunnel token).
+
+# ─── Storage dependency guard ─────────────────────────────────────────────────
+- name: Ensure storage backend is installed before remote-workspace
+  ansible.builtin.include_role:
+    name: "{{ remote_workspace_storage_role }}"
+  when: remote_workspace_storage_class != 'local-path' and remote_workspace_storage_role is defined and remote_workspace_storage_role != ''
+
+# ─── Namespace ────────────────────────────────────────────────────────────────
+- name: Ensure namespace exists
+  ansible.builtin.shell:
+    cmd: kubectl create namespace {{ remote_workspace_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+  changed_when: false
+
+# ─── Render + apply manifests ─────────────────────────────────────────────────
+- name: Render remote-workspace manifest (code-server + webdav)
+  ansible.builtin.template:
+    src: remote-workspace.yaml.j2
+    dest: /tmp/remote-workspace.yaml
+
+- name: Render cloudflared manifest
+  ansible.builtin.template:
+    src: cloudflared.yaml.j2
+    dest: /tmp/remote-workspace-cloudflared.yaml
+
+- name: Apply remote-workspace manifests
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/{{ item }}
+  loop:
+    - remote-workspace.yaml
+    - remote-workspace-cloudflared.yaml
+  changed_when: false
+
+- name: Remove temporary manifests
+  ansible.builtin.file:
+    path: /tmp/{{ item }}
+    state: absent
+  loop:
+    - remote-workspace.yaml
+    - remote-workspace-cloudflared.yaml
+
+# ─── Wait for rollout ─────────────────────────────────────────────────────────
+- name: Wait for remote-workspace deployment to be ready
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/remote-workspace -n {{ remote_workspace_namespace }} --timeout={{ remote_workspace_rollout_timeout }}
+  changed_when: false
+
+- name: Wait for cloudflared deployment to be ready
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/cloudflared -n {{ remote_workspace_namespace }} --timeout={{ remote_workspace_rollout_timeout }}
+  changed_when: false

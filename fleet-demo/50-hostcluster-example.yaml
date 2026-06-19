@@ -1,0 +1,20 @@
+# The user-facing request. In Crossplane v2 this namespaced XR IS the request
+# (no claim). Applying it makes Crossplane render the Composition → create the CAPI
+# objects → CAPK boots the VMs on srv-t7910 → a real workload k8s cluster.
+apiVersion: fleet.homelab.io/v1alpha1
+kind: HostCluster
+metadata:
+  name: host-a
+  namespace: fleet
+spec:
+  # v2: Crossplane machinery lives under spec.crossplane
+  crossplane:
+    compositionRef:
+      name: hostcluster-kubevirt
+  kubernetesVersion: v1.31.0
+  controlPlaneReplicas: 1
+  workerReplicas: 1
+  cpuCores: 2
+  memory: "4Gi"
+  vmNodeHostname: srv-t7910
+  nodeImage: quay.io/capk/ubuntu-2404-container-disk:v1.31.0
