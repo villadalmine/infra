@@ -9,6 +9,26 @@ bloqueada por **Zscaler**, usando **solo el browser** del lado del cliente.
 > personal desde un equipo corporativo puede ir contra la política de tu empresa;
 > eso lo decidís vos.
 
+## Estado — handoff (2026-06-18)
+
+**HECHO (commiteado en `37e3996af`, WIP bundleado):**
+- Rol `install-remote-workspace` completo: code-server (:8443) + rclone-webdav
+  sidecar (:8080) compartiendo PVC longhorn-nvme + cloudflared (x2). En
+  `playbooks/bootstrap.yml` con tag `remote-workspace`. Docs en `CLAUDE.md` y
+  `README.md`. `secrets.yml` con placeholders (gitignored).
+- **Pre-flight validado contra el cluster real:** kubectl OK; prerequisitos
+  confirmados (`longhorn-nvme`, `cluster-gateway` programmed en .200, CRD
+  HTTPRoute); `kubectl apply --dry-run=server` de los 6 objetos pasa limpio;
+  namespace `workspace` ya creado. → el deploy debería andar a la primera apenas
+  haya secrets reales.
+
+**FALTA (todo depende de tu cuenta Cloudflare — ver pasos 1-5 abajo):**
+1. [ ] Crear Tunnel en Cloudflare → copiar token
+2. [ ] Public Hostnames: `claude.*→:8443`, `files.*→:8080`
+3. [ ] Cloudflare Access: app `claude.*` (email OTP) + app `files.*` (Service Token)
+4. [ ] Llenar `roles/install-remote-workspace/defaults/secrets.yml`
+5. [ ] `ansible-playbook ... --tags remote-workspace` + instalar `claude` dentro
+
 ## Arquitectura
 
 ```
