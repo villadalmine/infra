@@ -1,0 +1,69 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "tags": ["billing", "gpu", "llm", "hami", "litellm", "nebul"],
+  "title": "Nebul Billing — GPU + Tokens",
+  "uid": "nebul-billing",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    { "type": "row", "title": "GPU billing — por tenant (namespace) y por placa", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+    {
+      "type": "timeseries", "title": "VRAM reserved per tenant (MiB)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hami_resource_quota_used{quota_name=\"nvidia.com/gpumem\"}", "legendFormat": "{{exported_namespace}}", "refId": "A" } ]
+    },
+    {
+      "type": "timeseries", "title": "GPU cores reserved per tenant (%)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hami_resource_quota_used{quota_name=\"nvidia.com/gpucores\"}", "legendFormat": "{{exported_namespace}}", "refId": "A" } ]
+    },
+    {
+      "type": "timeseries", "title": "VRAM allocated per physical GPU (GB)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "decgbytes" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max by (device_type, device_uuid) (hami_gpu_memory_allocated_bytes) / 1e9", "legendFormat": "{{device_type}}", "refId": "A" } ]
+    },
+    { "type": "row", "title": "Token billing — por modelo (LiteLLM)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }, "collapsed": false, "panels": [] },
+    {
+      "type": "timeseries", "title": "Tokens/s by model",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (requested_model) (rate(litellm_total_tokens_metric_total[5m]))", "legendFormat": "{{requested_model}}", "refId": "A" } ]
+    },
+    {
+      "type": "bargauge", "title": "Total tokens by model",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (requested_model) (litellm_total_tokens_metric_total)", "legendFormat": "{{requested_model}}", "refId": "A" } ]
+    },
+    {
+      "type": "bargauge", "title": "Spend by model (USD)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 5, "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (requested_model) (litellm_spend_metric_total)", "legendFormat": "{{requested_model}}", "refId": "A" } ]
+    },
+    {
+      "type": "text", "title": "Modelo de billing",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 18 },
+      "options": { "mode": "markdown", "content": "**Dos ejes de billing.** GPU se atribuye por **tenant = namespace** (`exported_namespace`, p.ej. `vcluster-tenant-a-dev`) vía HAMi. Tokens/spend se atribuyen por **modelo** vía LiteLLM. Para unir ambos en una sola fila *por tenant*, asignar una **API key de LiteLLM por tenant** (virtual key/team) y agrupar por esa key — pendiente. DCGM (utilización por-pod) no se usa: la P4/M4000 (Pascal/Maxwell) no lo soportan bien y HAMi ya da la atribución de asignación." }
+    }
+  ]
+}

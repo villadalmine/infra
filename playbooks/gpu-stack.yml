@@ -1,0 +1,22 @@
+---
+# Fase 5 — GPU stack: NVIDIA container runtime on the GPU node(s) + HAMi vGPU scheduler.
+# Codifies what was validated manually on srv-t7910.
+#
+# Usage:
+#   ansible-playbook playbooks/gpu-stack.yml -i inventory/hosts.ini
+#
+# Prereqs: GPU node in [gpu_nodes], NVIDIA driver already installed (nvidia-smi works),
+#          and install-k3s applied (inotify tuning: max_user_instances 8192).
+
+- name: NVIDIA container runtime on GPU nodes
+  hosts: gpu_nodes
+  gather_facts: true
+  roles:
+    - role: install-nvidia-runtime
+
+- name: HAMi vGPU scheduler + metrics (cluster-wide via helm/kubeconfig)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: install-hami

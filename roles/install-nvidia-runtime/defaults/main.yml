@@ -1,0 +1,6 @@
+# Fase 5 — NVIDIA container runtime for k3s GPU nodes.
+# Validated manually on srv-t7910 (Tesla P4 + Quadro M4000, driver 580 / CUDA 13).
+nvidia_runtime_keyring: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+nvidia_runtime_repo_list: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+nvidia_runtime_node_label_key: gpu
+nvidia_runtime_node_label_value: "on"

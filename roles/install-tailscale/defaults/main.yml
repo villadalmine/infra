@@ -1,0 +1,25 @@
+---
+# Tailscale subnet router defaults
+#
+# Node selection: ANY node in [tailscale_nodes] inventory group works.
+# DO NOT use the master node (srv-super6c-01-nvme) — it's already overloaded.
+# Best choices: srv-super6c-02-nvme (.121, idle CM4) or srv-pi-rack1 (.65)
+#
+# Auth key: generate at https://login.tailscale.com/admin/settings/keys
+# - Reusable: no  |  Expiry: 90 days  |  Tags: none  |  Ephemeral: no
+# Real values → roles/install-tailscale/defaults/secrets.yml (gitignored)
+
+tailscale_auth_key: "tskey-auth-REPLACE_ME"
+
+# Subnet to advertise as a subnet router — the entire cluster LAN
+tailscale_advertise_routes: "192.168.178.0/24"
+
+# Tailscale hostname for this node (visible in admin console)
+# Defaults to Ansible inventory_hostname if not set
+tailscale_hostname: ""
+
+# Don't let Tailscale override DNS on the router node itself
+tailscale_accept_dns: false
+
+# Ubuntu codename for apt repo (nodes are Ubuntu 24.04)
+tailscale_ubuntu_codename: noble

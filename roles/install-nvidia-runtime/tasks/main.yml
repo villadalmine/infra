@@ -1,0 +1,65 @@
+# NVIDIA container runtime for k3s GPU nodes (Fase 5).
+# Run on hosts in [gpu_nodes]. k3s auto-detects nvidia-container-runtime and wires the
+# `nvidia` containerd runtime; `default-runtime: nvidia` makes every pod on the node use
+# it (non-GPU pods are unaffected). Validated on srv-t7910.
+#
+# Prereq: NVIDIA driver already installed on the host (nvidia-smi works).
+
+- name: NVIDIA toolkit | dearmor the apt GPG key
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+      | gpg --dearmor -o {{ nvidia_runtime_keyring }}
+  args:
+    executable: /bin/bash
+    creates: "{{ nvidia_runtime_keyring }}"
+  become: true
+
+- name: NVIDIA toolkit | add the apt repository (signed-by the keyring)
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+      | sed 's#deb https://#deb [signed-by={{ nvidia_runtime_keyring }}] https://#g' \
+      > {{ nvidia_runtime_repo_list }}
+  args:
+    executable: /bin/bash
+    creates: "{{ nvidia_runtime_repo_list }}"
+  become: true
+
+- name: NVIDIA toolkit | install nvidia-container-toolkit
+  ansible.builtin.apt:
+    name: nvidia-container-toolkit
+    update_cache: true
+    state: present
+  become: true
+  notify: Restart k3s-agent
+
+- name: k3s | set nvidia as the default containerd runtime on this node
+  ansible.builtin.lineinfile:
+    path: /etc/rancher/k3s/config.yaml
+    create: true
+    regexp: '^default-runtime:'
+    line: 'default-runtime: nvidia'
+    mode: "0644"
+  become: true
+  notify: Restart k3s-agent
+
+- name: k3s | flush handlers so the runtime is live before we verify
+  ansible.builtin.meta: flush_handlers
+
+- name: k3s | verify the nvidia runtime is wired into containerd
+  ansible.builtin.command:
+    cmd: grep -q 'runtimes..nvidia' /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+  become: true
+  register: _nvidia_runtime_check
+  retries: 6
+  delay: 5
+  until: _nvidia_runtime_check.rc == 0
+  changed_when: false
+
+- name: k3s | label the GPU node (HAMi scheduling target)
+  ansible.builtin.command: >
+    kubectl label node {{ inventory_hostname }}
+    {{ nvidia_runtime_node_label_key }}={{ nvidia_runtime_node_label_value }} --overwrite
+  delegate_to: localhost
+  changed_when: false

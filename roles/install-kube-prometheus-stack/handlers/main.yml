@@ -1,0 +1,9 @@
+# Restart Grafana so it re-reads provisioned dashboards from /tmp/dashboards on boot.
+# Needed because the k8s-sidecar live-reload call to Grafana's provisioning API returns
+# 401 (the sidecar reload credentials don't match the admin password). On a fresh install
+# Grafana provisions on startup so this isn't needed; on a dashboard UPDATE it is.
+# TODO: align sidecar reload creds with grafana.adminPassword to enable hot-reload.
+- name: Reload Grafana provisioned dashboards
+  ansible.builtin.command:
+    cmd: kubectl -n {{ kube_prometheus_stack_namespace }} rollout restart deployment/kube-prometheus-stack-grafana
+  changed_when: true

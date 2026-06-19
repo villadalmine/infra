@@ -8,9 +8,10 @@ Managed entirely via Ansible. **Never apply changes manually — always run the 
 <!-- IPs verificadas contra el cluster real el 2026-06-10. La fuente de verdad es inventory/hosts.ini. -->
 | | |
 |---|---|
-| K3s servers | `srv-super6c-01-nvme` (.120) — único control-plane joined. Pendientes de join: `srv-super6c-02-nvme` (.121), `srv-super6c-04-nvme` (.122), `srv-super6c-05-emmc` (.124), `srv-super6c-06-emmc` (.123) |
+| K3s servers (HA, 3 masters + embedded etcd) | `srv-super6c-01-nvme` (.120, etcd→**NVMe**), `srv-super6c-02-nvme` (.121, etcd→**NVMe**), `srv-super6c-04-nvme` (.122, etcd→eMMC). Quórum 2/3 (tolera perder 1). etcd corre **embebido en el proceso `k3s server`** (no pod, no `etcd.service`); datos en `/var/lib/rancher/k3s/server/db/etcd`. `srv-super6c-05/06-emmc` (.124/.123) sin NVMe → **agents** (workers). super6c-03 offline. |
+| Control-plane VIP | `192.168.178.130:6443` — HAProxy en `srv-pi-rack2b` (rol `install-haproxy`). kubectl + agentes lo usan; failover transparente (`option redispatch` + health-check L7 a `/readyz` esperando 401). Masters llevan `--tls-san 192.168.178.130`. |
 | K3s agents (RK1) | `srv-rk1-nvme-01` (.131), `srv-rk1-nvme-02` (.48), `srv-rk1-nvme-03` (.51), `srv-rk1-nvme-04` (.54) |
-| K3s agents (Pi 4) | `srv-pi-rack1` (.65), `srv-pi-rack2a` (.60 — IP flapea por DHCP, ver Pendientes), `srv-pi-rack2b` (.130) |
+| K3s agents (Pi 4) | `srv-pi-rack1` (.65), `srv-pi-rack2a` (.40 — IP flapea por DHCP, ver Pendientes), `srv-pi-rack2b` (.130 — también HAProxy VIP) |
 | Gateway IP | `192.168.178.200` (Cilium LB-IPAM, L2 announced, shared) |
 | DNS | Pi-hole @ `192.168.178.203` — wildcard `*.cluster.home → .200` |
 | Domain | `cluster.home` — wildcard TLS via cert-manager internal CA |
@@ -40,7 +41,8 @@ make logs            # show failing pod logs
 ## Bootstrap role order (CRITICAL — order matters)
 
 ```
-install-k3s → get-kubeconfig → install-gateway-api-crds → install-cilium
+install-haproxy (VIP) → prepare-etcd-nvme (NVMe masters) → install-k3s
+→ get-kubeconfig → install-gateway-api-crds → install-cilium
 → install-cilium-pools → install-cert-manager → install-gateway
 → install-pihole → install-argocd
 → install-kube-prometheus-stack → install-tempo → install-loki → install-alloy
@@ -78,6 +80,7 @@ all tags up to the layer you need.
 | `ai-honcho` | Self-hosted Honcho memory platform (Postgres + Redis + API + Worker) | `networking` |
 | `ai-npu-pool` | install-rknpu-pool (4× rkllama NPU servers) | `networking`, `longhorn` |
 | `ai-stt` | install-whisper-stt — Whisper in-cluster (OpenAI-compatible, sin API key); STT para voice notes de OpenClaw | `networking` + `longhorn` |
+| `tailscale` | install-tailscale — Tailscale subnet router on any idle node for remote access (demo, travel). See `skills/remote-access/SKILL.md` | — (standalone, no deps) |
 
 ```bash
 # Minimal cluster (kubectl works, no networking)
@@ -185,6 +188,7 @@ Read the relevant skill before working on a component.
 | `survey` | gather-node-info role: what it collects, JSON output, node profiles |
 | `infra-ops` | 10-node topology, all make targets, RK1 MAC fix, health checks |
 | `k3s` | Server flags, kubeconfig, upgrades |
+| `ha-control-plane` | 3 masters + embedded etcd + HAProxy VIP — topology, etcd-on-NVMe migration (`migrate-etcd-nvme.yml`), failover, `redispatch`/`--tls-san` gotchas |
 | `cilium` | CNI, LB-IPAM, L2, Gateway API, BPF, **Hubble metrics** |
 | `gateway` | Shared Gateway, HTTPRoutes, DNS setup |
 | `cert-manager` | Internal CA, wildcard cert, workstation trust |
@@ -203,6 +207,7 @@ Read the relevant skill before working on a component.
 | `longhorn` | Longhorn NVMe — V1 engine, benchmark, migración de servicios, gotchas TuringPi 2 |
 | `nas-admin` | NAS admin panel — FastAPI+HTMX+Helm, Kaniko build, auth options |
 | `ai-memory` | Guidelines for cross-session AI Memory persistence |
+| `remote-access` | Acceso remoto al cluster (demo, viaje) — Tailscale subnet router (recomendado), HAProxy+MikroTik, SSH tunnel. Rol: `install-tailscale`, tag: `tailscale` |
 
 ## AI Tools (self-contained)
 

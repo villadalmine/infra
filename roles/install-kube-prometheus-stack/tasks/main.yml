@@ -183,6 +183,24 @@
   delay: 10
   changed_when: false
 
+- name: Load GPU per-tenant Grafana dashboard (auto-imported by the Grafana sidecar)
+  # Rendered from a template with the JSON as a YAML block scalar so it stays a STRING.
+  # (Inline lookup('file') gets auto-parsed to a dict by the templar → ConfigMap.data
+  #  requires string values → fails. The block-scalar template avoids that.)
+  kubernetes.core.k8s:
+    template: gpu-tenants-configmap.yaml.j2
+    state: present
+  # The Grafana sidecar writes the file but its live-reload API call returns 401
+  # (creds mismatch). On a CHANGE, restart Grafana so it re-provisions from disk on boot.
+  # Idempotent: only fires when the ConfigMap actually changes.
+  notify: Reload Grafana provisioned dashboards
+
+- name: Load GPU+LLM billing Grafana dashboard (HAMi GPU + LiteLLM tokens)
+  kubernetes.core.k8s:
+    template: billing-dashboard-configmap.yaml.j2
+    state: present
+  notify: Reload Grafana provisioned dashboards
+
 - name: Create Grafana HTTPRoute
   kubernetes.core.k8s:
     definition:

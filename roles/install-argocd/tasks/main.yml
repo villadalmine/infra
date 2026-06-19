@@ -73,6 +73,13 @@
       redis-ha:
         enabled: false
       configs:
+        cm:
+          # Faster reconcile loop: apply drift/self-heal and Git changes in ~30s
+          # instead of the 180s default. The homelab has no Git webhook (GitHub can't
+          # reach the internal ArgoCD), so a tighter poll kills propagation latency
+          # without exposing anything. Trade-off: more frequent reconciles = a bit more
+          # API/repo-server load (negligible at this scale). vcluster-idp ADR-15.
+          timeout.reconciliation: 30s
         params:
           # Serve plain HTTP internally — TLS terminated at the Gateway
           server.insecure: "true"

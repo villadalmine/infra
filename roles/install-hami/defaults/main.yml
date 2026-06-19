@@ -1,0 +1,7 @@
+# Fase 5 — HAMi (Heterogeneous AI Computing Virtualization Middleware).
+# vGPU: fractional GPU with HARD VRAM limit (nvidia.com/gpumem) + cores (nvidia.com/gpucores)
+# on non-MIG cards. Validated on srv-t7910 (chart 2.9.0).
+hami_namespace: kube-system
+hami_chart_version: "2.9.0"
+# Match the cluster k8s minor so the embedded kube-scheduler image exists.
+hami_kube_scheduler_image_tag: "v1.35.2"

@@ -44,7 +44,18 @@
       data:
         config.yaml: |
           model_list:
-            # ── Local GPU routes (Ollama at 192.168.178.90 — srv-t7910 offline, restore when GPU node returns) ──
+            # ── Local GPU route: in-cluster Ollama on srv-t7910 with a HAMi vGPU slice ──
+            # Pascal/Maxwell (P4/M4000) → Ollama/llama.cpp, not vLLM (needs CC>=7.0).
+            # Deploy: kubectl apply -f roles/install-litellm-proxy/files/ollama-gpu.yaml
+            - model_name: local-gpu
+              litellm_params:
+                model: openai/qwen2.5:1.5b
+                api_base: http://ollama.ai.svc.cluster.local:11434/v1
+                api_key: "dummy"
+              model_info:
+                max_input_tokens: 8192
+
+            # ── (legacy) host Ollama at 192.168.178.90 — superseded by in-cluster ollama above ──
             # - model_name: local-fast
             #   litellm_params:
             #     model: openai/qwen2.5-coder:7b
@@ -334,6 +345,9 @@
 
           litellm_settings:
             modify_params: true
+            # Habilita el label `end_user` en prometheus (off por defecto por cardinalidad).
+            # → billing de tokens POR TENANT pasando el campo `user` en cada request.
+            disable_end_user_cost_tracking_prometheus_only: false
             # allow_requests_on_db_unavailable: sin PostgreSQL configurado, LiteLLM ≥1.82 bloquea
             # streaming con 400 "No connected db." — esto lo bypasea.
             allow_requests_on_db_unavailable: true

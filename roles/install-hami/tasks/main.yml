@@ -1,0 +1,65 @@
+# Install HAMi via Helm + wire its vGPU metrics into kube-prometheus-stack.
+# Requires: install-nvidia-runtime done (nvidia default runtime + node label gpu=on),
+# and the GPU node labeled gpu=on. Runs on localhost (helm/kubeconfig).
+#
+# Known gotcha (verified): the GPU node needs a high inotify limit or the device-plugin
+# crashes ("too many open files"). The install-k3s role now sets
+# k3s_sysctl_inotify_max_user_instances: 8192 — make sure it ran on the GPU node.
+
+- name: Add HAMi Helm repository
+  kubernetes.core.helm_repository:
+    name: hami-charts
+    repo_url: https://project-hami.github.io/HAMi/
+  changed_when: false
+
+- name: Install or upgrade HAMi
+  kubernetes.core.helm:
+    name: hami
+    chart_ref: hami-charts/hami
+    chart_version: "{{ hami_chart_version }}"
+    release_namespace: "{{ hami_namespace }}"
+    create_namespace: false
+    wait: false
+    values:
+      scheduler:
+        kubeScheduler:
+          imageTag: "{{ hami_kube_scheduler_image_tag }}"
+
+- name: HAMi | wait for device-plugin + scheduler rollout
+  ansible.builtin.command:
+    cmd: kubectl -n {{ hami_namespace }} rollout status {{ item }} --timeout=180s
+  loop:
+    - daemonset/hami-device-plugin
+    - deployment/hami-scheduler
+  register: hami_rollout
+  until: hami_rollout.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+- name: HAMi | ServiceMonitor so kube-prometheus-stack scrapes vGPU metrics
+  # Per-tenant GPU accounting: hami_resource_quota_used{exported_namespace=...}.
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: hami-scheduler
+        namespace: "{{ hami_namespace }}"
+        labels:
+          release: kube-prometheus-stack   # required by the Prometheus serviceMonitorSelector
+      spec:
+        selector:
+          matchLabels:
+            app.kubernetes.io/component: hami-scheduler
+        namespaceSelector:
+          matchNames: ["{{ hami_namespace }}"]
+        endpoints:
+          - port: monitor          # 31993 on the hami-scheduler service
+            path: /metrics
+            interval: 30s
+    state: present
+
+# TODO (verify chart key before enabling): keep hami-scheduler off the flaky Pi nodes
+# (srv-pi-rack2a flaps → secret-mount timeouts). Add scheduler nodeAffinity NotIn the pi
+# hostnames once the exact HAMi values path is confirmed. For now it reschedules fine.

@@ -1,0 +1,79 @@
+---
+# ─── Secrets ──────────────────────────────────────────────────────────────────
+- name: Load Tailscale secrets
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/defaults/secrets.yml"
+  no_log: true
+
+# ─── Package repo ─────────────────────────────────────────────────────────────
+- name: Add Tailscale apt signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/ubuntu/{{ tailscale_ubuntu_codename }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+  become: true
+
+- name: Add Tailscale apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu {{ tailscale_ubuntu_codename }} main"
+    filename: tailscale
+    state: present
+  become: true
+
+- name: Install tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+  become: true
+
+# ─── IP forwarding (required for subnet routing) ──────────────────────────────
+- name: Enable IPv4 forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+  become: true
+
+- name: Enable IPv6 forwarding
+  ansible.posix.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+  become: true
+
+# ─── Service ──────────────────────────────────────────────────────────────────
+- name: Enable and start tailscaled
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+  become: true
+
+# ─── Connect (idempotent — tailscale up is safe to re-run) ───────────────────
+- name: Bring Tailscale up as subnet router
+  ansible.builtin.command:
+    cmd: >
+      tailscale up
+      --auth-key={{ tailscale_auth_key }}
+      --advertise-routes={{ tailscale_advertise_routes }}
+      --hostname={{ tailscale_hostname if tailscale_hostname else inventory_hostname }}
+      --accept-dns={{ 'true' if tailscale_accept_dns else 'false' }}
+      --accept-routes=false
+  become: true
+  changed_when: false
+
+# ─── Verify ───────────────────────────────────────────────────────────────────
+- name: Show Tailscale status
+  ansible.builtin.command: tailscale status
+  become: true
+  changed_when: false
+  register: tailscale_status
+
+- name: Print Tailscale status
+  ansible.builtin.debug:
+    msg: "{{ tailscale_status.stdout_lines }}"

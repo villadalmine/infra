@@ -37,6 +37,13 @@
 #   ansible-playbook bootstrap.yml --tags core,networking
 #   ansible-playbook bootstrap.yml --tags core,networking,ingress,services
 
+- name: Install Tailscale subnet router for remote cluster access
+  hosts: tailscale_nodes
+  become: true
+  roles:
+    - role: install-tailscale
+      tags: [tailscale]
+
 - name: System upgrade (apt dist-upgrade, optional release upgrade — NEVER on rk1_nodes)
   hosts: "{{ groups['all'] | difference(groups['rk1_nodes']) }}"
   become: true
@@ -44,9 +51,26 @@
     - role: apt-upgrade
       tags: [upgrade]
 
+- name: Install HAProxy as the K3s control-plane API VIP (HA)
+  hosts: haproxy_nodes
+  become: true
+  roles:
+    - role: install-haproxy
+      tags: [haproxy, ha, core]
+
+- name: Ensure etcd data dir is on NVMe for capable masters (no-op if k3s already on eMMC)
+  hosts: etcd_nvme_nodes
+  become: true
+  roles:
+    - role: prepare-etcd-nvme
+      tags: [core, etcd-nvme]
+
 - name: Create partitions and install K3s
   hosts: k3s_nodes
   become: true
+  # Default 100 = all nodes in parallel (normal bootstrap). Override for a controlled
+  # rolling change (e.g. reconfiguring live agents to the VIP): -e k3s_install_serial=1
+  serial: "{{ k3s_install_serial | default(100) }}"
   roles:
     #    - create-partition
     - role: install-k3s
@@ -59,7 +83,7 @@
     PATH: "{{ lookup('env','HOME') }}/.asdf/shims:{{ lookup('env','HOME') }}/.asdf/bin:{{ lookup('env','PATH') }}"
   roles:
     - role: get-kubeconfig
-      tags: [core]
+      tags: [core, kubeconfig]
     - role: install-gateway-api-crds
       tags: [networking]
     - role: install-cilium
