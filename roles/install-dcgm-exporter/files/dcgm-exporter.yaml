@@ -124,3 +124,30 @@ data:
         }
       ]
     }
+---
+# Alerta de temperatura GPU → Alertmanager → bot Telegram (openclaw). severity warning|critical
+# son los que tu Alertmanager rutea. La P4 idlea ~88°C y throttlea ~91°C → warning 89 / critical 93.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gpu-temperature
+  namespace: ai
+  labels: { release: kube-prometheus-stack }
+spec:
+  groups:
+    - name: gpu-temperature
+      rules:
+        - alert: GpuTemperatureHigh
+          expr: DCGM_FI_DEV_GPU_TEMP >= 89
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "GPU {{ $labels.modelName }} caliente: {{ $value }}°C (gpu {{ $labels.gpu }})"
+            description: "La GPU {{ $labels.modelName }} (gpu {{ $labels.gpu }}) lleva 5m ≥89°C. Cerca del throttle (~91°C). Revisar airflow/carga."
+        - alert: GpuTemperatureCritical
+          expr: DCGM_FI_DEV_GPU_TEMP >= 93
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "GPU {{ $labels.modelName }} MUY caliente: {{ $value }}°C (gpu {{ $labels.gpu }})"
+            description: "La GPU {{ $labels.modelName }} (gpu {{ $labels.gpu }}) lleva 2m ≥93°C — riesgo de shutdown térmico (~95°C). Acción inmediata."
