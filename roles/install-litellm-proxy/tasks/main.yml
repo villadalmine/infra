@@ -55,7 +55,7 @@
                 model: openai/qwen2.5:1.5b
                 api_base: http://ollama-a.ai.svc.cluster.local:11434/v1
                 api_key: "dummy"
-                timeout: 8
+                timeout: 15
               model_info:
                 max_input_tokens: 8192
             - model_name: local-gpu
@@ -63,7 +63,7 @@
                 model: openai/qwen2.5:1.5b
                 api_base: http://ollama-b.ai.svc.cluster.local:11434/v1
                 api_key: "dummy"
-                timeout: 8
+                timeout: 15
               model_info:
                 max_input_tokens: 8192
 
@@ -384,7 +384,7 @@
               - {"gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"openai/gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
-              - {"local-gpu": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"local-gpu": ["llama70b-free", "kimi-free", "paid-final"]}
               - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               # 2026-06-10: kimi-free no tenía chain → 429 upstream dejaba a Hermes y Honcho sin respuesta
@@ -410,7 +410,7 @@
               - {"gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"openai/gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
-              - {"local-gpu": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"local-gpu": ["llama70b-free", "kimi-free", "paid-final"]}
               - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               - {"kimi-free": ["gpt-oss-free", "free2", "llama70b-free", "paid-final"]}
