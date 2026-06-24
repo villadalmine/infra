@@ -166,6 +166,8 @@
       tags: [ai, ai-npu-pool]
     - role: install-gpu-ollama
       tags: [ai, gpu-ollama]
+    - role: install-dcgm-exporter
+      tags: [ai, dcgm]
     - role: install-litellm-proxy
       tags: [ai, ai-hermes-deploy, ai-litellm-proxy]
     - role: install-honcho

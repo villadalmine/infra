@@ -124,6 +124,9 @@ argo-workflows: ## Install Argo Workflows + expose UI at argo.cluster.home (idem
 gpu-ollama: ## Deploy dual Ollama tier (1 per GPU card) for LLM serving — idempotent, isolated
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags gpu-ollama
 
+dcgm: ## Deploy DCGM-exporter (real GPU utilization) + Grafana dashboard — idempotent, isolated
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags dcgm
+
 longhorn: ## Prepare NVMe mounts on RK1 nodes + deploy Longhorn (StorageClass: longhorn-nvme)
 	$(ANSIBLE) -i $(INVENTORY) playbooks/storage-longhorn.yml
 

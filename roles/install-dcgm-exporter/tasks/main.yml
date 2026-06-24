@@ -1,0 +1,12 @@
+---
+# DCGM-exporter (utilización física de GPU) + dashboard Grafana. Idempotente.
+# Complementa a HAMI (asignado) con el uso REAL (NVML/DCGM). SDD 28 (online-game).
+- name: Apply DCGM-exporter (DaemonSet + Service + ServiceMonitor + metrics CSV)
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  loop: "{{ lookup('file', 'dcgm-exporter.yaml') | from_yaml_all | select('mapping') | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
+
