@@ -358,7 +358,10 @@
           litellm_settings:
             modify_params: true
             # Habilita el label `end_user` en prometheus (off por defecto por cardinalidad).
-            # → billing de tokens POR TENANT pasando el campo `user` en cada request.
+            # → billing de tokens POR USUARIO pasando el campo `user` en cada request (SDD 28).
+            # El flag correcto es `enable_...` (el `disable_...` no surfacea el label). Verificado
+            # 2026-06-24: sin `enable_...`, end_user queda "None" en las métricas.
+            enable_end_user_cost_tracking_prometheus_only: true
             disable_end_user_cost_tracking_prometheus_only: false
             # allow_requests_on_db_unavailable: sin PostgreSQL configurado, LiteLLM ≥1.82 bloquea
             # streaming con 400 "No connected db." — esto lo bypasea.
