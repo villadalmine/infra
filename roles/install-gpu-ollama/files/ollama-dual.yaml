@@ -1,0 +1,128 @@
+# Tier Ollama DUAL para servir LLM por las DOS placas en paralelo (SDD 9 de online-game).
+# Decisión técnica (ver SDD): 2 procesos Ollama independientes, UNO por placa, NO un solo Ollama
+# con nvidia.com/gpu:2 — porque (a) los modelos chicos entran en 1 placa y partirlos por PCIe
+# (M4000/P4 sin NVLink) es más lento, (b) el paralelismo de requests entre los 2 juegos viene de 2
+# workers (LiteLLM balancea), no de 1 Ollama viendo 2 GPUs, (c) HAMI con gpu:1 reserva 1 placa y deja
+# el resto libre para otra cosa. Cada instancia se fija a su placa por TIPO (HAMI use-gputype).
+#
+# HAMI caps (análisis de capacidad): qwen2.5:1.5b ~1GB + KV(×4) → gpumem 3000 MiB / gpucores 40%
+# por placa → quedan ~5GB y ~60% libres en cada placa. KEEP_ALIVE=24h: modelo residente (sin
+# cold-start de ~50s). NUM_PARALLEL=4: continuous batching para ráfagas (tick de NPCs).
+#
+# LiteLLM (vía Ansible) lista ambos services bajo `local-gpu` (round-robin) + fallback OpenRouter.
+# Idempotente: `make gpu-ollama` (kubectl apply) se puede repetir.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: ollama-a-models, namespace: ai }
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path   # srv-t7910 no es nodo Longhorn; el cache es re-descargable
+  resources: { requests: { storage: 12Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: ollama-b-models, namespace: ai }
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources: { requests: { storage: 12Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ollama-a, namespace: ai, labels: { app: ollama-a, tier: gpu-ollama } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ollama-a } }
+  template:
+    metadata:
+      labels: { app: ollama-a, tier: gpu-ollama }
+      annotations:
+        nvidia.com/use-gputype: "Tesla P4"        # fija esta instancia a la P4
+    spec:
+      nodeSelector: { kubernetes.io/hostname: srv-t7910 }
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          env:
+            - { name: OLLAMA_HOST, value: "0.0.0.0:11434" }
+            - { name: OLLAMA_KEEP_ALIVE, value: "24h" }
+            - { name: OLLAMA_NUM_PARALLEL, value: "4" }
+          ports: [{ containerPort: 11434 }]
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              nvidia.com/gpumem: "3000"   # cap HARD VRAM (MiB) → resto de la placa libre
+              nvidia.com/gpucores: "40"   # cap HARD cómputo (%)
+          volumeMounts: [{ name: models, mountPath: /root/.ollama }]
+      volumes:
+        - name: models
+          persistentVolumeClaim: { claimName: ollama-a-models }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ollama-b, namespace: ai, labels: { app: ollama-b, tier: gpu-ollama } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ollama-b } }
+  template:
+    metadata:
+      labels: { app: ollama-b, tier: gpu-ollama }
+      annotations:
+        nvidia.com/use-gputype: "Quadro M4000"    # fija esta instancia a la M4000
+    spec:
+      nodeSelector: { kubernetes.io/hostname: srv-t7910 }
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          env:
+            - { name: OLLAMA_HOST, value: "0.0.0.0:11434" }
+            - { name: OLLAMA_KEEP_ALIVE, value: "24h" }
+            - { name: OLLAMA_NUM_PARALLEL, value: "4" }
+          ports: [{ containerPort: 11434 }]
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              nvidia.com/gpumem: "3000"
+              nvidia.com/gpucores: "40"
+          volumeMounts: [{ name: models, mountPath: /root/.ollama }]
+      volumes:
+        - name: models
+          persistentVolumeClaim: { claimName: ollama-b-models }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ollama-a, namespace: ai }
+spec:
+  selector: { app: ollama-a }
+  ports: [{ port: 11434, targetPort: 11434 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ollama-b, namespace: ai }
+spec:
+  selector: { app: ollama-b }
+  ports: [{ port: 11434, targetPort: 11434 }]
+---
+# Job idempotente: baja el modelo de `local-gpu` a AMBAS instancias (API HTTP, sin exec).
+apiVersion: batch/v1
+kind: Job
+metadata: { name: ollama-dual-pull, namespace: ai }
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pull
+          image: curlimages/curl:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              for svc in ollama-a ollama-b; do
+                base="http://$svc.ai.svc.cluster.local:11434"
+                echo "esperando $svc..."; until curl -sf "$base/api/tags" >/dev/null 2>&1; do sleep 3; done
+                echo "pull qwen2.5:1.5b en $svc"
+                curl -s -X POST "$base/api/pull" -d '{"model":"qwen2.5:1.5b"}' | tail -c 120; echo
+              done
+              echo "OK"

@@ -1,0 +1,12 @@
+---
+# Tier Ollama DUAL (1 por placa) para servir LLM por las DOS GPUs en paralelo.
+# Idempotente: kubernetes.core.k8s aplica el estado deseado (re-ejecutar no hace ruido).
+# Decisión técnica y análisis de capacidad: ver online-game/docs/sdd-local-gpu-llm.md (SDD 9).
+- name: Apply dual-ollama GPU tier (ollama-a → Tesla P4, ollama-b → Quadro M4000)
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  loop: "{{ lookup('file', 'ollama-dual.yaml') | from_yaml_all | select('mapping') | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"

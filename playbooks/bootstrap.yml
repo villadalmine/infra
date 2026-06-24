@@ -164,6 +164,8 @@
       tags: [headlamp, ai]
     - role: install-rknpu-pool
       tags: [ai, ai-npu-pool]
+    - role: install-gpu-ollama
+      tags: [ai, gpu-ollama]
     - role: install-litellm-proxy
       tags: [ai, ai-hermes-deploy, ai-litellm-proxy]
     - role: install-honcho

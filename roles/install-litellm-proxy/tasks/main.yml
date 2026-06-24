@@ -47,11 +47,22 @@
             # ── Local GPU route: in-cluster Ollama on srv-t7910 with a HAMi vGPU slice ──
             # Pascal/Maxwell (P4/M4000) → Ollama/llama.cpp, not vLLM (needs CC>=7.0).
             # Deploy: kubectl apply -f roles/install-litellm-proxy/files/ollama-gpu.yaml
+            # GPU tier DUAL (1 Ollama por placa, ver rol install-gpu-ollama): least_busy balancea
+            # entre las 2 placas; timeout corto → si tarda, cae al fallback OpenRouter free.
             - model_name: local-gpu
               litellm_params:
                 model: openai/qwen2.5:1.5b
-                api_base: http://ollama.ai.svc.cluster.local:11434/v1
+                api_base: http://ollama-a.ai.svc.cluster.local:11434/v1
                 api_key: "dummy"
+                timeout: 8
+              model_info:
+                max_input_tokens: 8192
+            - model_name: local-gpu
+              litellm_params:
+                model: openai/qwen2.5:1.5b
+                api_base: http://ollama-b.ai.svc.cluster.local:11434/v1
+                api_key: "dummy"
+                timeout: 8
               model_info:
                 max_input_tokens: 8192
 
@@ -369,6 +380,7 @@
               - {"gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"openai/gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"local-gpu": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               # 2026-06-10: kimi-free no tenía chain → 429 upstream dejaba a Hermes y Honcho sin respuesta
@@ -394,6 +406,7 @@
               - {"gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"openai/gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
+              - {"local-gpu": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               - {"kimi-free": ["gpt-oss-free", "free2", "llama70b-free", "paid-final"]}

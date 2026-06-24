@@ -121,6 +121,9 @@ services: ## Install ingress + services (ArgoCD, Argo Workflows, helm-dashboard,
 argo-workflows: ## Install Argo Workflows + expose UI at argo.cluster.home (idempotent)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags argo-workflows
 
+gpu-ollama: ## Deploy dual Ollama tier (1 per GPU card) for LLM serving — idempotent, isolated
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags gpu-ollama
+
 longhorn: ## Prepare NVMe mounts on RK1 nodes + deploy Longhorn (StorageClass: longhorn-nvme)
 	$(ANSIBLE) -i $(INVENTORY) playbooks/storage-longhorn.yml
 
