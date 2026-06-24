@@ -33,6 +33,7 @@
   # Keys are empty strings when secrets.yml is missing (local-only mode).
 
 - name: Create LiteLLM proxy ConfigMap
+  register: litellm_cm
   kubernetes.core.k8s:
     state: present
     definition:
@@ -495,6 +496,22 @@
               - name: config-volume
                 configMap:
                   name: litellm-proxy-config
+
+- name: Restart LiteLLM proxy when its config changed
+  # LiteLLM lee config.yaml SOLO al arrancar (no hot-reload). Si el ConfigMap cambió, forzamos un
+  # rollout vía annotation. Idempotente: solo se dispara cuando litellm_cm.changed (no en cada run).
+  kubernetes.core.k8s:
+    state: patched
+    kind: Deployment
+    name: litellm-proxy
+    namespace: "{{ litellm_namespace }}"
+    definition:
+      spec:
+        template:
+          metadata:
+            annotations:
+              rollout/restartedAt: "{{ now(utc=true).isoformat() }}"
+  when: litellm_cm is defined and litellm_cm.changed
 
 - name: Create LiteLLM proxy Service
   kubernetes.core.k8s:
