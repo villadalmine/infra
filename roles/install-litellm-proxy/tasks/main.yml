@@ -304,6 +304,12 @@
               litellm_params:
                 model: openrouter/google/gemma-4-31b-it:free
                 api_key: os.environ/OPENROUTER_API_KEY
+            # gemma4-paid: gemelo PAGO del gemma4-free (mismo modelo, rápido, no-reasoning, buen español/lunfardo)
+            # SIN el :free → sin límite free-models-per-day. Red paga del chat de Tormenta Solar ($0.47/1M).
+            - model_name: gemma4-paid
+              litellm_params:
+                model: openrouter/google/gemma-4-31b-it
+                api_key: os.environ/OPENROUTER_API_KEY
             - model_name: hermes-free
               litellm_params:
                 model: openrouter/qwen/qwen3-coder:free
@@ -384,7 +390,9 @@
               - {"gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"openai/gemini-free": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
-              - {"local-gpu": ["llama70b-free", "kimi-free", "paid-final"]}
+              # 2026-06-25: el free está 429-bloqueado por día (cuenta) → la GPU local cae directo al
+              # gemma-4 pago barato (sin tope diario), no a los free. Lo usa el juego online-game (SDD 9).
+              - {"local-gpu": ["gemma4-paid"]}
               - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               # 2026-06-10: kimi-free no tenía chain → 429 upstream dejaba a Hermes y Honcho sin respuesta
@@ -410,7 +418,9 @@
               - {"gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"openai/gpt-4o": ["gpt-oss-free", "llama70b-free", "free2", "paid-final"]}
               - {"rk1-npu-local": ["free2", "gpt-oss-free", "llama70b-free", "paid-final"]}
-              - {"local-gpu": ["llama70b-free", "kimi-free", "paid-final"]}
+              # 2026-06-25: el free está 429-bloqueado por día (cuenta) → la GPU local cae directo al
+              # gemma-4 pago barato (sin tope diario), no a los free. Lo usa el juego online-game (SDD 9).
+              - {"local-gpu": ["gemma4-paid"]}
               - {"nemotron": ["gpt-oss-free", "llama70b-free", "paid-final"]}
               - {"hermes-free": ["hermes-free-fallback", "gpt-oss-free", "free2", "paid-final"]}
               - {"kimi-free": ["gpt-oss-free", "free2", "llama70b-free", "paid-final"]}

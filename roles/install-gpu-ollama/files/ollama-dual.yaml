@@ -48,6 +48,10 @@ spec:
             - { name: OLLAMA_HOST, value: "0.0.0.0:11434" }
             - { name: OLLAMA_KEEP_ALIVE, value: "24h" }
             - { name: OLLAMA_NUM_PARALLEL, value: "4" }
+            # OJO: NO subir OLLAMA_CONTEXT_LENGTH en estas GPUs viejas (P4/M4000) — probado 2026-06-25:
+            # con 8192 el load del modelo salta a ~50s y se pasa del timeout de LiteLLM (lo usan varios
+            # servicios: online-game, shooter, etc.). El default (4096) alcanza: el juego manda subgrafo
+            # chico (SDD 9 Opción B), no el grafo completo.
           ports: [{ containerPort: 11434 }]
           resources:
             limits:
@@ -79,6 +83,10 @@ spec:
             - { name: OLLAMA_HOST, value: "0.0.0.0:11434" }
             - { name: OLLAMA_KEEP_ALIVE, value: "24h" }
             - { name: OLLAMA_NUM_PARALLEL, value: "4" }
+            # OJO: NO subir OLLAMA_CONTEXT_LENGTH en estas GPUs viejas (P4/M4000) — probado 2026-06-25:
+            # con 8192 el load del modelo salta a ~50s y se pasa del timeout de LiteLLM (lo usan varios
+            # servicios: online-game, shooter, etc.). El default (4096) alcanza: el juego manda subgrafo
+            # chico (SDD 9 Opción B), no el grafo completo.
           ports: [{ containerPort: 11434 }]
           resources:
             limits:
