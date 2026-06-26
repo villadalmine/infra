@@ -108,7 +108,7 @@
     - role: install-helm-dashboard
       tags: [services, helm-dashboard]
     - role: install-kube-prometheus-stack
-      tags: [observability]
+      tags: [observability, kube-prometheus-stack, grafana]
     - role: install-pushgateway
       tags: [observability, pushgateway]
     - role: install-tempo
