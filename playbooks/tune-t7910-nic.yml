@@ -1,0 +1,9 @@
+---
+# Aplica el workaround del bug e1000e "Detected Hardware Unit Hang" en srv-t7910 (el hypervisor KubeVirt).
+# Bajo carga (Longhorn + VMs) la NIC enp0s25 se cuelga, el link flapea y el nodo cae de la red.
+# Desactiva TSO/GSO/GRO de forma persistente (systemd unit). Idempotente.
+#   ansible-playbook -i inventory/hosts.ini playbooks/tune-t7910-nic.yml --ask-become-pass
+- hosts: srv-t7910
+  gather_facts: false
+  roles:
+    - disable-nic-offload

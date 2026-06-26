@@ -123,6 +123,13 @@
         grafana.ini:
           server:
             root_url: "https://{{ kube_prometheus_stack_hostname }}"
+          security:
+            # Permite embeber dashboards en un <iframe> (lo usa la consola de admin de online-game,
+            # SDD 19 §9.3: "Ver Grafana dentro del admin"). NO habilita acceso anónimo: el iframe
+            # carga usando la sesión de Grafana que el admin ya tenga en el navegador.
+            allow_embedding: true
+            # SameSite=None para que la cookie de sesión viaje en el iframe cross-site (HTTPS).
+            cookie_samesite: none
         additionalDataSources:
           - name: Tempo
             type: tempo

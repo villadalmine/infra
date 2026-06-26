@@ -1,0 +1,17 @@
+
+  # Interactivo (TUI) — desde el repo
+  opencode
+
+  # Non-interactive — resultado por stdout
+  opencode run "tu pregunta"
+
+  # Con modelo específico
+  opencode run --model litellm/kimi-free "tu prompt"
+  opencode run --model litellm/gpt-oss-free "tu prompt"
+  opencode run --model litellm/rk1-npu-local "tu prompt"   # Llama 8B NPU gratis
+
+  Para usar el LiteLLM del cluster (sin correr uno local):
+  kubectl port-forward -n ai svc/litellm-proxy 4000:4000 &
+  opencode run --model litellm/kimi-free "tu prompt"
+
+  La guía completa quedó documentada en skills/ai/SKILL.md al final, con tabla de todos los aliases, ambos modos de LiteLLM, y tabla de gotchas.

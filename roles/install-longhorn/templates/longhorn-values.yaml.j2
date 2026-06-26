@@ -16,6 +16,10 @@ defaultSettings:
   systemManagedComponentsNodeSelector: "storage:rk1-longhorn"
   # Force Longhorn to strictly respect node labels/annotations for disks
   createDefaultDiskLabeledNodes: true
+  # Longhorn schedulea por espacio RESERVADO (storageScheduled), no por el usado real. Con muchos
+  # boot-volumes thin de VMs (DataVolume) los discos llegan al cap reservado aunque el uso real sea bajo
+  # → ReplicaSchedulingFailure / volúmenes faulted. 300% da margen (los volúmenes son thin-provisioned).
+  storageOverProvisioningPercentage: {{ longhorn_storage_over_provisioning_percentage | default(300) }}
 
 # Manager (stores replica data) stays on RK1 nodes
 longhornManager:

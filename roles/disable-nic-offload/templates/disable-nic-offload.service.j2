@@ -1,0 +1,13 @@
+[Unit]
+Description=Disable NIC offloads on {{ nic_iface }} (e1000e Hardware Unit Hang workaround)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Reintenta: si la NIC aún no está lista al boot, igual lo deja aplicado al levantar el link.
+ExecStart=/sbin/ethtool -K {{ nic_iface }} {{ nic_offloads_args }}
+
+[Install]
+WantedBy=multi-user.target

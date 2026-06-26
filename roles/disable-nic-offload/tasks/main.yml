@@ -1,0 +1,32 @@
+---
+- name: Ensure ethtool is installed
+  become: true
+  ansible.builtin.package:
+    name: ethtool
+    state: present
+
+- name: Install systemd unit to disable NIC offloads on boot (e1000e hang workaround)
+  become: true
+  ansible.builtin.template:
+    src: disable-nic-offload.service.j2
+    dest: /etc/systemd/system/disable-nic-offload.service
+    mode: '0644'
+  register: nic_offload_unit
+
+- name: Enable + (re)start the unit (applies the offload settings now and on every boot)
+  become: true
+  ansible.builtin.systemd:
+    name: disable-nic-offload.service
+    enabled: true
+    state: restarted
+    daemon_reload: true
+
+- name: Verify offloads are off
+  become: true
+  ansible.builtin.command: ethtool -k {{ nic_iface }}
+  register: nic_offload_state
+  changed_when: false
+
+- name: Show offload state (tso/gso/gro should be 'off')
+  ansible.builtin.debug:
+    msg: "{{ nic_offload_state.stdout_lines | select('search', 'segmentation-offload|receive-offload') | list }}"

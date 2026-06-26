@@ -1,0 +1,7 @@
+---
+# Workaround del bug Intel e1000e "Detected Hardware Unit Hang": bajo carga alta (Longhorn + VMs
+# KubeVirt) la NIC se cuelga, el link flapea (Down/Up) y el nodo desaparece de la red hasta resetear
+# el enlace (reconectar el cable). Desactivar los offloads (TSO/GSO/GRO) evita el hang. Confirmado en
+# dmesg de srv-t7910 (enp0s25, driver e1000e). Ver nebul-idp APRENDIZAJES-INFRA-ENTREVISTA.
+nic_iface: enp0s25
+nic_offloads_args: "tso off gso off gro off"
