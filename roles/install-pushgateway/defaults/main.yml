@@ -1,0 +1,10 @@
+---
+# Prometheus Pushgateway: para jobs efímeros (CronJobs/batch) que no pueden ser scrapeados
+# directamente. Empujan sus métricas acá y kube-prometheus-stack las scrapea de la Pushgateway.
+# Caso de uso: el CronJob `galaxy-tick` de online-game publica métricas de NPC/tick (que de otro
+# modo se pierden al terminar el pod).
+pushgateway_namespace: monitoring
+pushgateway_image: prom/pushgateway:v1.10.0
+pushgateway_port: 9091
+# Debe matchear el release de kube-prometheus-stack para que su Prometheus tome la ServiceMonitor.
+pushgateway_prometheus_release: kube-prometheus-stack
