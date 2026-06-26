@@ -52,18 +52,18 @@
             # entre las 2 placas; timeout corto → si tarda, cae al fallback OpenRouter free.
             - model_name: local-gpu
               litellm_params:
-                model: openai/qwen2.5:1.5b
+                model: openai/qwen2.5:7b
                 api_base: http://ollama-a.ai.svc.cluster.local:11434/v1
                 api_key: "dummy"
-                timeout: 15
+                timeout: 45
               model_info:
                 max_input_tokens: 8192
             - model_name: local-gpu
               litellm_params:
-                model: openai/qwen2.5:1.5b
+                model: openai/qwen2.5:7b
                 api_base: http://ollama-b.ai.svc.cluster.local:11434/v1
                 api_key: "dummy"
-                timeout: 15
+                timeout: 45
               model_info:
                 max_input_tokens: 8192
 

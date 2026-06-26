@@ -5,8 +5,11 @@
 # workers (LiteLLM balancea), no de 1 Ollama viendo 2 GPUs, (c) HAMI con gpu:1 reserva 1 placa y deja
 # el resto libre para otra cosa. Cada instancia se fija a su placa por TIPO (HAMI use-gputype).
 #
-# HAMI caps (análisis de capacidad): qwen2.5:1.5b ~1GB + KV(×4) → gpumem 3000 MiB / gpucores 40%
-# por placa → quedan ~5GB y ~60% libres en cada placa. KEEP_ALIVE=24h: modelo residente (sin
+# HAMI caps: qwen2.5:7b q4 ~4.5GB + KV → gpumem 7500 MiB / gpucores 100% por placa. Las DOS GPUs
+# (P4 + M4000, 8GB c/u) las usan SOLO estos 2 pods de ollama (nadie más pide GPU en srv-t7910), así
+# que les damos casi toda la placa. gemma2:2b (shooter) co-reside en el mismo ollama (4.5+1.6<7.5).
+# strategy=Recreate: con 1 GPU por pod, el viejo debe morir antes que arranque el nuevo (si no queda
+# Pending por CardInsufficientMemory). KEEP_ALIVE=24h: modelo residente (sin
 # cold-start de ~50s). NUM_PARALLEL=4: continuous batching para ráfagas (tick de NPCs).
 #
 # LiteLLM (vía Ansible) lista ambos services bajo `local-gpu` (round-robin) + fallback OpenRouter.
@@ -33,6 +36,7 @@ kind: Deployment
 metadata: { name: ollama-a, namespace: ai, labels: { app: ollama-a, tier: gpu-ollama } }
 spec:
   replicas: 1
+  strategy: { type: Recreate }   # GPU única: terminar el pod viejo antes de crear el nuevo
   selector: { matchLabels: { app: ollama-a } }
   template:
     metadata:
@@ -56,8 +60,8 @@ spec:
           resources:
             limits:
               nvidia.com/gpu: 1
-              nvidia.com/gpumem: "3000"   # cap HARD VRAM (MiB) → resto de la placa libre
-              nvidia.com/gpucores: "40"   # cap HARD cómputo (%)
+              nvidia.com/gpumem: "7500"   # cap HARD VRAM (MiB) → resto de la placa libre
+              nvidia.com/gpucores: "100"   # cap HARD cómputo (%)
           volumeMounts: [{ name: models, mountPath: /root/.ollama }]
       volumes:
         - name: models
@@ -68,6 +72,7 @@ kind: Deployment
 metadata: { name: ollama-b, namespace: ai, labels: { app: ollama-b, tier: gpu-ollama } }
 spec:
   replicas: 1
+  strategy: { type: Recreate }   # GPU única: terminar el pod viejo antes de crear el nuevo
   selector: { matchLabels: { app: ollama-b } }
   template:
     metadata:
@@ -91,8 +96,8 @@ spec:
           resources:
             limits:
               nvidia.com/gpu: 1
-              nvidia.com/gpumem: "3000"
-              nvidia.com/gpucores: "40"
+              nvidia.com/gpumem: "7500"
+              nvidia.com/gpucores: "100"
           volumeMounts: [{ name: models, mountPath: /root/.ollama }]
       volumes:
         - name: models
@@ -130,7 +135,7 @@ spec:
               for svc in ollama-a ollama-b; do
                 base="http://$svc.ai.svc.cluster.local:11434"
                 echo "esperando $svc..."; until curl -sf "$base/api/tags" >/dev/null 2>&1; do sleep 3; done
-                echo "pull qwen2.5:1.5b en $svc"
-                curl -s -X POST "$base/api/pull" -d '{"model":"qwen2.5:1.5b"}' | tail -c 120; echo
+                echo "pull qwen2.5:7b en $svc"
+                curl -s -X POST "$base/api/pull" -d '{"model":"qwen2.5:7b"}' | tail -c 120; echo
               done
               echo "OK"
