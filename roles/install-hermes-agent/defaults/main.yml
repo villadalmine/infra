@@ -19,8 +19,9 @@ hermes_cpu_request: "1000m"
 hermes_memory_limit: "8Gi"
 hermes_memory_request: "2Gi"
 
-# Schedule Hermes on the high-resource node.
-hermes_node_hostname: "srv-rk1-nvme-01"
+# Schedule Hermes on an rk1 node with disk headroom (NO -01: su root es una SD de 29G y la imagen hermes-agent
+# pesa 2.38G → causaba DiskPressure en -01). -04 tiene ~11G libres. Los PVCs de hermes son longhorn-nvme (movibles).
+hermes_node_hostname: "srv-rk1-nvme-04"
 
 # Storage for ~/.hermes (gateway.json, skills symlink)
 hermes_storage_size: "10Gi"
