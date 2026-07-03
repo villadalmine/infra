@@ -95,3 +95,8 @@
               - name: argo-workflows-server
                 port: 2746
     state: present
+
+- name: Metrics del workflow-controller → Prometheus (Service + ServiceMonitor a mano; ver comentario del archivo)
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/controller-metrics.yaml"
