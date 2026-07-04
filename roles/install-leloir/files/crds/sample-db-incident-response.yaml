@@ -20,7 +20,7 @@ kind: Tenant
 metadata:
   name: team-alpha
 spec:
-  namespace: team-alpha
+  namespaces: [team-alpha, team-alpha-staging]   # un Tenant puede listar VARIOS ns
   displayName: "Team Alpha — Infrastructure"
   profile: corporate
   oidc:
