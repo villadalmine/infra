@@ -353,6 +353,138 @@
   delay: 10
   changed_when: false
 
+# ─── MCP Gateway ──────────────────────────────────────────────────────────────
+# El broker por-tenant de tools. Misma imagen que el control plane (dos binarios),
+# command /leloir-mcp-gateway. Infra interna (sin HTTPRoute): lo consumen el
+# control plane y los adapters. Sirve API + /metrics en el mismo puerto.
+# Se gestiona por Ansible en todos los modos (no depende del auth mode).
+
+- name: Create leloir MCP Gateway ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: leloir-gateway-config
+        namespace: "{{ leloir_namespace }}"
+      data:
+        gateway.yaml: |
+          listenAddr: ":8082"
+          egressPolicy: allowlist
+          rateLimit: {enabled: false}
+          observability: {metrics: {enabled: true}}
+          servers: {{ leloir_gateway_servers | to_json }}
+
+- name: Deploy leloir-mcp-gateway
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: leloir-mcp-gateway
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-mcp-gateway
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: leloir-mcp-gateway
+        template:
+          metadata:
+            labels:
+              app: leloir-mcp-gateway
+          spec:
+            nodeSelector:
+              kubernetes.io/arch: arm64
+              # mismo pool que el control plane: los rk1 resuelven el registry
+              # in-cluster (registry.registry:5000); otros ARM64 no.
+              storage: rk1-longhorn
+            tolerations:
+              - operator: Exists
+            containers:
+              - name: gateway
+                image: "{{ leloir_registry }}/{{ leloir_image_name }}:{{ leloir_image_tag }}"
+                imagePullPolicy: Always
+                command: ["/leloir-mcp-gateway"]
+                args:
+                  - "--config=/etc/leloir/gateway.yaml"
+                ports:
+                  - containerPort: 8082
+                    name: http
+                volumeMounts:
+                  - name: cfg
+                    mountPath: /etc/leloir
+                    readOnly: true
+                resources:
+                  requests:
+                    cpu: "{{ leloir_gateway_cpu_request }}"
+                    memory: "{{ leloir_gateway_memory_request }}"
+                  limits:
+                    cpu: "{{ leloir_gateway_cpu_limit }}"
+                    memory: "{{ leloir_gateway_memory_limit }}"
+                readinessProbe:
+                  httpGet:
+                    path: /metrics
+                    port: 8082
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+            volumes:
+              - name: cfg
+                configMap:
+                  name: leloir-gateway-config
+
+- name: Create leloir-mcp-gateway Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: leloir-mcp-gateway
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-mcp-gateway   # el ServiceMonitor selecciona por esta label
+      spec:
+        type: ClusterIP
+        selector:
+          app: leloir-mcp-gateway
+        ports:
+          - name: http
+            port: 8082
+            targetPort: 8082
+
+- name: Wait for leloir-mcp-gateway rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/leloir-mcp-gateway -n {{ leloir_namespace }} --timeout=120s
+  register: gateway_rollout
+  until: gateway_rollout.rc == 0
+  retries: 6
+  delay: 10
+  changed_when: false
+
+- name: Create ServiceMonitor for leloir-mcp-gateway
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: leloir-mcp-gateway
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        selector:
+          matchLabels:
+            app: leloir-mcp-gateway
+        endpoints:
+          - port: http
+            path: /metrics
+            interval: 30s
+
 # ─── Observabilidad: ServiceMonitor + dashboards Grafana ──────────────────────
 # kube-prometheus-stack scrapea /metrics; el sidecar de Grafana descubre los
 # dashboards por la label grafana_dashboard=1.

@@ -37,6 +37,21 @@ leloir_memory_request: "128Mi"
 leloir_cpu_limit: "1"
 leloir_memory_limit: "512Mi"
 
+# ─── MCP Gateway ──────────────────────────────────────────────────────────────
+# El broker por-tenant de tools. Misma imagen que el control plane (dos binarios),
+# command /leloir-mcp-gateway. Sirve API + /metrics en el mismo puerto 8082.
+# Es infra interna (sin HTTPRoute) — lo consumen el control plane y los adapters.
+# El puerto (8082) es fijo: coincide con el default del binario y el EXPOSE del
+# Dockerfile, no es una perilla versátil.
+leloir_gateway_cpu_request: "50m"
+leloir_gateway_memory_request: "64Mi"
+leloir_gateway_cpu_limit: "500m"
+leloir_gateway_memory_limit: "256Mi"
+# Servers MCP por-tenant. Vacío por defecto — los servers reales se declaran con
+# el CRD MCPServer (nada hardcodeado). Cada entry: {name, tenant, transport,
+# endpoint, toolAllowlist:[...]}. El aislamiento por-tenant lo garantiza el gateway.
+leloir_gateway_servers: []
+
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
 leloir_git_raw: "https://raw.githubusercontent.com/villadalmine/leloir/main"
