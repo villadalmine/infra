@@ -36,3 +36,7 @@ leloir_cpu_request: "100m"
 leloir_memory_request: "128Mi"
 leloir_cpu_limit: "1"
 leloir_memory_limit: "512Mi"
+
+# Observabilidad (ServiceMonitor + dashboards Grafana)
+leloir_monitoring_namespace: monitoring
+leloir_git_raw: "https://raw.githubusercontent.com/villadalmine/leloir/main"

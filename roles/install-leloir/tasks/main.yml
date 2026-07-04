@@ -208,6 +208,10 @@
           audit:
             hotRetentionDays: 7
 
+          observability:
+            metrics:
+              enabled: true
+
           agents:
             - name: holmesgpt
               type: holmesgpt
@@ -250,6 +254,9 @@
           spec:
             nodeSelector:
               kubernetes.io/arch: arm64
+              # rk1 pool resuelve el registry in-cluster (registry.registry:5000);
+              # otros nodos ARM64 (super6c) no → ImagePullBackOff. Ver STATUS.
+              storage: rk1-longhorn
             tolerations:
               - operator: Exists
             containers:
@@ -304,6 +311,8 @@
       metadata:
         name: leloir-controlplane
         namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-controlplane   # el ServiceMonitor selecciona por esta label
       spec:
         type: ClusterIP
         selector:
@@ -343,6 +352,52 @@
   retries: 6
   delay: 10
   changed_when: false
+
+# ─── Observabilidad: ServiceMonitor + dashboards Grafana ──────────────────────
+# kube-prometheus-stack scrapea /metrics; el sidecar de Grafana descubre los
+# dashboards por la label grafana_dashboard=1.
+
+- name: Create ServiceMonitor for leloir-controlplane
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: leloir-controlplane
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        selector:
+          matchLabels:
+            app: leloir-controlplane
+        endpoints:
+          - port: http
+            path: /metrics
+            interval: 30s
+
+- name: Install Leloir Grafana dashboards (auto-discovered by the sidecar)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "leloir-{{ item.name }}"
+        namespace: "{{ leloir_monitoring_namespace | default('monitoring') }}"
+        labels:
+          grafana_dashboard: "1"
+      data: "{{ item.data }}"
+  loop:
+    - name: dashboard
+      data:
+        leloir-dashboard.json: "{{ lookup('url', leloir_git_raw ~ '/deploy/grafana/leloir-dashboard.json', split_lines=false) }}"
+    - name: fleet-dashboard
+      data:
+        leloir-fleet-dashboard.json: "{{ lookup('url', leloir_git_raw ~ '/deploy/grafana/leloir-fleet-dashboard.json', split_lines=false) }}"
+  loop_control:
+    label: "{{ item.name }}"
 
 # ─── Migración a GitOps (solo en modo oidc) ───────────────────────────────────
 # Elimina los recursos gestionados directamente por Ansible para cederlos al
