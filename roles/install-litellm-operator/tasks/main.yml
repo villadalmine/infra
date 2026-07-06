@@ -1,0 +1,42 @@
+# LiteLLM operator (PalenaAI) — turns LiteLLM admin (teams/keys/budgets) into K8s CRDs.
+# Used by Leloir's LLM broker core (spec-m15): Tenant/TenantBudget reconcile into
+# LiteLLMTeam + LiteLLMVirtualKey; generated keys land in K8s Secrets (never inline).
+# CRDs ship inside the chart (crds/ dir) — no separate CRD chart needed.
+
+- name: Create litellm-operator namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ litellm_operator_namespace }}"
+    state: present
+
+- name: Install or upgrade litellm-operator (OCI chart)
+  kubernetes.core.helm:
+    name: litellm-operator
+    chart_ref: "oci://ghcr.io/palenaai/charts/litellm-operator"
+    chart_version: "{{ litellm_operator_chart_version }}"
+    release_namespace: "{{ litellm_operator_namespace }}"
+    create_namespace: false
+    wait: true
+    wait_timeout: "180s"
+    values: {}
+
+- name: Wait for litellm-operator CRDs to be established
+  ansible.builtin.command:
+    cmd: >
+      kubectl wait --for=condition=Established --timeout=60s
+      crd/litellminstances.litellm.palena.ai
+      crd/litellmteams.litellm.palena.ai
+      crd/litellmvirtualkeys.litellm.palena.ai
+  register: litellm_operator_crds
+  changed_when: false
+
+- name: Wait for litellm-operator rollout
+  ansible.builtin.command:
+    cmd: >
+      kubectl rollout status deployment/litellm-operator-controller-manager
+      -n {{ litellm_operator_namespace }} --timeout=180s
+  register: litellm_operator_rollout
+  changed_when: false

@@ -1,0 +1,6 @@
+---
+# LiteLLM operator (PalenaAI) — declarative CRDs for LiteLLM instances, teams,
+# users and virtual keys with budgets. Multi-arch image (linux/arm64 verified).
+# Chart published as OCI at ghcr.io/palenaai/charts/litellm-operator.
+litellm_operator_chart_version: "0.16.1"
+litellm_operator_namespace: litellm-operator
