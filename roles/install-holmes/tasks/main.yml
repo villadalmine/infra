@@ -89,7 +89,10 @@
           cpu: "{{ holmes_cpu_limit }}"
           memory: "{{ holmes_memory_limit }}"
 
+# AG-UI combined server: escrito contra server.py de 0.24 — incompatible con
+# 0.35+ (ver defaults). Deshabilitado por default; holmes-ui usa /api/chat estándar.
 - name: Create AG-UI combined server ConfigMap
+  when: holmes_agui_patch | bool
   kubernetes.core.k8s:
     definition:
       apiVersion: v1
@@ -102,6 +105,7 @@
     state: present
 
 - name: Patch Holmes Deployment to mount combined server
+  when: holmes_agui_patch | bool
   kubernetes.core.k8s:
     merge_type: strategic-merge
     definition:

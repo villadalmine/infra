@@ -1,4 +1,13 @@
-holmes_version: "0.24.0"
+# 0.35.0 (2026-07): trae operator mode (HC/SHC/THC), mcp_servers y
+# customClusterRoleRules en values. Salto desde 0.24.0 verificado: schema de
+# values compatible (modelList/toolsets/crdPermissions/additionalEnvVars).
+holmes_version: "0.35.0"
+
+# El combined-server AG-UI (holmes-combined-server.py) fue escrito contra el
+# server.py de 0.24 y NO es compatible con 0.35 (auth middleware/admin API
+# nuevos; delta de ~337 líneas). holmes-ui usa /api/chat estándar y NO lo
+# necesita. Re-habilitar requiere portar el archivo al layout 0.35.
+holmes_agui_patch: false
 holmes_namespace: ai
 holmes_hostname: holmes.cluster.home
 
