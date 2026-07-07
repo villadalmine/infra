@@ -129,6 +129,27 @@
                     subPath: server.py
     state: present
 
+# Con el patch deshabilitado hay que REMOVER el mount si quedó de un deploy
+# anterior: helm upgrade hace three-way merge y NO borra campos out-of-band.
+# (Bug real 06/07: server.py de 0.24 montado sobre imagen 0.35 → 500
+#  "'Config' object has no attribute 'get_runbook_catalog'" en /api/chat.)
+- name: Remove AG-UI combined server mount (patch disabled)
+  when: not (holmes_agui_patch | bool)
+  ansible.builtin.command:
+    cmd: >
+      kubectl patch deploy {{ holmes_release_name }}-holmes -n {{ holmes_namespace }}
+      --type strategic
+      -p '{"spec":{"template":{"spec":{"volumes":[{"name":"holmes-agui-server","$patch":"delete"}],"containers":[{"name":"holmes","volumeMounts":[{"mountPath":"/app/server.py","$patch":"delete"}]}]}}}}'
+  register: holmes_agui_unpatch
+  changed_when: "'no change' not in holmes_agui_unpatch.stdout"
+
+- name: Remove AG-UI combined server ConfigMap (patch disabled)
+  when: not (holmes_agui_patch | bool)
+  ansible.builtin.command:
+    cmd: kubectl delete configmap holmes-agui-server -n {{ holmes_namespace }} --ignore-not-found
+  register: holmes_agui_cm_rm
+  changed_when: "'deleted' in holmes_agui_cm_rm.stdout"
+
 - name: Wait for HolmesGPT rollout
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/{{ holmes_release_name }}-holmes -n {{ holmes_namespace }} --timeout=180s
