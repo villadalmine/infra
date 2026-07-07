@@ -1,0 +1,73 @@
+# Envoy Gateway v1.8.1 + Envoy AI Gateway v1.0 (probado manual primero — regla).
+#
+# Orden crítico:
+# 1. TLSRoute CRD → Gateway API v1.5.1: EG v1.8.1 exige TLSRoute "v1" y el rol
+#    install-gateway-api-crds instala v1.4.1 (solo v1alpha2/v1alpha3). El upgrade
+#    es ADITIVO (v1.5.1 sigue sirviendo v1alpha2/v1alpha3 → Cilium intacto).
+# 2. Envoy Gateway base CON los values de integración del AI Gateway (extension
+#    manager) — vendoreados en files/ (pineados, no URL mutable de main).
+# 3. AI Gateway CRDs + controller.
+
+- name: Upgrade TLSRoute CRD to Gateway API v1.5.1 (additive — required by EG v1.8.1)
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/gateway-api-tlsroute-v1.5.1.yaml"
+
+- name: Install or upgrade Envoy Gateway (base, with AI Gateway integration values)
+  kubernetes.core.helm:
+    name: eg
+    chart_ref: "oci://docker.io/envoyproxy/gateway-helm"
+    chart_version: "{{ envoy_gateway_chart_version }}"
+    release_namespace: "{{ envoy_gateway_namespace }}"
+    create_namespace: true
+    wait: true
+    wait_timeout: "300s"
+    values_files:
+      - "{{ role_path }}/files/envoy-gateway-values.yaml"
+
+- name: Wait for envoy-gateway rollout
+  ansible.builtin.command:
+    cmd: >
+      kubectl rollout status deployment/envoy-gateway
+      -n {{ envoy_gateway_namespace }} --timeout=180s
+  changed_when: false
+
+- name: Install or upgrade Envoy AI Gateway CRDs
+  kubernetes.core.helm:
+    name: aieg-crd
+    chart_ref: "oci://docker.io/envoyproxy/ai-gateway-crds-helm"
+    chart_version: "{{ envoy_ai_gateway_chart_version }}"
+    release_namespace: "{{ envoy_ai_gateway_namespace }}"
+    create_namespace: true
+    wait: true
+    wait_timeout: "120s"
+
+- name: Install or upgrade Envoy AI Gateway controller
+  kubernetes.core.helm:
+    name: aieg
+    chart_ref: "oci://docker.io/envoyproxy/ai-gateway-helm"
+    chart_version: "{{ envoy_ai_gateway_chart_version }}"
+    release_namespace: "{{ envoy_ai_gateway_namespace }}"
+    create_namespace: false
+    wait: true
+    wait_timeout: "180s"
+
+- name: Wait for ai-gateway-controller rollout
+  ansible.builtin.command:
+    cmd: >
+      kubectl rollout status deployment/ai-gateway-controller
+      -n {{ envoy_ai_gateway_namespace }} --timeout=180s
+  changed_when: false
+
+# Sanity: el ingress de Cilium no debe inmutarse por el upgrade de TLSRoute.
+- name: Verify Cilium GatewayClass still accepted
+  kubernetes.core.k8s_info:
+    api_version: gateway.networking.k8s.io/v1
+    kind: GatewayClass
+    name: cilium
+  register: cilium_gwc
+  failed_when: >
+    cilium_gwc.resources | length == 0 or
+    (cilium_gwc.resources[0].status.conditions
+     | selectattr('type', 'equalto', 'Accepted')
+     | selectattr('status', 'equalto', 'True') | list | length) == 0

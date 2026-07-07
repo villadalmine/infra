@@ -1,0 +1,9 @@
+---
+# Envoy Gateway (base) + Envoy AI Gateway v1.0 — capa LLM CNCF-grade del core
+# de Leloir (spec-m15; spike validado 2026-07-07, ver
+# leloir/deploy/poc/envoy-ai-spike/README.md).
+# Multi-arch ARM64 verificado. Convive con la GatewayClass de Cilium.
+envoy_gateway_chart_version: "v1.8.1"
+envoy_gateway_namespace: envoy-gateway-system
+envoy_ai_gateway_chart_version: "v1.0.0"
+envoy_ai_gateway_namespace: envoy-ai-gateway-system

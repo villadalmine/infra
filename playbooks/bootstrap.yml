@@ -29,7 +29,8 @@
 #   leloir             → Postgres + leloir-controlplane deploy (requires ai-registry + leloir-build)
 #   kagent             → kagent + kmcp operator (multi-tenant AI agent platform)
 #   litellm-operator   → LiteLLM operator (PalenaAI) — CRDs for instances/teams/virtual keys (Leloir LLM broker core)
-#   ai-platform        → alias for kagent + litellm-operator
+#   envoy-ai-gw        → Envoy Gateway v1.8.1 + Envoy AI Gateway v1.0 (AIGatewayRoute/QuotaPolicy/MCPRoute — Leloir LLM layer)
+#   ai-platform        → alias for kagent + litellm-operator + envoy-ai-gw
 #   nas-admin-build    → kaniko build of nas-admin image (requires ai-registry)
 #   nas-admin          → NAS admin panel Helm chart deploy at nas-admin.cluster.home
 #
@@ -175,6 +176,8 @@
       tags: [ai, ai-hermes-deploy, ai-litellm-proxy]
     - role: install-litellm-operator
       tags: [litellm-operator, ai-platform]
+    - role: install-envoy-ai-gw
+      tags: [envoy-ai-gw, ai-platform]
     - role: install-honcho
       tags: [ai, ai-honcho]
     - role: install-hermes-agent
