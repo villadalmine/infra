@@ -89,6 +89,21 @@
           cpu: "{{ holmes_cpu_limit }}"
           memory: "{{ holmes_memory_limit }}"
 
+# Helm SOLO instala las CRDs (crds/ del chart) en el PRIMER install; en
+# `helm upgrade` NO las agrega ni actualiza. El chart 0.35 suma
+# triggeredhealthchecks.holmesgpt.dev (THC, operator mode) que el upgrade desde
+# 0.24 dejó afuera → hay que aplicarlas explícitamente. Idempotente.
+# (Bug real 08/07: HC/SHC presentes pero THC faltante; el operator no veía THC.)
+- name: Apply HolmesGPT chart CRDs (HC/SHC/THC — helm upgrade no las toca)
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      helm show crds robusta/holmes --version {{ holmes_version }}
+      | kubectl apply -f -
+    executable: /bin/bash
+  register: holmes_crds_apply
+  changed_when: "'created' in holmes_crds_apply.stdout"
+
 # AG-UI combined server: escrito contra server.py de 0.24 — incompatible con
 # 0.35+ (ver defaults). Deshabilitado por default; holmes-ui usa /api/chat estándar.
 - name: Create AG-UI combined server ConfigMap
