@@ -11,4 +11,6 @@ resources:
   - notificationchannel.yaml
   - approvalpolicy.yaml
   - tenantbudget.yaml
+  - investigation.yaml
+  - scheduledinvestigation.yaml
   - skillsource.yaml

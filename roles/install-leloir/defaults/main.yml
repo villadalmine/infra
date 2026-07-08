@@ -55,3 +55,7 @@ leloir_gateway_servers: []
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
 leloir_git_raw: "https://raw.githubusercontent.com/villadalmine/leloir/main"
+
+# LLM broker (spec-m15/m16): instancia litellm gestionada por el operator
+leloir_litellm_namespace: ai
+leloir_litellm_instance: leloir-llm

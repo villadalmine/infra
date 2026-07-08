@@ -1,0 +1,78 @@
+# Investigation — investigación declarativa one-shot (spec-m16, D8).
+# El equivalente GOBERNADO del HealthCheck del Holmes operator: misma
+# ergonomía ("meto una pregunta y veo todo"), pero corre por el pipeline de
+# Leloir (tenant autoritativo por namespace, budget, HITL, audit).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: investigations.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M16"
+spec:
+  group: leloir.dev
+  names:
+    kind: Investigation
+    listKind: InvestigationList
+    plural: investigations
+    singular: investigation
+    shortNames: [inv]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Outcome
+          type: string
+          jsonPath: .status.outcome
+        - name: Cost-USD
+          type: number
+          jsonPath: .status.costUSD
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: La pregunta a investigar (se sanitiza como cualquier alerta).
+                agentName:
+                  type: string
+                  description: Agente explícito; vacío = rutea por AlertRoute como una alerta.
+                budget:
+                  type: object
+                  description: Budget por-investigación (capa 2 de 4); 0 = el de la ruta.
+                  properties:
+                    maxUSD: {type: number}
+                    maxTokens: {type: integer, format: int64}
+                timeoutMinutes:
+                  type: integer
+                  description: Deadline; 0 = el de la ruta (default 10).
+                destinations:
+                  type: array
+                  items: {type: string}
+                  description: >-
+                    Refs a NotificationChannel. v1: las notificaciones salen por los
+                    canales configurados del tenant; routing por-destino = backlog.
+            status:
+              type: object
+              properties:
+                investigationID: {type: string}
+                phase: {type: string}
+                outcome: {type: string}
+                reason: {type: string}
+                costUSD: {type: number}
+                totalTokens: {type: integer, format: int64}

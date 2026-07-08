@@ -39,8 +39,28 @@ spec:
           properties:
             spec:
               type: object
-              required: [adapter]
               properties:
+
+                # ── Camino compiled-in (M7.11): spec.type + harness ──────────
+                type:
+                  type: string
+                  description: >-
+                    Adapter compilado a reconciliar (leloir-agent | holmesgpt |
+                    openaicompat | minimal | ollama | claudecode | scenario).
+                    Con type, el control plane (re)registra el agente COMPLETO
+                    desde este CRD (harness/modelConfig/customConfig/A2A).
+                    Sin type, aplica el camino sidecar (adapter.image, M5).
+                modelConfig:
+                  type: object
+                  description: >-
+                    LLM del agente. SIN apiKey inline a propósito — la
+                    credencial viene de harness.credentials.from (llmBroker =
+                    key del flagship, D12) o del entorno del deployment.
+                  properties:
+                    provider: {type: string}
+                    model: {type: string}
+                    endpoint: {type: string}
+                    maxTokensPerCall: {type: integer}
 
                 adapter:
                   type: object
@@ -94,6 +114,72 @@ spec:
                     AgentAdapter.Configure() as Config.CustomConfig.
                     Schema is adapter-specific and not validated here.
                   x-kubernetes-preserve-unknown-fields: true
+
+                harness:
+                  type: object
+                  description: >-
+                    El harness agéntico declarativo (spec-m16, D5-A): persona,
+                    loop, refs de tools/memoria, modelo (ModelProvider) y origen
+                    de credencial. Donde harness y customConfig declaran la
+                    misma perilla, HARNESS GANA. Con spec.type el control
+                    plane reconcilia el agente COMPLETO desde este CRD
+                    (M7.11 ✅ 07/07) — el CRD-path es operativo.
+                  properties:
+                    systemPrompt:
+                      type: string
+                      description: Persona; el answer-contract del adapter se appendea SIEMPRE.
+                    reasoning:
+                      type: string
+                      enum: [react]
+                    skills:
+                      type: array
+                      items: {type: string}
+                    loop:
+                      type: object
+                      properties:
+                        maxIterations: {type: integer}
+                        maxToolCalls: {type: integer}
+                        resultMaxChars: {type: integer}
+                        historyMaxChars: {type: integer}
+                    tools:
+                      type: array
+                      items:
+                        type: object
+                        required: [server]
+                        properties:
+                          server: {type: string}
+                          allow:
+                            type: array
+                            items: {type: string}
+                    memory:
+                      type: object
+                      properties:
+                        server: {type: string}
+                    model:
+                      type: string
+                      description: Ref a ModelProvider.models[].id (pricing/límites del catálogo).
+                    credentials:
+                      type: object
+                      properties:
+                        from:
+                          type: string
+                          enum: [llmBroker, ownKey]
+                        secretRef:
+                          type: object
+                          properties:
+                            name: {type: string}
+                            key: {type: string}
+                    llm:
+                      type: object
+                      properties:
+                        extraHeaders:
+                          type: object
+                          additionalProperties: {type: string}
+                        retry:
+                          type: object
+                          properties:
+                            attempts: {type: integer}
+                            backoffSeconds: {type: number}
 
                 canInvoke:
                   type: array

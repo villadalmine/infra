@@ -212,7 +212,41 @@
             metrics:
               enabled: true
 
+          kubernetes:
+            enabled: true          # CRD watcher: routes/budgets/agents/investigations
+
+          llmBroker:
+            driver: litellm-operator
+            spendPollInterval: 30s
+            litellmOperator:
+              namespace: "{{ leloir_litellm_namespace }}"
+              instanceName: "{{ leloir_litellm_instance }}"
+              endpoint: "http://{{ leloir_litellm_instance }}.{{ leloir_litellm_namespace }}.svc.cluster.local:4000"
+              models: [rk1-npu-local]
+
+          modelProvider:
+            models:
+              - id: demo-model
+                upstream: rk1-npu-local
+                pricing: {inputPer1M: 0.15, outputPer1M: 0.60}
+                maxTokensPerCall: 400
+            routing: {default: demo-model}
+
+          tenantBudgets:
+            - tenantID: default
+              monthlyMaxUSD: 1
+              hardLimitAction: reject
+
           agents:
+            - name: leloir-agent
+              type: leloir-agent
+              tenantID: default
+              harness:
+                systemPrompt: |
+                  You are the Leloir first-party incident responder. Be brief and precise.
+                loop: {maxIterations: 3}
+                model: demo-model
+                credentials: {from: llmBroker}
             - name: holmesgpt
               type: holmesgpt
               tenantID: default
@@ -227,6 +261,117 @@
               enabled: true
               priority: 1
               timeoutMinutes: 10
+
+# ─── ServiceAccount + RBAC del control plane (m15/m16) ───────────────────────
+# El watcher necesita leloir.dev cluster-wide + Deployments (source rollout);
+# el LLM broker emite CRs litellm.palena.ai y lee la key del flagship (Secret)
+# SOLO en el namespace de la instancia litellm (ai) — scoped, no cluster-wide.
+
+- name: Create leloir-controlplane ServiceAccount
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: leloir-controlplane
+        namespace: "{{ leloir_namespace }}"
+
+- name: Create leloir-controlplane ClusterRole
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: leloir-controlplane
+      rules:
+        - apiGroups: ["leloir.dev"]
+          resources: ["tenants", "alertroutes", "agentregistrations", "tenantbudgets", "mcpservers", "investigations", "scheduledinvestigations"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["leloir.dev"]
+          resources: ["investigations/status", "scheduledinvestigations/status"]
+          verbs: ["get", "update", "patch"]
+        - apiGroups: ["apps"]
+          resources: ["deployments"]
+          verbs: ["get", "list", "watch"]
+
+- name: Bind leloir-controlplane ClusterRole
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: leloir-controlplane
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: leloir-controlplane
+      subjects:
+        - kind: ServiceAccount
+          name: leloir-controlplane
+          namespace: "{{ leloir_namespace }}"
+
+- name: Create leloir-broker Role in litellm namespace (scoped)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: leloir-llm-broker
+        namespace: "{{ leloir_litellm_namespace }}"
+      rules:
+        - apiGroups: ["litellm.palena.ai"]
+          resources: ["litellmteams", "litellmvirtualkeys"]
+          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["get"]
+
+- name: Bind leloir-broker Role
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: leloir-llm-broker
+        namespace: "{{ leloir_litellm_namespace }}"
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: leloir-llm-broker
+      subjects:
+        - kind: ServiceAccount
+          name: leloir-controlplane
+          namespace: "{{ leloir_namespace }}"
+
+- name: Read litellm master key secret (from litellm namespace)
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: leloir-llm-master-key
+    namespace: "{{ leloir_litellm_namespace }}"
+  register: litellm_master_secret
+  no_log: true
+
+- name: Copy litellm master key into leloir namespace (env secretKeyRef must be same-ns)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: litellm-master-key
+        namespace: "{{ leloir_namespace }}"
+      type: Opaque
+      data:
+        master-key: "{{ litellm_master_secret.resources[0].data['master-key'] }}"
+  when: litellm_master_secret.resources | length > 0
+  no_log: true
+
 
 # ─── Control plane deployment ─────────────────────────────────────────────────
 
@@ -252,6 +397,7 @@
             labels:
               app: leloir-controlplane
           spec:
+            serviceAccountName: leloir-controlplane
             nodeSelector:
               kubernetes.io/arch: arm64
               # rk1 pool resuelve el registry in-cluster (registry.registry:5000);
@@ -273,6 +419,11 @@
                       secretKeyRef:
                         name: postgres-leloir-credentials
                         key: DSN
+                  - name: LELOIR_LITELLM_MASTER_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: litellm-master-key
+                        key: master-key
                 volumeMounts:
                   - name: config
                     mountPath: /etc/leloir

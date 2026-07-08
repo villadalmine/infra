@@ -1,0 +1,76 @@
+# ScheduledInvestigation — investigación proactiva por cron (spec-m16, D8).
+# El equivalente GOBERNADO del ScheduledHealthCheck del Holmes operator.
+# El scheduler corre en el control plane (granularidad de minuto, sin pods
+# por corrida); cada disparo crea una investigación por el pipeline estándar.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: scheduledinvestigations.leloir.dev
+  annotations:
+    leloir.dev/sdk-version: "1.0.0"
+    leloir.dev/since-milestone: "M16"
+spec:
+  group: leloir.dev
+  names:
+    kind: ScheduledInvestigation
+    listKind: ScheduledInvestigationList
+    plural: scheduledinvestigations
+    singular: scheduledinvestigation
+    shortNames: [sinv]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Schedule
+          type: string
+          jsonPath: .spec.schedule
+        - name: Enabled
+          type: boolean
+          jsonPath: .spec.enabled
+        - name: Last-Run
+          type: string
+          jsonPath: .status.lastRunAt
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [schedule, template]
+              properties:
+                schedule:
+                  type: string
+                  description: Cron estándar de 5 campos (ej. "0 * * * *").
+                enabled:
+                  type: boolean
+                  description: false pausa el schedule (default true).
+                template:
+                  type: object
+                  required: [query]
+                  description: Spec de la Investigation a disparar en cada corrida.
+                  properties:
+                    query: {type: string}
+                    agentName: {type: string}
+                    budget:
+                      type: object
+                      properties:
+                        maxUSD: {type: number}
+                        maxTokens: {type: integer, format: int64}
+                    timeoutMinutes: {type: integer}
+                    destinations:
+                      type: array
+                      items: {type: string}
+            status:
+              type: object
+              properties:
+                lastRunAt: {type: string}
+                lastInvestigationID: {type: string}
+                lastError: {type: string}
