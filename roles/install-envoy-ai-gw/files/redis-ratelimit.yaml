@@ -1,0 +1,50 @@
+# Redis backend para el rate-limit de Envoy Gateway (prerequisito de QuotaPolicy).
+# Envoy AI GW guarda los contadores de cuota de tokens acá. Fiel al ejemplo
+# upstream (examples/token_ratelimit/redis.yaml). NO se usa hasta que el release
+# `eg` (Envoy Gateway) apunte a este Redis vía config.rateLimit.backend — ver el
+# README (§Habilitar QuotaPolicy) y el rol infra-ai install-envoy-ai-gw.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redis-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: redis-system
+  labels:
+    app: redis
+    leloir.dev/poc: envoy-ai-spike
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:8.2.4-alpine3.22
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6379
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: redis-system
+  labels:
+    app: redis
+    leloir.dev/poc: envoy-ai-spike
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

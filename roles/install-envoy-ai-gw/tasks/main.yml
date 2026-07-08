@@ -13,7 +13,15 @@
     state: present
     src: "{{ role_path }}/files/gateway-api-tlsroute-v1.5.1.yaml"
 
-- name: Install or upgrade Envoy Gateway (base, with AI Gateway integration values)
+# Redis para los contadores del rate-limit (backend de la BackendTrafficPolicy de
+# token-quota). Debe existir ANTES de que el Envoy Gateway apunte a él.
+- name: Deploy Redis for rate-limit counters (token-quota backend)
+  when: envoy_ratelimit_enabled | bool
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/redis-ratelimit.yaml"
+
+- name: Install or upgrade Envoy Gateway (base + rate-limit addon si aplica)
   kubernetes.core.helm:
     name: eg
     chart_ref: "oci://docker.io/envoyproxy/gateway-helm"
@@ -22,8 +30,12 @@
     create_namespace: true
     wait: true
     wait_timeout: "300s"
-    values_files:
-      - "{{ role_path }}/files/envoy-gateway-values.yaml"
+    # base + (addon rate-limit → Redis) si envoy_ratelimit_enabled. El addon
+    # setea config.envoyGateway.rateLimit.backend y crea el deployment envoy-ratelimit.
+    values_files: >-
+      {{ [role_path ~ '/files/envoy-gateway-values.yaml']
+         + ([role_path ~ '/files/envoy-gateway-values-addon-ratelimit.yaml']
+            if envoy_ratelimit_enabled | bool else []) }}
 
 - name: Wait for envoy-gateway rollout
   ansible.builtin.command:

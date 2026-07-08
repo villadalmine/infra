@@ -1,0 +1,12 @@
+# Addon de rate-limiting para Envoy Gateway (prerequisito de QuotaPolicy del AI GW).
+# Se aplica JUNTO al base envoy-gateway-values.yaml (helm -f base -f addon).
+# Apunta el rate-limit al Redis desplegado en ns redis-system (redis.yaml).
+# La imagen del ratelimit la pone el chart por default (ff287602, multi-arch
+# arm64+amd64 — verificado). Basado en el ejemplo upstream token_ratelimit.
+config:
+  envoyGateway:
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          url: redis.redis-system.svc.cluster.local:6379
