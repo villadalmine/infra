@@ -76,6 +76,10 @@
     create_namespace: false
     wait: false
     values:
+      # ── Image registry: ghcr.io (chart default cr.kagent.dev no resuelve ─────
+      # controller/ui:0.9.11 en nodos frescos → ImagePullBackOff). Ver defaults.
+      registry: "{{ kagent_image_registry }}"
+
       # ── LLM provider: reuse in-cluster LiteLLM proxy ──────────────────────
       # Use apiKeySecretRef instead of inline apiKey for proper secret management
       providers:

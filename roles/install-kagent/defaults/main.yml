@@ -2,6 +2,11 @@ kagent_namespace: kagent
 kagent_release_name: kagent
 kagent_chart: "oci://ghcr.io/kagent-dev/kagent/helm/kagent"
 kagent_chart_version: "0.9.11"   # última estable 0.9.x (0.10 aún beta) — 2026-07-06
+# 2026-07-08: forzar registry ghcr.io. El default del chart es `registry: cr.kagent.dev`
+# (el registry vanity de kagent) y su tag controller/ui:0.9.11 NO resuelve en nodos
+# frescos → ImagePullBackOff eterno del controller (roto 40h). ghcr.io publica las
+# mismas imágenes multi-arch (incl. arm64) y sí puldea. Ver commit de este fix.
+kagent_image_registry: ghcr.io
 kagent_hostname: kagent.cluster.home
 kagent_node: srv-rk1-nvme-01
 
