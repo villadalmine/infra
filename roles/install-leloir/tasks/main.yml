@@ -257,10 +257,19 @@
                 credentials: {from: llmBroker}
                 # Dogfooding: the flagship routes its tools through OUR gateway
                 # (facade) → its scorecard is 5/5 and it is NOT off-radar (D9:
-                # we hold our own agent to the governance we sell).
+                # we hold our own agent to the governance we sell). The tool
+                # SCHEMA must be declared in custom.tools.definitions below —
+                # harness.tools only ALLOWLISTS it (fail-loud validated).
                 tools:
                   - server: demo
                     allow: [cluster_node_count]
+              custom:
+                tools:
+                  definitions:
+                    - name: cluster_node_count
+                      mcpServer: demo
+                      description: "Return the number of nodes in the Kubernetes cluster"
+                      parameters: {type: object, properties: {}}
             - name: holmesgpt
               type: holmesgpt
               tenantID: default
