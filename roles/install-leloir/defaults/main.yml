@@ -50,6 +50,11 @@ leloir_gateway_memory_limit: "256Mi"
 # Servers MCP por-tenant. Vacío por defecto — los servers reales se declaran con
 # el CRD MCPServer (nada hardcodeado). Cada entry: {name, tenant, transport,
 # endpoint, toolAllowlist:[...]}. El aislamiento por-tenant lo garantiza el gateway.
+# La FACHADA MCP (spec-m17, /mcp-facade/{tenant}) ya está en la imagen: cualquier
+# agente MCP (Holmes 0.35 mcp_servers, kagent, Claude) consume estos servers
+# gobernado sin SDK. E2E validado 08/07 con un tool server http de prueba.
+# NOTA: transport:mcp↔kagent-tools tiene un issue de compat SSE (handshake lento) —
+# pendiente; transport:http anda. Registrar servers reales acá o vía CRD MCPServer.
 leloir_gateway_servers: []
 
 # Observabilidad (ServiceMonitor + dashboards Grafana)
