@@ -224,6 +224,12 @@
               endpoint: "http://{{ leloir_litellm_instance }}.{{ leloir_litellm_namespace }}.svc.cluster.local:4000"
               models: [rk1-npu-local]
 
+          # In-process adapters (the flagship) route tool calls here → governed
+          # path (allowlist/creds/audit). Without this the flagship declaring
+          # harness.tools would DRIFT (declared gateway but never reaches it).
+          mcpGateway:
+            endpoint: "http://leloir-mcp-gateway.leloir.svc.cluster.local:8082"
+
           modelProvider:
             models:
               - id: demo-model
@@ -244,9 +250,17 @@
               harness:
                 systemPrompt: |
                   You are the Leloir first-party incident responder. Be brief and precise.
+                  Always begin by calling the cluster_node_count tool to size the
+                  cluster before reasoning about the alert.
                 loop: {maxIterations: 3}
                 model: demo-model
                 credentials: {from: llmBroker}
+                # Dogfooding: the flagship routes its tools through OUR gateway
+                # (facade) → its scorecard is 5/5 and it is NOT off-radar (D9:
+                # we hold our own agent to the governance we sell).
+                tools:
+                  - server: demo
+                    allow: [cluster_node_count]
             - name: holmesgpt
               type: holmesgpt
               tenantID: default
