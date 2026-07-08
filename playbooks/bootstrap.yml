@@ -178,6 +178,8 @@
       tags: [litellm-operator, ai-platform]
     - role: install-envoy-ai-gw
       tags: [envoy-ai-gw, ai-platform]
+    - role: cp-isolation
+      tags: [cp-isolation]
     - role: install-honcho
       tags: [ai, ai-honcho]
     - role: install-hermes-agent

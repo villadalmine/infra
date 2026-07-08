@@ -41,6 +41,13 @@
     create_namespace: false
     wait: false
     values:
+      # Los masters llevan taint control-plane:NoSchedule (aislamiento CP,
+      # 2026-07-08) — alloy DEBE tolerarlo o perdemos logs/métricas de ellos.
+      controller:
+        tolerations:
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
       alloy:
         stabilityLevel: generally-available
 
@@ -112,7 +119,6 @@
                 tenant_id = "fake"
               }
             }
-  when: not alloy_deployed
 
 - name: Wait for Alloy rollout
   ansible.builtin.command:

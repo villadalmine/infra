@@ -1,0 +1,32 @@
+# Aislamiento del control plane (2026-07-08): los CM4 masters van saturados
+# corriendo k3s+etcd (~2.5 de 4 cores es costo fijo); el taint evita que
+# workloads futuros les roben CPU a etcd → menos flaps de túneles/API.
+#
+# HOSTNAME-PROOF: el selector es el LABEL de rol, no el hostname — sobrevive
+# re-registros de nodos (incidente MikroTik/reboot: srv-super6c-XX-nvme pasó
+# a super6c-nodeN y este taint siguió siendo válido).
+#
+# Los DaemonSets críticos toleran: cilium/cilium-envoy (Exists), node-exporter
+# (NoSchedule), alloy (toleration agregada en install-alloy el mismo día).
+# kubevirt tolera y PREFIERE masters by-design — se va cuando se desacople.
+
+- name: Taint control-plane nodes (NoSchedule, by role label)
+  ansible.builtin.command:
+    cmd: >
+      kubectl taint nodes -l node-role.kubernetes.io/control-plane=true
+      node-role.kubernetes.io/control-plane=:NoSchedule --overwrite
+  register: cp_taint
+  changed_when: "'tainted' in cp_taint.stdout"
+
+- name: Show remaining non-DaemonSet pods on control-plane nodes (informational)
+  ansible.builtin.shell:
+    cmd: >
+      kubectl get pods -A -o wide --no-headers |
+      grep -E "$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o jsonpath='{range .items[*]}{.metadata.name}|{end}' | sed 's/|$//')" |
+      grep -vcE "cilium|alloy|node-exporter|svclb|loki-canary|longhorn" || true
+  register: cp_pods
+  changed_when: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "Pods no-DS aún en masters (kubevirt tolera hasta desacoplar): {{ cp_pods.stdout }}"
