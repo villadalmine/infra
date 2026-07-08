@@ -3,6 +3,12 @@
 # values compatible (modelList/toolsets/crdPermissions/additionalEnvVars).
 holmes_version: "0.35.0"
 
+# Operator mode (0.35): despliega el controller holmes-operator que reconcilia
+# los CRDs HealthCheck / ScheduledHealthCheck / TriggeredHealthCheck. Sin esto
+# los CRDs existen pero nadie los actúa. Imagen robustadev/holmes-operator
+# (multi-arch arm64+amd64). Reversible: false = no despliega el controller.
+holmes_operator_enabled: true
+
 # El combined-server AG-UI (holmes-combined-server.py) fue escrito contra el
 # server.py de 0.24 y NO es compatible con 0.35 (auth middleware/admin API
 # nuevos; delta de ~337 líneas). holmes-ui usa /api/chat estándar y NO lo
