@@ -249,20 +249,27 @@
               tenantID: default
               harness:
                 systemPrompt: |
-                  You are the Leloir first-party incident responder. Be brief and precise.
-                  Always begin by calling the cluster_node_count tool to size the
-                  cluster before reasoning about the alert.
-                loop: {maxIterations: 3}
+                  You are the Leloir first-party incident responder. Diagnose the alert
+                  against the REAL cluster using your tools, in this order:
+                  1. Call get_pods with the namespace from the alert to find the failing
+                     pod and its exact name.
+                  2. Call get_pod_logs with that exact pod name AND namespace — the real
+                     error is in the logs; you MUST read them before concluding.
+                  3. Call get_pod_events for the pod if needed.
+                  Then give a concise root cause that QUOTES the actual error from the
+                  logs, and a concrete fix. Do not repeat get_pods; move on to the logs.
+                loop: {maxIterations: 6}
                 model: demo-model
                 credentials: {from: llmBroker}
-                # Dogfooding: the flagship routes its tools through OUR gateway
-                # (facade) → its scorecard is 5/5 and it is NOT off-radar (D9:
-                # we hold our own agent to the governance we sell). The tool
-                # SCHEMA must be declared in custom.tools.definitions below —
-                # harness.tools only ALLOWLISTS it (fail-loud validated).
+                # Dogfooding: the flagship routes its tools through OUR gateway (facade)
+                # → its scorecard is 5/5, NOT off-radar (D9). The tool SCHEMA must be
+                # declared in custom.tools.definitions; harness.tools only ALLOWLISTS.
+                # `kubernetes` = real read-only k8s tools → GROUNDED investigation.
                 tools:
                   - server: demo
                     allow: [cluster_node_count]
+                  - server: kubernetes
+                    allow: [get_pods, get_pod_logs, get_pod_events]
               custom:
                 tools:
                   definitions:
@@ -270,6 +277,18 @@
                       mcpServer: demo
                       description: "Return the number of nodes in the Kubernetes cluster"
                       parameters: {type: object, properties: {}}
+                    - name: get_pods
+                      mcpServer: kubernetes
+                      description: "List pods with status and restart count in a namespace"
+                      parameters: {type: object, properties: {namespace: {type: string, description: "kubernetes namespace"}}}
+                    - name: get_pod_logs
+                      mcpServer: kubernetes
+                      description: "Recent logs of a pod to find the error"
+                      parameters: {type: object, properties: {namespace: {type: string}, name: {type: string, description: "pod name"}}, required: [name]}
+                    - name: get_pod_events
+                      mcpServer: kubernetes
+                      description: "Kubernetes events for a pod (why it is failing)"
+                      parameters: {type: object, properties: {namespace: {type: string}, name: {type: string, description: "pod name"}}, required: [name]}
             - name: holmesgpt
               type: holmesgpt
               tenantID: default
@@ -745,6 +764,14 @@
     kind: HTTPRoute
     name: leloir
     namespace: "{{ leloir_namespace }}"
+
+# ─── Tool server de Kubernetes (tools reales para el flagship) ───────────────
+# Read-only (get_pods/logs/events), RBAC scoped. El gateway lo registra como el
+# server "kubernetes" (leloir_gateway_servers) → investigación GROUNDED gobernada.
+- name: Deploy the Kubernetes tool server (grounded investigations)
+  ansible.builtin.command:
+    cmd: kubectl apply -f {{ leloir_git_raw }}/deploy/demo/k8s-tools.yaml
+  changed_when: false
 
 # ─── GitOps homelab ApplicationSet ───────────────────────────────────────────
 # Aplica el ApplicationSet al ArgoCD del homelab: gestiona Dex + control plane

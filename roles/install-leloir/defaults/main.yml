@@ -55,7 +55,21 @@ leloir_gateway_memory_limit: "256Mi"
 # gobernado sin SDK. E2E validado 08/07 con un tool server http de prueba.
 # NOTA: transport:mcp↔kagent-tools tiene un issue de compat SSE (handshake lento) —
 # pendiente; transport:http anda. Registrar servers reales acá o vía CRD MCPServer.
-leloir_gateway_servers: []
+# Servers registrados en el gateway. `demo` = tool juguete (insignia e2e);
+# `kubernetes` = tool server REAL read-only (get_pods/logs/events) para que el
+# flagship investigue incidentes GROUNDED, gobernado + auditado. El deployment
+# del k8s tool server está en leloir/deploy/demo/k8s-tools.yaml (aplicar aparte).
+leloir_gateway_servers:
+  - name: demo
+    tenant: default
+    transport: http
+    endpoint: http://leloir-demo-tool.leloir.svc.cluster.local:8080
+    toolAllowlist: [cluster_node_count]
+  - name: kubernetes
+    tenant: default
+    transport: http
+    endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
+    toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
 
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
