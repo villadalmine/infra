@@ -70,6 +70,12 @@ leloir_gateway_servers:
     transport: http
     endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
     toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
+  - name: kubernetes-shadow
+    tenant: default
+    transport: http
+    endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
+    shadow: true
+    toolAllowlist: [restart_deployment, delete_pod, get_pods]
 
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
