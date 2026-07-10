@@ -98,6 +98,12 @@ leloir_gateway_servers:
     endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
     toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
     allowedNamespaces: [demo-mode3]
+  - name: kubernetes
+    tenant: demo-mode4
+    transport: http
+    endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
+    toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
+    allowedNamespaces: [demo-mode4]
 
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
