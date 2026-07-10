@@ -332,7 +332,9 @@
           resources: ["tenants", "alertroutes", "agentregistrations", "tenantbudgets", "mcpservers", "investigations", "scheduledinvestigations"]
           verbs: ["get", "list", "watch"]
         - apiGroups: ["leloir.dev"]
-          resources: ["investigations/status", "scheduledinvestigations/status"]
+          # El reconciler escribe health/conditions de vuelta al .status de cada CRD
+          # (agentregistrations/status faltaba → health no persistía).
+          resources: ["investigations/status", "scheduledinvestigations/status", "agentregistrations/status", "tenants/status", "alertroutes/status", "mcpservers/status", "tenantbudgets/status"]
           verbs: ["get", "update", "patch"]
         - apiGroups: ["apps"]
           resources: ["deployments"]
