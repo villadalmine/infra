@@ -215,6 +215,17 @@
           kubernetes:
             enabled: true          # CRD watcher: routes/budgets/agents/investigations
 
+          # Modo 2 containment (spec-m13.4): wirea el containment.Applier. Sin esto
+          # (enabled:false) un agente platform-provisioned tendría el scorecard
+          # "contained" PERO la contención no se aplicaría (SA/RBAC/egress-lock).
+          containment:
+            enabled: true
+            gatewayHost: leloir-mcp-gateway.leloir.svc.cluster.local
+            gatewayPort: 8082
+            llmHost: "{{ leloir_litellm_instance }}.{{ leloir_litellm_namespace }}.svc.cluster.local"
+            llmPort: 4000
+            platformNamespaces: [leloir, "{{ leloir_litellm_namespace }}"]
+
           llmBroker:
             driver: litellm-operator
             spendPollInterval: 30s
@@ -336,9 +347,22 @@
           # (agentregistrations/status faltaba → health no persistía).
           resources: ["investigations/status", "scheduledinvestigations/status", "agentregistrations/status", "tenants/status", "alertroutes/status", "mcpservers/status", "tenantbudgets/status"]
           verbs: ["get", "update", "patch"]
+        # Modo 2 containment (spec-m13.4): el containment.Applier genera SA + RBAC
+        # NAMESPACED (RoleBinding, no ClusterRoleBinding) + egress-lock + patchea el
+        # Deployment del agente contenido. NO crea ClusterRoles (el compartido
+        # leloir-contained-readonly se pre-crea en tenant-isolation-policy.yaml).
+        - apiGroups: [""]
+          resources: ["serviceaccounts"]
+          verbs: ["get", "list", "create", "patch", "update"]
+        - apiGroups: ["rbac.authorization.k8s.io"]
+          resources: ["roles", "rolebindings"]
+          verbs: ["get", "list", "create", "patch", "update"]
+        - apiGroups: ["cilium.io"]
+          resources: ["ciliumnetworkpolicies"]
+          verbs: ["get", "list", "create", "patch", "update"]
         - apiGroups: ["apps"]
           resources: ["deployments"]
-          verbs: ["get", "list", "watch"]
+          verbs: ["get", "list", "watch", "patch"]
 
 - name: Bind leloir-controlplane ClusterRole
   kubernetes.core.k8s:
