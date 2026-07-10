@@ -369,6 +369,14 @@
         - apiGroups: ["apps"]
           resources: ["deployments"]
           verbs: ["get", "list", "watch", "patch"]
+        # Own-key provisioning (spec-m13.4, llmKeyFrom: llmBroker): el Applier
+        # SINCRONIZA la virtual key del tenant (ns del broker → ns del agente
+        # contenido) por server-side apply. Sólo ESCRITURA de la copia — la
+        # lectura del origen usa el Role namespaced leloir-broker en el ns del
+        # broker; sin get/list de secrets cluster-wide a propósito.
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["create", "patch"]
 
 - name: Bind leloir-controlplane ClusterRole
   kubernetes.core.k8s:

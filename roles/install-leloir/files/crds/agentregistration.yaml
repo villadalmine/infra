@@ -216,6 +216,17 @@ spec:
                     deploymentContainer:
                       type: string
                       description: Container in deploymentName to inject env into; empty = the first.
+                    llmKeyFrom:
+                      type: string
+                      enum: ["", "llmBroker"]
+                      description: >
+                        "llmBroker" provisions the TENANT's virtual key to the
+                        contained agent: the key Secret is synced from the broker
+                        namespace into the agent's namespace and injected as
+                        OPENAI_API_KEY by secretKeyRef. Completes the forced LLM
+                        path (metered + budgeted); the key value never passes
+                        through Leloir. Empty = the agent must already hold a
+                        valid tenant key.
 
                 nativeGuardrails:
                   type: array
