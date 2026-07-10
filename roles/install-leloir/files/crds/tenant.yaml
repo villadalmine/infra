@@ -20,9 +20,9 @@ spec:
       subresources:
         status: {}
       additionalPrinterColumns:
-        - name: Namespaces
+        - name: Namespace
           type: string
-          jsonPath: .spec.namespaces
+          jsonPath: .spec.namespace
         - name: Profile
           type: string
           jsonPath: .spec.profile
@@ -41,26 +41,25 @@ spec:
               type: object
               # Neither is strictly required: use `namespace` (singular) for the
               # common single-namespace tenant, or `namespaces` (plural) for a
-              # multi-namespace one. The watcher indexes both. (Canonical schema —
-              # kept in sync with leloir-core/deploy/crds/tenant.yaml.)
+              # multi-namespace one. The watcher indexes both.
               properties:
                 namespace:
                   type: string
                   description: >
-                    The namespace this tenant owns (single-namespace tenants — the
-                    common case). Authoritative source of the namespace→tenant map:
-                    a CRD's tenant comes from the namespace it lives in, never from
-                    a spoofable label.
+                    Kubernetes namespace that contains this tenant's resources
+                    (AlertRoutes, MCPServers, etc.). Single-namespace tenants
+                    (the common case) only need this field.
                   minLength: 1
                   maxLength: 63
                   pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+
                 namespaces:
                   type: array
-                  minItems: 1
                   description: >
-                    The namespaces this tenant owns when it spans several (a platform
-                    team). Same authoritative mapping. One Tenant CR lists ALL its
-                    namespaces; you do NOT create one Tenant per ns.
+                    Additional namespaces this tenant owns (multi-namespace
+                    tenants). The authoritative namespace→tenant index is built
+                    from `namespace` PLUS every entry here — both forms are
+                    supported. Optional.
                   items:
                     type: string
                     minLength: 1
