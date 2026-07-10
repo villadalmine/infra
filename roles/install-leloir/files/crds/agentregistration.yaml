@@ -181,6 +181,62 @@ spec:
                             attempts: {type: integer}
                             backoffSeconds: {type: number}
 
+                containment:
+                  type: object
+                  description: >
+                    Modo 2 (spec-m13.4): govern a BLACK-BOX third party by how we
+                    deploy it, not by its cooperation. When runtime is
+                    platform-provisioned, Leloir emits scoped RBAC + an egress-lock
+                    CiliumNetworkPolicy + env forcing its LLM/tools through us.
+                  properties:
+                    runtime:
+                      type: string
+                      enum: ["self-deployed", "platform-provisioned"]
+                      default: self-deployed
+                    egressAllowlist:
+                      type: array
+                      items: {type: string}
+                      description: Extra hosts/CIDRs the agent may reach; empty = only the platform.
+                    rbacScope:
+                      type: string
+                      description: '"none" | "read-only" | a ClusterRole name to bind.'
+                    forceLLMGateway:
+                      type: boolean
+                      description: Inject env so the agent's LLM goes through our gateway.
+                    forceMCPFacade:
+                      type: boolean
+                      description: Inject env so the agent's tools go through our facade.
+                    deploymentName:
+                      type: string
+                      description: >
+                        The agent's existing Deployment (labeled
+                        leloir.dev/contained-agent) that Leloir patches with the
+                        scoped ServiceAccount + forced env. Empty = only RBAC +
+                        egress-lock are applied (perimeter containment).
+                    deploymentContainer:
+                      type: string
+                      description: Container in deploymentName to inject env into; empty = the first.
+
+                nativeGuardrails:
+                  type: array
+                  description: >
+                    Modo 3 (spec-m13.5): seams the third party guards ITSELF.
+                    Leloir marks those seams "native" (covered, sourced from the
+                    agent, not us) and contains the rest — honest about the source.
+                  items:
+                    type: object
+                    required: [seam]
+                    properties:
+                      seam:
+                        type: string
+                        enum: ["tools", "llm", "rbac"]
+                      guarantee:
+                        type: string
+                        description: What the native guardrail guarantees (e.g. "read-only").
+                      evidence:
+                        type: string
+                        description: How it was verified (a config flag, the agent's docs).
+
                 canInvoke:
                   type: array
                   description: >
@@ -247,6 +303,18 @@ spec:
             status:
               type: object
               properties:
+                # Governance scorecard (spec-m17.2): qué seams gobierna Leloir
+                # para ESTE agente — la respuesta honesta (D9), computada de la
+                # config declarada. El control plane la escribe al reconciliar.
+                scorecard:
+                  type: object
+                  description: Qué seams de governance bindean para este agente.
+                  properties:
+                    llm:     {type: string, description: "enforced | byo-key | unmetered"}
+                    tools:   {type: string, description: "gateway | none"}
+                    rbac:    {type: string, description: "gateway-creds | observed"}
+                    trigger: {type: string, description: "routed"}
+                    outcome: {type: string, description: "recorded | correlated"}
                 health:
                   type: string
                   enum: [healthy, unhealthy, degraded, unknown]
