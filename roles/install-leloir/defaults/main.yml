@@ -76,6 +76,28 @@ leloir_gateway_servers:
     endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
     shadow: true
     toolAllowlist: [restart_deployment, delete_pod, get_pods]
+  # Servers per-tenant del living-demo (deploy/demo/modes). `allowedNamespaces`
+  # acota las tool calls al namespace del tenant: el gateway RECHAZA
+  # (namespace_not_allowed) si un agente pide otro ns — anti-leak cross-tenant.
+  # El `kubernetes` default queda SIN restricción (el flagship investiga cualquier ns).
+  - name: kubernetes
+    tenant: demo-mode1
+    transport: http
+    endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
+    toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
+    allowedNamespaces: [demo-mode1]
+  - name: kubernetes
+    tenant: demo-mode2
+    transport: http
+    endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
+    toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
+    allowedNamespaces: [demo-mode2]
+  - name: kubernetes
+    tenant: demo-mode3
+    transport: http
+    endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
+    toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
+    allowedNamespaces: [demo-mode3]
 
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
