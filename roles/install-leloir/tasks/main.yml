@@ -775,6 +775,19 @@
     cmd: kubectl apply -f {{ leloir_git_raw }}/deploy/demo/k8s-tools.yaml
   changed_when: false
 
+# Living demo — los 3 modos de governance (deploy/demo/modes). Cada modo = un
+# tenant real (Tenant + TenantBudget + AgentRegistration + MCPServer + AlertRoute
+# + workload roto). Idempotente. El namespace-scoping por-tenant de las tools sale
+# de leloir_gateway_servers (allowedNamespaces) — ya renderizado en la ConfigMap.
+- name: Deploy the 3 governance-mode example tenants
+  ansible.builtin.command:
+    cmd: kubectl apply -f {{ leloir_git_raw }}/deploy/demo/modes/{{ item }}
+  loop:
+    - mode1-sdk-native.yaml
+    - mode2-contain-blackbox.yaml
+    - mode3-native-guardrails.yaml
+  changed_when: false
+
 # ─── GitOps homelab ApplicationSet ───────────────────────────────────────────
 # Aplica el ApplicationSet al ArgoCD del homelab: gestiona Dex + control plane
 # vía los Helm charts en deploy/homelab/ del repo leloir.
