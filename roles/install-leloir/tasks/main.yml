@@ -783,6 +783,7 @@
   ansible.builtin.command:
     cmd: kubectl apply -f {{ leloir_git_raw }}/deploy/demo/modes/{{ item }}
   loop:
+    - tenant-isolation-policy.yaml # admission policy + egress-lock (item 1, D-BB5) — PRIMERO
     - mode1-sdk-native.yaml
     - mode2-contain-blackbox.yaml
     - mode3-native-guardrails.yaml
