@@ -45,6 +45,11 @@
       data:
         config.yaml: |
           model_list:
+            # ── propuesto por ia-scout (2026-07-10): candidato barato del catálogo — ver PR ──
+            - model_name: mistral-small
+              litellm_params:
+                model: openrouter/mistralai/mistral-small-24b-instruct-2501
+                api_key: os.environ/OPENROUTER_API_KEY
             # ── Local GPU route: in-cluster Ollama on srv-t7910 with a HAMi vGPU slice ──
             # Pascal/Maxwell (P4/M4000) → Ollama/llama.cpp, not vLLM (needs CC>=7.0).
             # Deploy: kubectl apply -f roles/install-litellm-proxy/files/ollama-gpu.yaml
