@@ -357,6 +357,12 @@
         - apiGroups: ["rbac.authorization.k8s.io"]
           resources: ["roles", "rolebindings"]
           verbs: ["get", "list", "create", "patch", "update"]
+        # bind: atar el ClusterRole predefinido leloir-contained-readonly vía RoleBinding
+        # SIN poseer sus permisos (escalation-safe, scoped a ese ClusterRole).
+        - apiGroups: ["rbac.authorization.k8s.io"]
+          resources: ["clusterroles"]
+          verbs: ["bind"]
+          resourceNames: ["leloir-contained-readonly"]
         - apiGroups: ["cilium.io"]
           resources: ["ciliumnetworkpolicies"]
           verbs: ["get", "list", "create", "patch", "update"]
