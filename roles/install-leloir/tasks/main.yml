@@ -340,7 +340,9 @@
         name: leloir-controlplane
       rules:
         - apiGroups: ["leloir.dev"]
-          resources: ["tenants", "alertroutes", "agentregistrations", "tenantbudgets", "mcpservers", "investigations", "scheduledinvestigations"]
+          # skillsources: la resolución de skills (route.skills → SkillRef con
+          # contenido) los lee del namespace de la ruta al lanzar la investigación.
+          resources: ["tenants", "alertroutes", "agentregistrations", "tenantbudgets", "mcpservers", "investigations", "scheduledinvestigations", "skillsources"]
           verbs: ["get", "list", "watch"]
         - apiGroups: ["leloir.dev"]
           # El reconciler escribe health/conditions de vuelta al .status de cada CRD
