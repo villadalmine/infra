@@ -227,13 +227,25 @@
             platformNamespaces: [leloir, "{{ leloir_litellm_namespace }}"]
 
           llmBroker:
-            driver: litellm-operator
+            # envoy-ai-gw = COMPUESTO (spec-m15 15.6): Envoy delante (routing keyless
+            # por x-leloir-tenant + token-ratelimit por tenant), litellm detrás
+            # (budget USD + spend = fuente de verdad). ⚠️ gap conocido: el header es
+            # spoofeable por pods que alcancen el VIP — ver spec-m15 §gap de seguridad
+            # (los contenidos NO lo alcanzan: egress-lock; y siguen en own-key).
+            driver: envoy-ai-gw
             spendPollInterval: 30s
             litellmOperator:
               namespace: "{{ leloir_litellm_namespace }}"
               instanceName: "{{ leloir_litellm_instance }}"
               endpoint: "http://{{ leloir_litellm_instance }}.{{ leloir_litellm_namespace }}.svc.cluster.local:4000"
               models: [rk1-npu-local]
+            envoyAIGateway:
+              namespace: "{{ leloir_litellm_namespace }}"
+              gatewayName: "leloir-ai-gw"
+              endpoint: "http://envoy-ai-leloir-ai-gw-47211a0b.envoy-gateway-system.svc.cluster.local:80"
+              upstreamHost: "{{ leloir_litellm_instance }}.{{ leloir_litellm_namespace }}.svc.cluster.local"
+              upstreamPort: 4000
+              tokensPerHour: 200000
 
           # In-process adapters (the flagship) route tool calls here → governed
           # path (allowlist/creds/audit). Without this the flagship declaring
@@ -415,9 +427,18 @@
         - apiGroups: ["litellm.palena.ai"]
           resources: ["litellmteams", "litellmvirtualkeys"]
           verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        # get: leer las virtual keys; create/update/delete: el driver envoy-ai-gw
+        # DERIVA un secret por tenant (api_key → apiKey para el BSP) en este ns.
         - apiGroups: [""]
           resources: ["secrets"]
-          verbs: ["get"]
+          verbs: ["get", "create", "update", "delete"]
+        # Driver envoy-ai-gw (spec-m15 15.6): el frente por tenant, en este ns.
+        - apiGroups: ["aigateway.envoyproxy.io"]
+          resources: ["aigatewayroutes", "aiservicebackends", "backendsecuritypolicies"]
+          verbs: ["get", "list", "create", "update", "delete"]
+        - apiGroups: ["gateway.envoyproxy.io"]
+          resources: ["backends", "backendtrafficpolicies"]
+          verbs: ["get", "list", "create", "update", "delete"]
 
 - name: Bind leloir-broker Role
   kubernetes.core.k8s:
