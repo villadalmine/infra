@@ -379,6 +379,11 @@
         - apiGroups: [""]
           resources: ["secrets"]
           verbs: ["create", "patch"]
+        # Skills type configmap: el resolver lee el ConfigMap que referencia un
+        # SkillSource (siempre del MISMO ns de la ruta). Sólo get, sin list/watch.
+        - apiGroups: [""]
+          resources: ["configmaps"]
+          verbs: ["get"]
 
 - name: Bind leloir-controlplane ClusterRole
   kubernetes.core.k8s:
