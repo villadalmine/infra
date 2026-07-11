@@ -83,3 +83,8 @@
     (cilium_gwc.resources[0].status.conditions
      | selectattr('type', 'equalto', 'Accepted')
      | selectattr('status', 'equalto', 'True') | list | length) == 0
+
+- name: Ingress-lock del proxy AI GW (frente keyless — sólo plataforma + perímetro)
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/gw-ingress-lock.yaml"

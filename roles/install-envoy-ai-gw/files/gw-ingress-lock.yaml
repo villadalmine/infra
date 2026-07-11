@@ -1,0 +1,26 @@
+# Ingress-lock del proxy Envoy AI GW (spec-m15 §gap de spoofing, 11/07).
+#
+# El frente keyless confía en el header x-leloir-tenant → SOLO puede alcanzarlo:
+#   - la plataforma (ns leloir: controlplane/gateway/flagship),
+#   - monitoring (scrapes),
+#   - el perímetro del operador (host/remote-node/world = LB VIP del LAN; el
+#     tráfico externo llega como `world` con L2 announcements).
+# Un POD de tenant NO llega — aunque conozca el VIP y el header (probado:
+# pod en ns de tenant con x-leloir-tenant ajeno = connect timeout).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: leloir-ai-gw-ingress-lock
+  namespace: envoy-gateway-system
+  labels:
+    app.kubernetes.io/managed-by: leloir
+spec:
+  endpointSelector:
+    matchLabels:
+      gateway.envoyproxy.io/owning-gateway-name: leloir-ai-gw
+  ingress:
+    - fromEndpoints:
+        - matchLabels: {k8s:io.kubernetes.pod.namespace: leloir}
+    - fromEndpoints:
+        - matchLabels: {k8s:io.kubernetes.pod.namespace: monitoring}
+    - fromEntities: [host, remote-node, world]
