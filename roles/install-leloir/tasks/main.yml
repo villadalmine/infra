@@ -763,6 +763,14 @@
     - name: fleet-dashboard
       data:
         leloir-fleet-dashboard.json: "{{ lookup('url', leloir_git_raw ~ '/deploy/grafana/leloir-fleet-dashboard.json', split_lines=false) }}"
+    # platform + tenant faltaban en el loop (drift encontrado 11/07): el repo
+    # tiene 4 dashboards y el check-docs-sync los referencia todos.
+    - name: platform-dashboard
+      data:
+        leloir-platform-dashboard.json: "{{ lookup('url', leloir_git_raw ~ '/deploy/grafana/leloir-platform-dashboard.json', split_lines=false) }}"
+    - name: tenant-dashboard
+      data:
+        leloir-tenant-dashboard.json: "{{ lookup('url', leloir_git_raw ~ '/deploy/grafana/leloir-tenant-dashboard.json', split_lines=false) }}"
   loop_control:
     label: "{{ item.name }}"
 
