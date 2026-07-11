@@ -314,6 +314,22 @@ spec:
             status:
               type: object
               properties:
+                # RBAC posture (13.16, D11): la SA EFECTIVA del agente sondeada
+                # con SubjectAccessReviews al reconciliar. Visibilidad donde no
+                # hay enforcement (self-deployed); drift-detection donde lo hay
+                # (un agente contenido debe leer "namespaced").
+                rbacPosture:
+                  type: object
+                  properties:
+                    serviceAccount: {type: string}
+                    verdict:
+                      type: string
+                      description: "cluster-wide | over-privileged | namespaced | none | unknown"
+                    clusterWide: {type: boolean}
+                    crossNamespace: {type: boolean}
+                    secrets: {type: boolean}
+                    write: {type: boolean}
+                    checkedAt: {type: string}
                 # Governance scorecard (spec-m17.2): qué seams gobierna Leloir
                 # para ESTE agente — la respuesta honesta (D9), computada de la
                 # config declarada. El control plane la escribe al reconciliar.

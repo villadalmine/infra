@@ -396,6 +396,12 @@
         - apiGroups: [""]
           resources: ["configmaps"]
           verbs: ["get"]
+        # RBAC posture (13.16, D11): sondear la SA efectiva de cada agente con
+        # SubjectAccessReviews (visibilidad, no enforcement; drift-detection en
+        # agentes contenidos).
+        - apiGroups: ["authorization.k8s.io"]
+          resources: ["subjectaccessreviews"]
+          verbs: ["create"]
 
 - name: Bind leloir-controlplane ClusterRole
   kubernetes.core.k8s:
