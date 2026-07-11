@@ -723,6 +723,101 @@
             port: 8082
             targetPort: 8082
 
+# ─── leloir-memory-mcp (spec-m18): memoria por-tenant como MCP server ─────────
+# Misma imagen (command /leloir-memory-mcp), respaldado por el Postgres de
+# Leloir (tabla propia). El tenant llega en X-Leloir-Tenant escrito por el
+# GATEWAY; la CNP de abajo garantiza que sólo el gateway lo alcanza.
+
+- name: Deploy leloir-memory-mcp
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: leloir-memory-mcp
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-memory-mcp
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: leloir-memory-mcp
+        template:
+          metadata:
+            labels:
+              app: leloir-memory-mcp
+          spec:
+            nodeSelector:
+              kubernetes.io/arch: arm64
+              storage: rk1-longhorn
+            tolerations:
+              - operator: Exists
+            containers:
+              - name: memory
+                image: "{{ leloir_registry }}/{{ leloir_image_name }}:{{ leloir_image_tag }}"
+                imagePullPolicy: Always
+                command: ["/leloir-memory-mcp"]
+                env:
+                  - name: LELOIR_DATABASE_DSN
+                    valueFrom:
+                      secretKeyRef:
+                        name: postgres-leloir-credentials
+                        key: DSN
+                ports:
+                  - containerPort: 8090
+                    name: http
+                resources:
+                  requests: {cpu: "50m", memory: "64Mi"}
+                  limits: {cpu: "250m", memory: "128Mi"}
+                readinessProbe:
+                  httpGet: {path: /healthz, port: 8090}
+                  initialDelaySeconds: 3
+                  periodSeconds: 10
+
+- name: Create leloir-memory-mcp Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: leloir-memory-mcp
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-memory-mcp
+      spec:
+        type: ClusterIP
+        selector:
+          app: leloir-memory-mcp
+        ports:
+          - name: http
+            port: 8090
+            targetPort: 8090
+
+- name: Ingress-lock de leloir-memory-mcp (sólo el gateway — el ancla de confianza del header)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cilium.io/v2
+      kind: CiliumNetworkPolicy
+      metadata:
+        name: leloir-memory-mcp-ingress-lock
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app.kubernetes.io/managed-by: leloir
+      spec:
+        endpointSelector:
+          matchLabels:
+            app: leloir-memory-mcp
+        ingress:
+          - fromEndpoints:
+              - matchLabels:
+                  app: leloir-mcp-gateway
+          # kubelet (probes) llega como host.
+          - fromEntities: [host]
+
 - name: Wait for leloir-mcp-gateway rollout
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/leloir-mcp-gateway -n {{ leloir_namespace }} --timeout=120s
