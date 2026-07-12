@@ -820,10 +820,14 @@
           matchLabels:
             app: leloir-memory-mcp
         ingress:
+          # Zero Trust L3/L4 (spec-m20): el gateway debe presentar su identidad
+          # SPIFFE (mTLS por eBPF) — no basta con "venir del ns leloir".
           - fromEndpoints:
               - matchLabels:
                   app: leloir-mcp-gateway
-          # kubelet (probes) llega como host.
+            authentication:
+              mode: "required"
+          # kubelet (probes) llega como host — SIN identidad SPIFFE, no exige mTLS.
           - fromEntities: [host]
 
 - name: Wait for leloir-mcp-gateway rollout

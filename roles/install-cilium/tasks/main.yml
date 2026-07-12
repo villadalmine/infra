@@ -105,6 +105,20 @@
         leaseDuration: "{{ cilium_l2announcements_lease_duration }}"
         leaseRenewDeadline: "{{ cilium_l2announcements_renew_deadline }}"
         leaseRetryPeriod: "{{ cilium_l2announcements_retry_period }}"
+      # ── Mutual Authentication (SPIFFE/SPIRE) — Zero Trust L3/L4 ──────────────
+      # Despliega un SPIRE server gestionado por Cilium; NO enforcea nada por sí
+      # solo — la mTLS se exige POR-CNP con `authentication.mode: required`
+      # (rollout gradual, spec Leloir m20). Transparente para la app (eBPF).
+      authentication:
+        # Habilita el procesamiento de auth (sin esto, mesh-auth-enabled=false y
+        # una CNP con authentication.mode:required BLOQUEARÍA sin poder procesar).
+        enabled: "{{ cilium_mutual_auth_enabled | default(false) }}"
+        mutual:
+          spire:
+            enabled: "{{ cilium_mutual_auth_enabled | default(false) }}"
+            install:
+              enabled: "{{ cilium_mutual_auth_enabled | default(false) }}"
+
       wireguard:
         enabled: "{{ cilium_wireguard_enabled }}"
       k8sClientRateLimit:

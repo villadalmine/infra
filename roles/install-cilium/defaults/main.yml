@@ -58,6 +58,9 @@ cilium_hubble_metrics_profiles:
 # Enable WireGuard dataplane for encrypted pod‑to‑pod traffic.
 # This must stay true while nodeEncryption remains false.
 cilium_wireguard_enabled: true
+# Mutual Authentication (SPIFFE/SPIRE, Zero Trust L3/L4). Habilitar despliega
+# SPIRE (no-enforcing); la mTLS se exige por-CNP con authentication.mode:required.
+cilium_mutual_auth_enabled: true
 
 # ── L2 Announcements (replaces MetalLB) ───────────────────────────────────────
 # Cilium natively handles ARP for LoadBalancer IPs via leader election + leases.
