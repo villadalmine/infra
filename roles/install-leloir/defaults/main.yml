@@ -104,6 +104,20 @@ leloir_gateway_servers:
     endpoint: http://leloir-k8s-tools.leloir.svc.cluster.local:8080
     toolAllowlist: [get_pods, get_pod_logs, get_pod_events]
     allowedNamespaces: [demo-mode4]
+  # Memoria por-tenant (spec-m18): leloir-memory-mcp por tenant. El gateway
+  # escribe X-Leloir-Tenant → cada tenant ve SÓLO su memoria. NOTA: hoy el
+  # gateway lee sus servers de esta config estática (no de los MCPServer CRD);
+  # por eso los tenants con memoria se listan acá.
+  - name: memory
+    tenant: demo-mode1
+    transport: mcp
+    endpoint: http://leloir-memory-mcp.leloir.svc.cluster.local:8090/mcp
+    toolAllowlist: [remember, recall, forget]
+  - name: memory
+    tenant: demo-mode2
+    transport: mcp
+    endpoint: http://leloir-memory-mcp.leloir.svc.cluster.local:8090/mcp
+    toolAllowlist: [remember, recall, forget]
 
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
