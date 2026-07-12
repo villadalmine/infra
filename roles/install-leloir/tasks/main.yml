@@ -250,6 +250,12 @@
               # (el tenant sale del claim verificado, no del header — anti-spoofing).
               requireJWT: true
 
+          # Lazo anomalía → quarantine (spec-m21): si el spend de un tenant
+          # salta > este umbral entre dos polls, se AÍSLA (freeze budget +
+          # rechazo de alertas + evento CRÍTICO). 0 = off. Gobierno proactivo.
+          anomaly:
+            spendVelocityUSD: 0.50
+
           # In-process adapters (the flagship) route tool calls here → governed
           # path (allowlist/creds/audit). Without this the flagship declaring
           # harness.tools would DRIFT (declared gateway but never reaches it).
