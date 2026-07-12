@@ -11,6 +11,25 @@
         name: "{{ leloir_kaniko_namespace }}"
     state: present
 
+# El repo es PRIVADO: el clone del workflow necesita credenciales. Usamos el
+# token del `gh` YA autenticado en el controlador (cero credenciales nuevas que
+# gestionar; el usuario ya está logueado). username=x-access-token es la forma
+# de GitHub para HTTPS con token. no_log para no filtrar el valor.
+- name: Create git credentials secret (from local gh token) for the private repo clone
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: leloir-git-creds
+        namespace: "{{ leloir_kaniko_namespace }}"
+      type: Opaque
+      stringData:
+        username: x-access-token
+        password: "{{ lookup('pipe', 'gh auth token') }}"
+  no_log: true
+
 - name: Create kaniko PVC for build cache
   kubernetes.core.k8s:
     state: present
@@ -76,6 +95,15 @@
                     repo: "{{ leloir_git_repo }}"
                     revision: "{{ leloir_git_ref }}"
                     depth: 1
+                    # El repo es privado: el clone se autentica con el token de gh
+                    # (Secret leloir-git-creds, creado abajo). Sin esto el clone
+                    # anónimo falla con "authentication required".
+                    usernameSecret:
+                      name: leloir-git-creds
+                      key: username
+                    passwordSecret:
+                      name: leloir-git-creds
+                      key: password
             container:
               image: gcr.io/kaniko-project/executor:latest
               args:
