@@ -186,6 +186,10 @@
 
           api:
             httpAddr: ":8080"
+            # Listener interno (spec-m21 21.6): /internal/* (callback de anomalía)
+            # en un puerto aparte, NO expuesto por el HTTPRoute → sólo in-cluster,
+            # cerrado por CNP al gateway. Elimina la superficie externa.
+            internalAddr: ":8090"
 
           database:
             driver: postgres
@@ -601,6 +605,8 @@
                 ports:
                   - containerPort: 8080
                     name: http
+                  - containerPort: 8090
+                    name: internal   # /internal/* — NO en el HTTPRoute (spec-m21 21.6)
                 env:
                   - name: LELOIR_DATABASE_DSN
                     valueFrom:
@@ -666,6 +672,62 @@
             port: 80
             targetPort: 8080
 
+# Service SEPARADA para el listener interno (spec-m21 21.6): expone :8090 sólo
+# in-cluster (NO tiene HTTPRoute) → el callback de anomalía no es alcanzable desde
+# afuera. La CNP de abajo la cierra al gateway.
+- name: Create leloir-controlplane-internal Service (/internal/*, in-cluster only)
+  when: leloir_auth_mode != "oidc"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: leloir-controlplane-internal
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-controlplane
+      spec:
+        type: ClusterIP
+        selector:
+          app: leloir-controlplane
+        ports:
+          - name: internal
+            port: 8090
+            targetPort: 8090
+
+# CNP: sólo el gateway alcanza el puerto interno :8090 del control plane
+# (defense-in-depth SOBRE el bearer token). enableDefaultDeny.ingress: false para
+# NO tocar el puerto público :8080 — sólo restringimos el 8090.
+- name: Lock the internal anomaly port to the gateway (CiliumNetworkPolicy)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cilium.io/v2
+      kind: CiliumNetworkPolicy
+      metadata:
+        name: leloir-controlplane-internal-lock
+        namespace: "{{ leloir_namespace }}"
+      spec:
+        endpointSelector:
+          matchLabels:
+            app: leloir-controlplane
+        # NO default-deny: no queremos cerrar el :8080 público sin querer.
+        enableDefaultDeny:
+          ingress: false
+          egress: false
+        ingressDeny:
+          # Denegar :8090 a TODO lo que NO sea el gateway.
+          - fromEndpoints:
+              - matchExpressions:
+                  - key: app
+                    operator: NotIn
+                    values: ["leloir-mcp-gateway"]
+            toPorts:
+              - ports:
+                  - port: "8090"
+                    protocol: TCP
+
 - name: Create HTTPRoute for leloir UI + API
   when: leloir_auth_mode != "oidc"
   kubernetes.core.k8s:
@@ -730,6 +792,9 @@
             maxConsecutiveErrors: 5
             tripsToQuarantine: 5
             windowSeconds: 300
+            # El callback va al puerto INTERNO del control plane (Service interna,
+            # no expuesta por el HTTPRoute) — spec-m21 21.6 hardening.
+            anomalyEndpoint: "http://leloir-controlplane-internal.{{ leloir_namespace }}.svc.cluster.local:8090/internal/anomaly"
           servers: {{ leloir_gateway_servers | to_json }}
 
 - name: Deploy leloir-mcp-gateway
