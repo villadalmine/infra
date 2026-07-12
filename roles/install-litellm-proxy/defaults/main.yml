@@ -1,6 +1,8 @@
 litellm_proxy_version: "main-latest"
 litellm_namespace: ai
-litellm_master_key: "sk-hermes-internal"
+# la master key REAL va en tu vault (group_vars/all/vault.yml, gitignoreado) como vault_litellm_master_key
+# — NUNCA el literal acá: este repo es PÚBLICO (rotada el 2026-07-12 tras quedar expuesta).
+litellm_master_key: "{{ vault_litellm_master_key }}"
 litellm_port: 4000
 litellm_cpu_request: "100m"
 litellm_cpu_limit: "500m"

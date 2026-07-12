@@ -12,7 +12,7 @@ hermes_model: "kimi-free"
 hermes_temperature: 0.7
 hermes_inference_provider: "openai"
 hermes_openai_api_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-hermes_openai_api_key: "sk-hermes-internal"
+hermes_openai_api_key: "{{ litellm_master_key }}"
 
 hermes_cpu_limit: "4000m"
 hermes_cpu_request: "1000m"

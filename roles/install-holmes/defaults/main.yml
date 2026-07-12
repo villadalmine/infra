@@ -20,13 +20,13 @@ holmes_hostname: holmes.cluster.home
 holmes_release_name: holmesgpt
 holmes_model_name: "openai/rk1-npu-local"
 holmes_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-holmes_openai_key: "sk-hermes-internal"
+holmes_openai_key: "{{ litellm_master_key }}"
 
 holmes_additional_env:
   - name: OPENAI_API_BASE
     value: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
   - name: OPENAI_API_KEY
-    value: "sk-hermes-internal"
+    value: "{{ litellm_master_key }}"
   - name: HOLMES_CONFIGPATH_DIR
     value: "/tmp/.holmes"
 

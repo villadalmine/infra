@@ -97,6 +97,6 @@ litellm_settings:
   drop_params: true        # ignore unsupported params instead of erroring
 
 general_settings:
-  master_key: "sk-hermes-internal"
+  master_key: os.environ/LITELLM_MASTER_KEY
   # Uncomment to see full request/response logs (useful for debugging):
   # set_verbose: true

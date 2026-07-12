@@ -37,7 +37,7 @@ openclaw_storage_role: ""
 # and provide openclaw_openrouter_api_key in secrets.yml.
 openclaw_llm_backend: "litellm"
 openclaw_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000"
-openclaw_litellm_master_key: "sk-hermes-internal"
+openclaw_litellm_master_key: "{{ litellm_master_key }}"
 
 # OpenClaw virtual model names (resolved by LiteLLM routing — ver install-litellm-proxy/tasks/main.yml):
 #   openclaw-gemini     → openai/gpt-oss-20b:free (primary; tool calling sólido) + nemotron:free

@@ -6,3 +6,6 @@ hermes_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
 holmes_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
 kagent_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
 openclaw_openrouter_api_key: "sk-or-v1-REPLACE_WITH_REAL_KEY"
+
+# master key de LiteLLM (inventada por vos; los roles la referencian via litellm_master_key)
+vault_litellm_master_key: "sk-REPLACE_WITH_REAL_KEY"

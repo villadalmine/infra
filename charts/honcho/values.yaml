@@ -19,7 +19,7 @@ image:
 # are forced to openai transport routed through in-cluster LiteLLM.
 llm:
   baseUrl: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-  apiKey: "sk-hermes-internal"
+  apiKey: ""   # se setea por el rol/secret (no commitear la real: repo público)
   # Model for text generation (must support tool calling / function calling)
   # Maps to a LiteLLM model alias in your litellm config
   # kimi-free (moonshotai/kimi-k2.6:free) — 262K ctx, native tool calling, supports tool_choice required/auto

@@ -25,7 +25,7 @@ honcho_node_hostname: "srv-rk1-nvme-02"
 
 # ─── LLM integration (LiteLLM internal proxy) ───────────────────────────────
 honcho_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-honcho_litellm_key: "sk-hermes-internal"
+honcho_litellm_key: "{{ litellm_master_key }}"
 
 # ─── Auth (JWT — workspace-scoped keys per agent) ───────────────────────────
 # JWT secret and admin key are in secrets.yml (gitignored). See secrets.yml.example.
