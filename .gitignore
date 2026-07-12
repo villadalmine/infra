@@ -30,3 +30,7 @@ roles/install-openclaw/defaults/secrets.yml
 .kubeconfig-claude
 .kubeconfig
 .sshkey-claude
+
+# vault REAL (secretos) — NUNCA commitear: el repo es publico
+group_vars/all/vault.yml
+inventory/group_vars/
