@@ -260,6 +260,12 @@
           # rechazo de alertas + evento CRÍTICO). 0 = off. Gobierno proactivo.
           anomaly:
             spendVelocityUSD: 0.50
+            # Auto-release por cooldown (spec-m21 21.6): un tenant aislado más de
+            # estos minutos se libera solo (el detector re-aísla si sigue mal).
+            # Acota un falso positivo. 2 min = demoable; en prod real subiría.
+            autoReleaseCooldownMinutes: 2
+            # thrashToken se inyecta por LELOIR_THRASH_TOKEN (env desde Secret) —
+            # autentica el callback de escalada de thrash del gateway.
 
           # Memoria episódica RAG (spec-m22): al llegar una alerta se busca por
           # similitud coseno (pgvector, MISMA Postgres) un incidente pasado del
@@ -271,6 +277,9 @@
             embeddingModel: "local"
             embeddingDim: 256
             distanceThreshold: 0.25
+            # TTL/pruning (spec-m22 22.6): poda incidentes más viejos que N días
+            # (barrido cada 6h). Acota el crecimiento. 0 = retener por siempre.
+            retentionDays: 90
 
           # In-process adapters (the flagship) route tool calls here → governed
           # path (allowlist/creds/audit). Without this the flagship declaring
@@ -518,6 +527,39 @@
   when: litellm_master_secret.resources | length > 0
   no_log: true
 
+# ─── Thrash-escalation shared token (spec-m21 21.6) ──────────────────────────
+# Autentica el callback del gateway → control plane (POST /internal/anomaly).
+# Se genera UNA vez y se reusa (estable entre deploys) — mismo secreto en los
+# dos binarios. Sin él, el endpoint queda deshabilitado (fail-closed).
+
+- name: Read existing thrash-escalation token (generate once, reuse)
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: leloir-thrash-token
+    namespace: "{{ leloir_namespace }}"
+  register: leloir_thrash_secret
+  no_log: true
+
+- name: Compute thrash token (reuse existing or generate 40 chars)
+  ansible.builtin.set_fact:
+    leloir_thrash_token: "{{ (leloir_thrash_secret.resources[0].data.token | b64decode) if (leloir_thrash_secret.resources | length > 0) else lookup('password', '/dev/null length=40 chars=ascii_letters,digits') }}"
+  no_log: true
+
+- name: Create thrash-escalation token Secret (shared gateway↔control plane)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: leloir-thrash-token
+        namespace: "{{ leloir_namespace }}"
+      type: Opaque
+      stringData:
+        token: "{{ leloir_thrash_token }}"
+  no_log: true
+
 
 # ─── Control plane deployment ─────────────────────────────────────────────────
 
@@ -570,6 +612,11 @@
                       secretKeyRef:
                         name: litellm-master-key
                         key: master-key
+                  - name: LELOIR_THRASH_TOKEN   # gate de POST /internal/anomaly (spec-m21 21.6)
+                    valueFrom:
+                      secretKeyRef:
+                        name: leloir-thrash-token
+                        key: token
                 volumeMounts:
                   - name: config
                     mountPath: /etc/leloir
@@ -671,6 +718,18 @@
           egressPolicy: allowlist
           rateLimit: {enabled: false}
           observability: {metrics: {enabled: true}}
+          # controlPlaneUrl: el gateway resuelve MCPServer CRDs Y reporta la
+          # escalada de thrash a POST /internal/anomaly (spec-m21 21.6).
+          controlPlaneUrl: "http://leloir-controlplane.{{ leloir_namespace }}.svc.cluster.local"
+          # Anti-thrashing (spec-m17.5) + escalada→quarantine (spec-m21 21.6):
+          # un tenant que MARTILLA tools denegadas (tripsToQuarantine trips en
+          # windowSeconds) se reporta al control plane → quarantine. El token del
+          # callback se inyecta por LELOIR_THRASH_TOKEN (env desde Secret).
+          antiThrashing:
+            enabled: true
+            maxConsecutiveErrors: 5
+            tripsToQuarantine: 5
+            windowSeconds: 300
           servers: {{ leloir_gateway_servers | to_json }}
 
 - name: Deploy leloir-mcp-gateway
@@ -708,6 +767,12 @@
                 command: ["/leloir-mcp-gateway"]
                 args:
                   - "--config=/etc/leloir/gateway.yaml"
+                env:
+                  - name: LELOIR_THRASH_TOKEN   # mismo secreto que el CP (spec-m21 21.6)
+                    valueFrom:
+                      secretKeyRef:
+                        name: leloir-thrash-token
+                        key: token
                 ports:
                   - containerPort: 8082
                     name: http
