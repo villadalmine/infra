@@ -246,6 +246,9 @@
               upstreamHost: "{{ leloir_litellm_instance }}.{{ leloir_litellm_namespace }}.svc.cluster.local"
               upstreamPort: 4000
               tokensPerHour: 200000
+              # spec-m19 19.4: el frente keyless EXIGE un JWT firmado por Leloir
+              # (el tenant sale del claim verificado, no del header — anti-spoofing).
+              requireJWT: true
 
           # In-process adapters (the flagship) route tool calls here → governed
           # path (allowlist/creds/audit). Without this the flagship declaring
