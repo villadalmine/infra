@@ -85,11 +85,16 @@
             labels:
               app: postgres-leloir
           spec:
+            # Pin al pool rk1-longhorn: el PVC Longhorn sólo attachea en esos
+            # nodos (sin esto, un rollout puede schedular en super6c y el volumen
+            # no attachea — Multi-Attach error).
+            nodeSelector:
+              storage: rk1-longhorn
             tolerations:
               - operator: Exists
             containers:
               - name: postgres
-                image: postgres:16-alpine
+                image: pgvector/pgvector:pg16   # postgres 16 + extensión vector (spec-m22 RAG)
                 ports:
                   - containerPort: 5432
                 envFrom:
@@ -255,6 +260,17 @@
           # rechazo de alertas + evento CRÍTICO). 0 = off. Gobierno proactivo.
           anomaly:
             spendVelocityUSD: 0.50
+
+          # Memoria episódica RAG (spec-m22): al llegar una alerta se busca por
+          # similitud coseno (pgvector, MISMA Postgres) un incidente pasado del
+          # MISMO tenant; si la distancia < umbral se inyecta su resolución como
+          # SkillRef efímero (auto-runbook). embeddingModel: "local" = embedder
+          # en-proceso (cero deps, sin key de provider); poné el alias de un
+          # modelo de embedding de la capa LLM para vectorizar hosted (metrado).
+          rag:
+            embeddingModel: "local"
+            embeddingDim: 256
+            distanceThreshold: 0.25
 
           # In-process adapters (the flagship) route tool calls here → governed
           # path (allowlist/creds/audit). Without this the flagship declaring
