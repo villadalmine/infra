@@ -443,8 +443,13 @@
           resources: ["aigatewayroutes", "aiservicebackends", "backendsecuritypolicies"]
           verbs: ["get", "list", "create", "update", "delete"]
         - apiGroups: ["gateway.envoyproxy.io"]
-          resources: ["backends", "backendtrafficpolicies"]
+          resources: ["backends", "backendtrafficpolicies", "securitypolicies"]
           verbs: ["get", "list", "create", "update", "delete"]
+        # JWT keyless front (spec-m19): el driver persiste la signing key (Secret,
+        # ya cubierto arriba) y publica el JWKS a un ConfigMap en este ns.
+        - apiGroups: [""]
+          resources: ["configmaps"]
+          verbs: ["get", "list", "create", "update"]
 
 - name: Bind leloir-broker Role
   kubernetes.core.k8s:
