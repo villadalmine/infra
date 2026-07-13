@@ -1029,6 +1029,130 @@
   delay: 10
   changed_when: false
 
+# ─── leloir-webhook-receiver (#2, alert real → Leloir) ───────────────────────
+# Edge que traduce Alertmanager/Slack/PagerDuty/Azure/CloudWatch → formato
+# normalizado y forwardea a /api/v1/alerts del control plane. Misma imagen,
+# command distinto. Conecta el Prometheus/Alertmanager REAL del cluster a Leloir.
+
+- name: Create leloir-webhook-receiver ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: leloir-webhook-config
+        namespace: "{{ leloir_namespace }}"
+      data:
+        webhook.yaml: |
+          listenAddr: ":8081"
+          forwardTo: "http://leloir-controlplane.{{ leloir_namespace }}.svc.cluster.local"
+          maxRequestSize: 1048576
+          forwardTimeout: 10s
+          dedupWindow: 5m
+          forwardMaxRetries: 2
+          observability: {metrics: {enabled: true}}
+
+- name: Deploy leloir-webhook-receiver
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: leloir-webhook-receiver
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-webhook-receiver
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: leloir-webhook-receiver
+        template:
+          metadata:
+            labels:
+              app: leloir-webhook-receiver
+          spec:
+            nodeSelector:
+              kubernetes.io/arch: arm64
+              storage: rk1-longhorn
+            tolerations:
+              - operator: Exists
+            containers:
+              - name: receiver
+                image: "{{ leloir_registry }}/{{ leloir_image_name }}:{{ leloir_image_tag }}"
+                imagePullPolicy: Always
+                command: ["/leloir-webhook-receiver"]
+                args: ["--config=/etc/leloir/webhook.yaml"]
+                ports:
+                  - containerPort: 8081
+                    name: http
+                readinessProbe:
+                  httpGet: {path: /healthz, port: 8081}
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                volumeMounts:
+                  - name: cfg
+                    mountPath: /etc/leloir
+                    readOnly: true
+            volumes:
+              - name: cfg
+                configMap:
+                  name: leloir-webhook-config
+
+- name: Create leloir-webhook-receiver Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: leloir-webhook-receiver
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app: leloir-webhook-receiver
+      spec:
+        type: ClusterIP
+        selector:
+          app: leloir-webhook-receiver
+        ports:
+          - name: http
+            port: 8081
+            targetPort: 8081
+
+# AlertmanagerConfig: rutea al receiver las alertas con routeToLeloir=true. Sólo
+# AGREGA una ruta al Alertmanager compartido (kube-prometheus-stack) — OnNamespace
+# le suma namespace={{ leloir_namespace }} solo. Idempotente; requiere el operator.
+- name: Route matching alerts to Leloir (AlertmanagerConfig)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: monitoring.coreos.com/v1alpha1
+      kind: AlertmanagerConfig
+      metadata:
+        name: leloir-route
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app.kubernetes.io/managed-by: leloir
+      spec:
+        route:
+          receiver: leloir-webhook
+          groupBy: ["alertname"]
+          groupWait: 3s
+          groupInterval: 10s
+          repeatInterval: 2m
+          matchers:
+            - name: routeToLeloir
+              value: "true"
+              matchType: "="
+        receivers:
+          - name: leloir-webhook
+            webhookConfigs:
+              - url: "http://leloir-webhook-receiver.{{ leloir_namespace }}.svc.cluster.local:8081/webhook/alertmanager"
+                sendResolved: false
+  failed_when: false   # el operator/CRD puede no estar en todos los clusters
+
 - name: Create ServiceMonitor for leloir-mcp-gateway
   kubernetes.core.k8s:
     state: present
