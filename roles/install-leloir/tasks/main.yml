@@ -982,6 +982,44 @@
           # kubelet (probes) llega como host — SIN identidad SPIFFE, no exige mTLS.
           - fromEntities: [host]
 
+# mTLS (SPIFFE) sobre el path de DATOS → postgres-leloir (spec-m20 rollout, #3b).
+# postgres-leloir sirve TRES consumidores: control plane, memory-mcp Y litellm
+# (base `litellm`, ns ai). Todos deben presentar identidad SPIFFE (mTLS por eBPF);
+# el host (probes/init) no. Postgres es interno → default-deny seguro.
+# OJO: si se agrega un consumidor nuevo de la DB, hay que sumarlo acá o queda
+# bloqueado (así se rompió litellm la primera vez).
+- name: mTLS-lock del path a postgres-leloir (CP + memory-mcp + litellm con SPIFFE)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cilium.io/v2
+      kind: CiliumNetworkPolicy
+      metadata:
+        name: postgres-leloir-mtls-lock
+        namespace: "{{ leloir_namespace }}"
+        labels:
+          app.kubernetes.io/managed-by: leloir
+      spec:
+        endpointSelector:
+          matchLabels:
+            app: postgres-leloir
+        ingress:
+          - authentication:
+              mode: "required"
+            fromEndpoints:
+              - matchLabels:
+                  app: leloir-controlplane
+              - matchLabels:
+                  app: leloir-memory-mcp
+              - matchLabels:
+                  io.kubernetes.pod.namespace: "{{ leloir_litellm_namespace | default('ai') }}"
+                  app.kubernetes.io/name: litellm
+            toPorts:
+              - ports:
+                  - port: "5432"
+                    protocol: TCP
+          - fromEntities: [host, remote-node]
+
 - name: Wait for leloir-mcp-gateway rollout
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/leloir-mcp-gateway -n {{ leloir_namespace }} --timeout=120s
