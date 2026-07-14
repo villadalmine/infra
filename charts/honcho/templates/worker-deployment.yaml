@@ -36,3 +36,11 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "honcho.fullname" . }}-secrets
+          {{- if .Values.llm.existingKeySecret.name }}
+          env:
+            - name: LLM_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.existingKeySecret.name | quote }}
+                  key: {{ .Values.llm.existingKeySecret.key | quote }}
+          {{- end }}

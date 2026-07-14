@@ -18,15 +18,26 @@ image:
 # All Honcho components (Deriver, Summary, Dream, Dialectic, Embedding)
 # are forced to openai transport routed through in-cluster LiteLLM.
 llm:
-  baseUrl: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-  apiKey: ""   # se setea por el rol/secret (no commitear la real: repo público)
-  # Model for text generation (must support tool calling / function calling)
-  # Maps to a LiteLLM model alias in your litellm config
-  # kimi-free (moonshotai/kimi-k2.6:free) — 262K ctx, native tool calling, supports tool_choice required/auto
-  model: "kimi-free"
-  # Embeddings are disabled (EMBED_MESSAGES=false) — no embedding model needed in LiteLLM.
-  # To enable: add an embedding model to LiteLLM and set embeddingModel here.
-  embeddingModel: "text-embedding-3-small"
+  # 14/07: OpenRouter DIRECTO con key propia por-consumidor (leloir-bench-honcho) →
+  # trazabilidad por-key en OpenRouter. El litellm-proxy in-cluster quedó descartado
+  # para honcho: sin DB solo acepta la master key (sk-hermes-internal = "No connected db").
+  baseUrl: "https://openrouter.ai/api/v1"
+  apiKey: ""   # NO commitear una real; preferir existingKeySecret (abajo)
+  # Key desde un Secret ya existente en el ns (env LLM_OPENAI_API_KEY via secretKeyRef;
+  # pisa a la del secret del chart). Creada con la provisioning key de OpenRouter.
+  existingKeySecret:
+    name: ""              # ej: leloir-bench-honcho-key
+    key: "OPENAI_API_KEY"
+  # Modelo REAL (naming OpenRouter). VERIFICADO 14/07: el deriver con claude-sonnet-5
+  # produce 9 observaciones; los free-tier (hermes-qwen/kimi-free) derivan "zero
+  # observations" (structured output débil) → el deriver necesita un modelo fuerte.
+  model: "anthropic/claude-sonnet-5"
+  # Deriver: derivar INMEDIATO por mensaje (sin esperar el batch de 512 tokens / 30 min).
+  # Para memoria de incidentes cada captura debe derivar al toque; el default upstream
+  # (FLUSH_ENABLED=false + REPRESENTATION_BATCH_MAX_AGE_SECONDS=1800) parece "deriver muerto".
+  deriverFlushEnabled: "true"
+  # Embedding vía el mismo baseUrl/key (naming OpenRouter: openai/text-embedding-3-small).
+  embeddingModel: "openai/text-embedding-3-small"
   embedMessages: "true"
 
 # ── Telemetry (OTEL/CloudEvents → collector) ─────────────────────────────────

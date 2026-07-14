@@ -42,6 +42,16 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "honcho.fullname" . }}-secrets
+          {{- if .Values.llm.existingKeySecret.name }}
+          # env explícito pisa a envFrom → la key viene del Secret por-consumidor
+          # (creada con la management key de OpenRouter), nunca de values.
+          env:
+            - name: LLM_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.existingKeySecret.name | quote }}
+                  key: {{ .Values.llm.existingKeySecret.key | quote }}
+          {{- end }}
           # Liveness and readiness probes to ensure the FastAPI app is listening
           livenessProbe:
             httpGet:

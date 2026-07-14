@@ -20,7 +20,10 @@ letta_db_name: "letta"
 letta_db_password: "{{ lookup('env','LETTA_DB_PASSWORD') | default('letta-change-me', true) }}"
 
 # LLM/embeddings por litellm interno (OpenAI-compatible)
-letta_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-letta_openai_key: "{{ litellm_master_key | default('') }}"   # mismo patrón que honcho
-letta_chat_model: "gpt-5.4-mini"            # → claude-sonnet-5 en litellm (tool-calling)
-letta_embedding_model: "text-embedding-3-small"
+# 14/07: OpenRouter DIRECTO con key propia (Secret leloir-bench-letta-key, creada con
+# la management key de OpenRouter) → trazabilidad por-key. litellm sin DB rechaza
+# cualquier key no-master ("No connected db") → no sirve de proxy para terceros.
+letta_openai_base: "https://openrouter.ai/api/v1"
+letta_key_secret: "leloir-bench-letta-key"  # Secret en el ns de letta, key OPENAI_API_KEY
+letta_chat_model: "anthropic/claude-sonnet-5"      # naming OpenRouter (tool-calling fuerte)
+letta_embedding_model: "openai/text-embedding-3-small"

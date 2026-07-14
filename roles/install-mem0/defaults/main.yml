@@ -15,9 +15,16 @@ mem0_db_user: "mem0"
 mem0_db_name: "mem0"
 mem0_db_password: "{{ lookup('env','MEM0_DB_PASSWORD') | default('mem0-change-me', true) }}"
 
-# LLM/embeddings por litellm interno (OpenAI-compatible)
-mem0_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-mem0_openai_key: "{{ litellm_master_key | default('') }}"
-mem0_llm_model: "gpt-5.4-mini"                # → claude-sonnet-5 en litellm
-mem0_embedding_model: "text-embedding-3-small"
+# 14/07: OpenRouter DIRECTO con key propia (Secret leloir-bench-mem0-key) →
+# trazabilidad por-key. litellm sin DB rechaza keys no-master ("No connected db").
+mem0_openai_base: "https://openrouter.ai/api/v1"
+mem0_key_secret: "leloir-bench-mem0-key"      # Secret en el ns, key OPENAI_API_KEY
+mem0_llm_model: "anthropic/claude-sonnet-5"   # naming OpenRouter (main.py parcheado lo lee de env)
+mem0_embed_model: "openai/text-embedding-3-small"
 mem0_enable_graph: false                      # true = agrega Neo4j (parte Pro-equivalente)
+
+# Vector store: Qdrant (default de mem0; la imagen OSS NO trae psycopg → pgvector
+# no funciona out-of-the-box). Qdrant v1.18.2 (arm64). Verificar última con:
+# curl registry tags. La Postgres del rol queda como history store opcional.
+mem0_qdrant_image: "qdrant/qdrant:v1.18.2"
+mem0_qdrant_storage_size: "5Gi"

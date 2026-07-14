@@ -94,8 +94,11 @@
                 env:
                   - name: LETTA_PG_URI
                     value: "postgresql://{{ letta_db_user }}:{{ letta_db_password }}@letta-postgres.{{ letta_namespace }}.svc.cluster.local:5432/{{ letta_db_name }}"
-                  # LLM + embeddings por litellm (OpenAI-compatible)
-                  - {name: OPENAI_API_KEY, value: "{{ letta_openai_key }}"}
+                  # LLM + embeddings OpenAI-compatible (OpenRouter directo, key propia)
+                  - name: OPENAI_API_KEY
+                    valueFrom: {secretKeyRef: {name: "{{ letta_key_secret }}", key: OPENAI_API_KEY}}
+                  # OJO letta 0.16: OPENAI_BASE_URL tiene PRECEDENCIA sobre OPENAI_API_BASE
+                  - {name: OPENAI_BASE_URL, value: "{{ letta_openai_base }}"}
                   - {name: OPENAI_API_BASE, value: "{{ letta_openai_base }}"}
                   - {name: LETTA_LLM_ENDPOINT, value: "{{ letta_openai_base }}"}
                   - {name: LETTA_LLM_ENDPOINT_TYPE, value: "openai"}

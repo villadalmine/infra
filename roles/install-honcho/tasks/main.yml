@@ -44,6 +44,8 @@
       llm:
         baseUrl: "{{ honcho_litellm_url }}"
         apiKey: "{{ honcho_litellm_key }}"
+        existingKeySecret:
+          name: "{{ honcho_key_secret | default('') }}"
       auth:
         useAuth: "{{ honcho_use_auth }}"
         jwtSecret: "{{ honcho_jwt_secret | default('') }}"

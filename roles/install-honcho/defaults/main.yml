@@ -24,8 +24,11 @@ honcho_hostname: "honcho.cluster.home"
 honcho_node_hostname: "srv-rk1-nvme-02"
 
 # ─── LLM integration (LiteLLM internal proxy) ───────────────────────────────
-honcho_litellm_url: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
-honcho_litellm_key: "{{ litellm_master_key }}"
+# 14/07: OpenRouter DIRECTO con key propia (Secret leloir-bench-honcho-key en el ns
+# honcho) → trazabilidad por-key. Ver charts/honcho/values.yaml (llm.*).
+honcho_litellm_url: "https://openrouter.ai/api/v1"
+honcho_key_secret: "leloir-bench-honcho-key"
+honcho_litellm_key: ""   # vacío: la key va por honcho_key_secret (secretKeyRef), no por values
 
 # ─── Auth (JWT — workspace-scoped keys per agent) ───────────────────────────
 # JWT secret and admin key are in secrets.yml (gitignored). See secrets.yml.example.

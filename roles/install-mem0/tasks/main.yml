@@ -62,7 +62,56 @@
         selector: {app: mem0-postgres}
         ports: [{port: 5432, targetPort: 5432}]
 
-# mem0 config: vector store pgvector + LLM/embedder OpenAI-compatible (litellm).
+# Qdrant vector store (la imagen OSS de mem0 no trae psycopg → pgvector no anda;
+# Qdrant es el default de mem0 y arm64-nativo).
+- name: Deploy Qdrant
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: qdrant, namespace: "{{ mem0_namespace }}"}
+      spec:
+        replicas: 1
+        selector: {matchLabels: {app: qdrant}}
+        template:
+          metadata: {labels: {app: qdrant}}
+          spec:
+            nodeSelector: {storage: rk1-longhorn}
+            tolerations: [{operator: Exists}]
+            containers:
+              - name: qdrant
+                image: "{{ mem0_qdrant_image }}"
+                ports: [{containerPort: 6333}, {containerPort: 6334}]
+                volumeMounts: [{name: data, mountPath: /qdrant/storage}]
+            volumes:
+              - name: data
+                persistentVolumeClaim: {claimName: qdrant-data}
+
+- name: Qdrant PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata: {name: qdrant-data, namespace: "{{ mem0_namespace }}"}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: "{{ mem0_storage_class }}"
+        resources: {requests: {storage: "{{ mem0_qdrant_storage_size }}"}}
+
+- name: Qdrant Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata: {name: qdrant, namespace: "{{ mem0_namespace }}"}
+      spec:
+        selector: {app: qdrant}
+        ports: [{name: http, port: 6333, targetPort: 6333}, {name: grpc, port: 6334, targetPort: 6334}]
+
+# mem0 config: vector store Qdrant + LLM/embedder OpenAI-compatible (litellm).
 - name: mem0 server config
   kubernetes.core.k8s:
     state: present
@@ -74,15 +123,24 @@
         # to_json → garantiza que el value sea un STRING (k8s ConfigMap.data
         # exige string; un bloque YAML se parsea como objeto y falla con 400).
         config.json: "{{ {
-          'vector_store': {'provider': 'pgvector', 'config': {
-            'host': 'mem0-postgres.' + mem0_namespace + '.svc.cluster.local',
-            'port': 5432, 'user': mem0_db_user,
-            'password': mem0_db_password, 'dbname': mem0_db_name}},
+          'vector_store': {'provider': 'qdrant', 'config': {
+            'host': 'qdrant.' + mem0_namespace + '.svc.cluster.local',
+            'port': 6333, 'collection_name': 'mem0', 'embedding_model_dims': 1536}},
           'llm': {'provider': 'openai', 'config': {
             'model': mem0_llm_model, 'openai_base_url': mem0_openai_base}},
           'embedder': {'provider': 'openai', 'config': {
             'model': mem0_embedding_model, 'openai_base_url': mem0_openai_base}}
           } | to_json }}"
+
+- name: mem0 runtime patch ConfigMap (main.py sin neo4j, modelos por env)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata: {name: mem0-runtime-patch, namespace: "{{ mem0_namespace }}"}
+      data:
+        mem0-patch.py: "{{ lookup('file', role_path ~ '/files/mem0-patch.py') }}"
 
 - name: Deploy mem0 API server
   kubernetes.core.k8s:
@@ -100,15 +158,33 @@
             containers:
               - name: mem0
                 image: "{{ mem0_image }}"
+                # 14/07 — mem0 OSS NO corre out-of-the-box (8 blockers, ver
+                # MEMORY_ANALYSIS §mem0): sin psycopg, graph_store neo4j y modelos
+                # HARDCODEADOS en main.py, sqlite history en path read-only, y el
+                # pip install se OOMKilleaba sin limits. Este command parchea el
+                # main.py al vuelo (files/mem0-patch.py): quita neo4j y saca los
+                # modelos a env (MEM0_LLM_MODEL/MEM0_EMBED_MODEL).
+                command: ["sh","-c","pip install --quiet 'psycopg[binary,pool]' && python3 /patch/mem0-patch.py && exec uvicorn main:app --host 0.0.0.0 --port 8000"]
+                resources: {requests: {memory: 512Mi}, limits: {memory: 1536Mi}}
                 env:
-                  - {name: OPENAI_API_KEY, value: "{{ mem0_openai_key }}"}
+                  # key propia por-consumidor (Secret leloir-bench-mem0-key) → OpenRouter directo
+                  - name: OPENAI_API_KEY
+                    valueFrom: {secretKeyRef: {name: "{{ mem0_key_secret }}", key: OPENAI_API_KEY}}
                   - {name: OPENAI_BASE_URL, value: "{{ mem0_openai_base }}"}
-                  - {name: MEM0_CONFIG_PATH, value: /config/config.json}
+                  - {name: MEM0_LLM_MODEL, value: "{{ mem0_llm_model }}"}
+                  - {name: MEM0_EMBED_MODEL, value: "{{ mem0_embed_model }}"}
+                  - {name: HISTORY_DB_PATH, value: /tmp/history.db}
+                  - {name: POSTGRES_HOST, value: mem0-postgres}
+                  - {name: POSTGRES_PORT, value: "5432"}
+                  - {name: POSTGRES_DB, value: "{{ mem0_db_name }}"}
+                  - {name: POSTGRES_USER, value: "{{ mem0_db_user }}"}
+                  - {name: POSTGRES_PASSWORD, value: "{{ mem0_db_password }}"}
+                  - {name: POSTGRES_COLLECTION_NAME, value: memories}
                 ports: [{containerPort: 8000}]
-                volumeMounts: [{name: cfg, mountPath: /config}]
+                volumeMounts: [{name: patch, mountPath: /patch}]
             volumes:
-              - name: cfg
-                configMap: {name: mem0-config}
+              - name: patch
+                configMap: {name: mem0-runtime-patch}
 
 - name: mem0 Service
   kubernetes.core.k8s:
