@@ -11,7 +11,7 @@ tolerations:
 # API Server and Deriver Worker configuration
 image:
   repository: "ghcr.io/plastic-labs/honcho"
-  tag: "v3.0.6"
+  tag: "v3.0.12"
   pullPolicy: "IfNotPresent"
 
 # LiteLLM Integration parameters (OpenAI compatible)
