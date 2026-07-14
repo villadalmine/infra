@@ -167,23 +167,18 @@
             # ── gpt-5.4-mini & openai/gpt-5.4-mini → Honcho v3.0.12 default model ──
             # Honcho v3.0.12 cambió su config a un schema anidado por-nivel; su
             # default es gpt-5.4-mini/transport=openai y no lee las env vars viejas
-            # del rol. En vez de pelear el schema, aliaseamos el nombre que pide al
-            # mismo free tier (aditivo, consistente con gpt-5.4).
+            # del rol. Aliaseamos ese nombre a Claude Sonnet 5 (openrouter, más barato que 4.5: $2/$10 vs $3/$15): es
+            # el ÚNICO backend acá (no free) porque el deriver de Honcho exige
+            # STRUCTURED OUTPUT (json_schema) que los modelos free rechazan
+            # ("zero observations"). Aliases NUEVOS, exclusivos de Honcho — NO
+            # afectan gemma4-paid (online-game / Tormenta Solar) ni gpt-5.4 (Holmes).
             - model_name: gpt-5.4-mini
               litellm_params:
-                model: openrouter/openai/gpt-oss-20b:free
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
-            - model_name: gpt-5.4-mini
-              litellm_params:
-                model: openrouter/google/gemini-2.0-flash-001
+                model: openrouter/anthropic/claude-sonnet-5
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: openai/gpt-5.4-mini
               litellm_params:
-                model: openrouter/openai/gpt-oss-20b:free
-                api_key: os.environ/HOLMES_OPENROUTER_API_KEY
-            - model_name: openai/gpt-5.4-mini
-              litellm_params:
-                model: openrouter/google/gemini-2.0-flash-001
+                model: openrouter/anthropic/claude-sonnet-5
                 api_key: os.environ/OPENROUTER_API_KEY
 
             # ── local-reason → cloud free tier (Holmes alias) ──
@@ -296,7 +291,7 @@
                 api_key: os.environ/OPENCLAW_OPENROUTER_API_KEY
             - model_name: claude-sonnet
               litellm_params:
-                model: openrouter/anthropic/claude-sonnet-4-5
+                model: openrouter/anthropic/claude-sonnet-5
                 api_key: os.environ/OPENROUTER_API_KEY
             - model_name: gemini-flash
               litellm_params:
