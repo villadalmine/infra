@@ -743,6 +743,37 @@
                   - port: "8090"
                     protocol: TCP
 
+# mTLS SPIFFE en el path de tools (spec-m20 rollout, 14/07 — autorizado explícito
+# y verificado: e2e-governed-tool con filas en el audit + e2e-mode2-ownkey 15/15
+# PASS bajo la política; auth map spire fresco hacia la identidad del gateway).
+# SIN default-deny y SIN allowlist: nadie queda denegado por selector (lección
+# litellm) — sólo se exige el handshake a todo endpoint del mesh hacia :8082.
+- name: Require SPIFFE mTLS on the gateway tools path (CiliumNetworkPolicy)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cilium.io/v2
+      kind: CiliumNetworkPolicy
+      metadata:
+        name: leloir-mcp-gateway-mtls
+        namespace: "{{ leloir_namespace }}"
+      spec:
+        endpointSelector:
+          matchLabels:
+            app: leloir-mcp-gateway
+        enableDefaultDeny:
+          ingress: false
+          egress: false
+        ingress:
+          - fromEndpoints:
+              - {}
+            toPorts:
+              - ports:
+                  - port: "8082"
+                    protocol: TCP
+            authentication:
+              mode: required
+
 - name: Create HTTPRoute for leloir UI + API
   when: leloir_auth_mode != "oidc"
   kubernetes.core.k8s:
