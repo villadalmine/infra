@@ -699,6 +699,10 @@
 # CNP: sólo el gateway alcanza el puerto interno :8090 del control plane
 # (defense-in-depth SOBRE el bearer token). enableDefaultDeny.ingress: false para
 # NO tocar el puerto público :8080 — sólo restringimos el 8090.
+# mTLS SPIFFE (spec-m20 rollout gradual, 14/07): el gateway (único consumidor)
+# debe autenticarse mutuamente. Fail-open aguas arriba: si el handshake falla,
+# thrash-escalation y audit-forward degradan (best-effort) — las investigaciones
+# no se ven afectadas. Probado en vivo antes de codificar acá.
 - name: Lock the internal anomaly port to the gateway (CiliumNetworkPolicy)
   kubernetes.core.k8s:
     state: present
@@ -716,6 +720,17 @@
         enableDefaultDeny:
           ingress: false
           egress: false
+        ingress:
+          # El path legítimo gateway→:8090 exige mTLS (SPIFFE por Cilium).
+          - fromEndpoints:
+              - matchLabels:
+                  app: leloir-mcp-gateway
+            toPorts:
+              - ports:
+                  - port: "8090"
+                    protocol: TCP
+            authentication:
+              mode: required
         ingressDeny:
           # Denegar :8090 a TODO lo que NO sea el gateway.
           - fromEndpoints:
@@ -783,6 +798,11 @@
           # controlPlaneUrl: el gateway resuelve MCPServer CRDs Y reporta la
           # escalada de thrash a POST /internal/anomaly (spec-m21 21.6).
           controlPlaneUrl: "http://leloir-controlplane.{{ leloir_namespace }}.svc.cluster.local"
+          # auditEndpoint: cada tool call se forwardea al audit WORM del tenant
+          # (POST /internal/audit, mismo bearer interno LELOIR_THRASH_TOKEN) →
+          # visible en el tab Audit de la UI + SIEM streaming. result=shadowed
+          # alimenta la anotación de honestidad del summary (spec-m17.6).
+          auditEndpoint: "http://leloir-controlplane-internal.{{ leloir_namespace }}.svc.cluster.local:8090/internal/audit"
           # Anti-thrashing (spec-m17.5) + escalada→quarantine (spec-m21 21.6):
           # un tenant que MARTILLA tools denegadas (tripsToQuarantine trips en
           # windowSeconds) se reporta al control plane → quarantine. El token del
