@@ -79,6 +79,15 @@
         template:
           metadata: {labels: {app: letta}}
           spec:
+            initContainers:
+              # Letta's migration needs the pgvector extension but doesn't run
+              # CREATE EXTENSION itself → the image has it available, we enable it.
+              - name: enable-pgvector
+                image: pgvector/pgvector:pg16
+                command: ["sh","-c"]
+                args:
+                  - until pg_isready -h letta-postgres.{{ letta_namespace }}.svc.cluster.local -U {{ letta_db_user }}; do sleep 2; done;
+                    PGPASSWORD="{{ letta_db_password }}" psql -h letta-postgres.{{ letta_namespace }}.svc.cluster.local -U {{ letta_db_user }} -d {{ letta_db_name }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
             containers:
               - name: letta
                 image: "{{ letta_image }}"
