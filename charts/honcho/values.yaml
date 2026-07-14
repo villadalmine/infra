@@ -29,6 +29,14 @@ llm:
   embeddingModel: ""
   embedMessages: "false"
 
+# ── Telemetry (OTEL/CloudEvents → collector) ─────────────────────────────────
+# Honcho has NO Prometheus /metrics endpoint. Observability goes through its
+# built-in telemetry emitter (CloudEvents over OTLP HTTP). Point it at the
+# cluster's OTEL collector (Grafana Alloy) → Prometheus/Tempo. Off by default.
+telemetry:
+  enabled: false
+  endpoint: "http://alloy.monitoring.svc.cluster.local:4318"
+
 # Database config (pgvector)
 postgresql:
   image:

@@ -33,3 +33,9 @@ honcho_use_auth: "true"
 
 # ─── Secrets (loaded from secrets.yml — gitignored) ─────────────────────────
 # See roles/install-honcho/defaults/secrets.yml.example for required variables.
+
+# ─── Telemetry (OTEL/CloudEvents → Alloy collector) ─────────────────────────
+# Honcho no tiene endpoint Prometheus; observabilidad via su emitter (CloudEvents
+# sobre OTLP HTTP) → Alloy → Prometheus/Tempo.
+honcho_telemetry_enabled: true
+honcho_telemetry_endpoint: "http://alloy.monitoring.svc.cluster.local:4318"

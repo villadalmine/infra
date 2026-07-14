@@ -47,6 +47,9 @@
       auth:
         useAuth: "{{ honcho_use_auth }}"
         jwtSecret: "{{ honcho_jwt_secret | default('') }}"
+      telemetry:
+        enabled: "{{ honcho_telemetry_enabled | default(false) }}"
+        endpoint: "{{ honcho_telemetry_endpoint | default('') }}"
 
 # ─── Wait for Rollout Status ──────────────────────────────────────────────────
 - name: Wait for PostgreSQL rollout
