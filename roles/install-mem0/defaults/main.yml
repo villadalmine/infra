@@ -1,0 +1,23 @@
+# mem0 — memory layer OSS (self-hosted). Server REST (FastAPI) + Postgres/pgvector.
+# El graph (Neo4j) es OPCIONAL y es la parte gated-Pro en la nube → acá vector-only
+# por default (memoria funcional sin graph). LLM/embeddings por litellm interno.
+#
+# ⚠ REST del OSS server: SIN prefijo /v1 (POST /memories, no /v1/memories).
+# ⚠ SIN auth por default → poner detrás del Gateway/red interna, no exponer crudo.
+# ⚠ Al primer deploy iterar el config del provider (config.yaml / env).
+mem0_namespace: "mem0"
+mem0_image: "mem0/mem0-api-server:latest"
+mem0_hostname: "mem0.cluster.home"
+mem0_storage_class: "longhorn-nvme"
+mem0_storage_size: "10Gi"
+
+mem0_db_user: "mem0"
+mem0_db_name: "mem0"
+mem0_db_password: "{{ lookup('env','MEM0_DB_PASSWORD') | default('mem0-change-me', true) }}"
+
+# LLM/embeddings por litellm interno (OpenAI-compatible)
+mem0_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+mem0_openai_key: "{{ litellm_master_key | default('') }}"
+mem0_llm_model: "gpt-5.4-mini"                # → claude-sonnet-5 en litellm
+mem0_embedding_model: "text-embedding-3-small"
+mem0_enable_graph: false                      # true = agrega Neo4j (parte Pro-equivalente)

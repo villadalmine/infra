@@ -1,0 +1,26 @@
+# Letta (ex-MemGPT) — memory-OS agent server. La opción de memoria más simple de
+# auto-hostear: server FastAPI + Postgres (pgvector), sin graph DB.
+#
+# LLM + embeddings van por el litellm interno (OpenAI-compatible). litellm YA
+# sirve text-embedding-3-small (prerequisito verificado 14/07).
+#
+# ⚠ Al PRIMER deploy: Letta configura el provider LLM por su API/ADE; puede
+# requerir registrar el modelo custom (OPENAI_API_BASE) — iterar ahí. Se
+# despliega para benchmarkear contra scripts/bench-memory.sh (backend letta).
+letta_namespace: "letta"
+letta_image: "letta/letta:latest"
+letta_hostname: "letta.cluster.home"
+letta_storage_class: "longhorn-nvme"
+letta_storage_size: "10Gi"
+letta_node_hostname: "srv-rk1-nvme-02"
+
+# Postgres propio (pgvector) para la memoria archival de Letta
+letta_db_user: "letta"
+letta_db_name: "letta"
+letta_db_password: "{{ lookup('env','LETTA_DB_PASSWORD') | default('letta-change-me', true) }}"
+
+# LLM/embeddings por litellm interno (OpenAI-compatible)
+letta_openai_base: "http://litellm-proxy.ai.svc.cluster.local:4000/v1"
+letta_openai_key: "{{ litellm_master_key | default('') }}"   # mismo patrón que honcho
+letta_chat_model: "gpt-5.4-mini"            # → claude-sonnet-5 en litellm (tool-calling)
+letta_embedding_model: "text-embedding-3-small"

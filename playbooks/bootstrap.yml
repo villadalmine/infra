@@ -166,6 +166,10 @@
       tags: [ai-kubernetes-mcp-build]
     - role: install-harbor
       tags: [harbor]
+    - role: install-letta
+      tags: [letta]
+    - role: install-mem0
+      tags: [mem0]
     - role: install-headlamp
       tags: [headlamp, ai]
     - role: install-rknpu-pool

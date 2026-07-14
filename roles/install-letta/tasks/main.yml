@@ -1,0 +1,126 @@
+# Letta server + Postgres (pgvector). LLM/embeddings por litellm interno.
+# Patrón del repo: ClusterIP + HTTPRoute → shared Gateway (.200).
+# PREPARADO — al primer `make letta` iterar la config del provider LLM de Letta.
+
+- name: Create Letta namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata: {name: "{{ letta_namespace }}"}
+
+- name: Deploy Letta Postgres (pgvector)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: letta-postgres
+        namespace: "{{ letta_namespace }}"
+      spec:
+        replicas: 1
+        selector: {matchLabels: {app: letta-postgres}}
+        template:
+          metadata: {labels: {app: letta-postgres}}
+          spec:
+            nodeSelector: {storage: rk1-longhorn}
+            tolerations: [{operator: Exists}]
+            containers:
+              - name: postgres
+                image: pgvector/pgvector:pg16
+                env:
+                  - {name: POSTGRES_USER, value: "{{ letta_db_user }}"}
+                  - {name: POSTGRES_PASSWORD, value: "{{ letta_db_password }}"}
+                  - {name: POSTGRES_DB, value: "{{ letta_db_name }}"}
+                  - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+                ports: [{containerPort: 5432}]
+                volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+            volumes:
+              - name: data
+                persistentVolumeClaim: {claimName: letta-postgres-data}
+
+- name: Letta Postgres PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata: {name: letta-postgres-data, namespace: "{{ letta_namespace }}"}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: "{{ letta_storage_class }}"
+        resources: {requests: {storage: "{{ letta_storage_size }}"}}
+
+- name: Letta Postgres Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata: {name: letta-postgres, namespace: "{{ letta_namespace }}"}
+      spec:
+        selector: {app: letta-postgres}
+        ports: [{port: 5432, targetPort: 5432}]
+
+- name: Deploy Letta server
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: letta
+        namespace: "{{ letta_namespace }}"
+      spec:
+        replicas: 1
+        selector: {matchLabels: {app: letta}}
+        template:
+          metadata: {labels: {app: letta}}
+          spec:
+            containers:
+              - name: letta
+                image: "{{ letta_image }}"
+                env:
+                  - name: LETTA_PG_URI
+                    value: "postgresql://{{ letta_db_user }}:{{ letta_db_password }}@letta-postgres.{{ letta_namespace }}.svc.cluster.local:5432/{{ letta_db_name }}"
+                  # LLM + embeddings por litellm (OpenAI-compatible)
+                  - {name: OPENAI_API_KEY, value: "{{ letta_openai_key }}"}
+                  - {name: OPENAI_API_BASE, value: "{{ letta_openai_base }}"}
+                  - {name: LETTA_LLM_ENDPOINT, value: "{{ letta_openai_base }}"}
+                  - {name: LETTA_LLM_ENDPOINT_TYPE, value: "openai"}
+                  - {name: LETTA_LLM_MODEL, value: "{{ letta_chat_model }}"}
+                  - {name: LETTA_EMBEDDING_ENDPOINT_TYPE, value: "openai"}
+                  - {name: LETTA_EMBEDDING_ENDPOINT, value: "{{ letta_openai_base }}"}
+                  - {name: LETTA_EMBEDDING_MODEL, value: "{{ letta_embedding_model }}"}
+                ports: [{containerPort: 8283}]
+                readinessProbe:
+                  httpGet: {path: /v1/health/, port: 8283}
+                  initialDelaySeconds: 20
+                  periodSeconds: 10
+
+- name: Letta Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata: {name: letta, namespace: "{{ letta_namespace }}"}
+      spec:
+        selector: {app: letta}
+        ports: [{name: http, port: 8283, targetPort: 8283}]
+
+- name: Create HTTPRoute for Letta
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata: {name: letta, namespace: "{{ letta_namespace }}"}
+      spec:
+        parentRefs: [{name: cluster-gateway, namespace: gateway}]
+        hostnames: ["{{ letta_hostname }}"]
+        rules:
+          - matches: [{path: {type: PathPrefix, value: /}}]
+            backendRefs: [{name: letta, port: 8283}]

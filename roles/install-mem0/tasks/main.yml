@@ -1,0 +1,123 @@
+# mem0 API server + Postgres/pgvector (vector-only por default; graph=Neo4j opcional).
+# LLM/embeddings por litellm. PREPARADO — al primer `make mem0` iterar el config
+# del vector store + provider (mem0 usa un config JSON/env; el REST OSS NO tiene /v1).
+
+- name: Create mem0 namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata: {name: "{{ mem0_namespace }}"}
+
+- name: Deploy mem0 Postgres (pgvector)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: mem0-postgres, namespace: "{{ mem0_namespace }}"}
+      spec:
+        replicas: 1
+        selector: {matchLabels: {app: mem0-postgres}}
+        template:
+          metadata: {labels: {app: mem0-postgres}}
+          spec:
+            nodeSelector: {storage: rk1-longhorn}
+            tolerations: [{operator: Exists}]
+            containers:
+              - name: postgres
+                image: pgvector/pgvector:pg16
+                env:
+                  - {name: POSTGRES_USER, value: "{{ mem0_db_user }}"}
+                  - {name: POSTGRES_PASSWORD, value: "{{ mem0_db_password }}"}
+                  - {name: POSTGRES_DB, value: "{{ mem0_db_name }}"}
+                  - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+                ports: [{containerPort: 5432}]
+                volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+            volumes:
+              - name: data
+                persistentVolumeClaim: {claimName: mem0-postgres-data}
+
+- name: mem0 Postgres PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata: {name: mem0-postgres-data, namespace: "{{ mem0_namespace }}"}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: "{{ mem0_storage_class }}"
+        resources: {requests: {storage: "{{ mem0_storage_size }}"}}
+
+- name: mem0 Postgres Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata: {name: mem0-postgres, namespace: "{{ mem0_namespace }}"}
+      spec:
+        selector: {app: mem0-postgres}
+        ports: [{port: 5432, targetPort: 5432}]
+
+# mem0 config: vector store pgvector + LLM/embedder OpenAI-compatible (litellm).
+- name: mem0 server config
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata: {name: mem0-config, namespace: "{{ mem0_namespace }}"}
+      data:
+        config.json: |
+          {
+            "vector_store": {"provider": "pgvector", "config": {
+              "host": "mem0-postgres.{{ mem0_namespace }}.svc.cluster.local",
+              "port": 5432, "user": "{{ mem0_db_user }}",
+              "password": "{{ mem0_db_password }}", "dbname": "{{ mem0_db_name }}"}},
+            "llm": {"provider": "openai", "config": {
+              "model": "{{ mem0_llm_model }}",
+              "openai_base_url": "{{ mem0_openai_base }}"}},
+            "embedder": {"provider": "openai", "config": {
+              "model": "{{ mem0_embedding_model }}",
+              "openai_base_url": "{{ mem0_openai_base }}"}}
+          }
+
+- name: Deploy mem0 API server
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: {name: mem0, namespace: "{{ mem0_namespace }}"}
+      spec:
+        replicas: 1
+        selector: {matchLabels: {app: mem0}}
+        template:
+          metadata: {labels: {app: mem0}}
+          spec:
+            containers:
+              - name: mem0
+                image: "{{ mem0_image }}"
+                env:
+                  - {name: OPENAI_API_KEY, value: "{{ mem0_openai_key }}"}
+                  - {name: OPENAI_BASE_URL, value: "{{ mem0_openai_base }}"}
+                  - {name: MEM0_CONFIG_PATH, value: /config/config.json}
+                ports: [{containerPort: 8000}]
+                volumeMounts: [{name: cfg, mountPath: /config}]
+            volumes:
+              - name: cfg
+                configMap: {name: mem0-config}
+
+- name: mem0 Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata: {name: mem0, namespace: "{{ mem0_namespace }}"}
+      spec:
+        selector: {app: mem0}
+        ports: [{name: http, port: 8000, targetPort: 8000}]
