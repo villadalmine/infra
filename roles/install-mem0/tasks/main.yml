@@ -71,19 +71,18 @@
       kind: ConfigMap
       metadata: {name: mem0-config, namespace: "{{ mem0_namespace }}"}
       data:
-        config.json: |
-          {
-            "vector_store": {"provider": "pgvector", "config": {
-              "host": "mem0-postgres.{{ mem0_namespace }}.svc.cluster.local",
-              "port": 5432, "user": "{{ mem0_db_user }}",
-              "password": "{{ mem0_db_password }}", "dbname": "{{ mem0_db_name }}"}},
-            "llm": {"provider": "openai", "config": {
-              "model": "{{ mem0_llm_model }}",
-              "openai_base_url": "{{ mem0_openai_base }}"}},
-            "embedder": {"provider": "openai", "config": {
-              "model": "{{ mem0_embedding_model }}",
-              "openai_base_url": "{{ mem0_openai_base }}"}}
-          }
+        # to_json → garantiza que el value sea un STRING (k8s ConfigMap.data
+        # exige string; un bloque YAML se parsea como objeto y falla con 400).
+        config.json: "{{ {
+          'vector_store': {'provider': 'pgvector', 'config': {
+            'host': 'mem0-postgres.' + mem0_namespace + '.svc.cluster.local',
+            'port': 5432, 'user': mem0_db_user,
+            'password': mem0_db_password, 'dbname': mem0_db_name}},
+          'llm': {'provider': 'openai', 'config': {
+            'model': mem0_llm_model, 'openai_base_url': mem0_openai_base}},
+          'embedder': {'provider': 'openai', 'config': {
+            'model': mem0_embedding_model, 'openai_base_url': mem0_openai_base}}
+          } | to_json }}"
 
 - name: Deploy mem0 API server
   kubernetes.core.k8s:
