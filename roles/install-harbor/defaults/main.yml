@@ -1,0 +1,26 @@
+# Harbor — registry self-hosted con réplica automática desde GHCR.
+#
+# ⚠ ARM64: verificar ANTES de correr que la versión pineada publique imágenes
+# linux/arm64 (`docker manifest inspect goharbor/harbor-core:v<X>` o el chart
+# values `image.tag`). Históricamente Harbor fue amd64-only; si la versión no
+# tiene arm64, alternativas livianas multi-arch: `registry:2` (sin UI) o
+# `zot` (OCI-nativo, tiene sync/mirroring — candidato ideal para espejo puro).
+harbor_chart_version: "1.18.0"   # chart goharbor/harbor — chequear con: helm search repo harbor/harbor --versions | head -3
+harbor_namespace: harbor
+harbor_hostname: "harbor.cluster.home"
+harbor_external_url: "https://{{ harbor_hostname }}"
+
+# Password del admin — OVERRIDE por vault/env; nunca commitear un valor real.
+harbor_admin_password: "{{ lookup('env', 'HARBOR_ADMIN_PASSWORD') | default('Harbor12345-CHANGE-ME', true) }}"
+
+# Storage (cluster ARM: longhorn en los rk1 o local-path)
+harbor_storage_class: "longhorn"
+harbor_registry_storage_size: "50Gi"
+harbor_db_storage_size: "5Gi"
+
+# Réplica desde GHCR (plan: GHCR canónico → Harbor espejo con URL propia).
+# Se configura post-install vía API (tasks al final del rol).
+harbor_configure_replication: true
+harbor_replication_registry_url: "https://ghcr.io"
+harbor_replication_filter: "villadalmine/**"   # qué repos espejar
+harbor_replication_dest_project: "leloir"      # proyecto destino en Harbor

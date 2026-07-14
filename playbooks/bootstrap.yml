@@ -164,6 +164,8 @@
         remote_local_image_name: "admin/nas-admin"
     - role: install-kubernetes-mcp-server-image
       tags: [ai-kubernetes-mcp-build]
+    - role: install-harbor
+      tags: [harbor]
     - role: install-headlamp
       tags: [headlamp, ai]
     - role: install-rknpu-pool

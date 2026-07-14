@@ -12,7 +12,7 @@ SUDOERS_MODE ?= full
 ANSIBLE_USER ?=
 ARGO_NS      ?= kaniko
 
-.PHONY: help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage-smb storage-rclone ai ai-all ai-registry ai-hermes-build ai-hermes-deploy ai-litellm-proxy-deploy ai-hermes-agent-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent litellm-operator envoy-ai-gw cp-isolation security full clean healthcheck node-identity node-stats survey litellm honcho openclaw openclaw-rbac hermes-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all longhorn longhorn-bench
+.PHONY: harbor help deps deps-ai deps-ops deps-full preview preview-ai preview-ops preview-full uninstall-local hermes-install holmesgpt-install setup-nodes setup-sudoers core networking encryption networking-observability networking-observability-basic networking-observability-security networking-observability-full ingress dns-metrics services observability storage-smb storage-rclone ai ai-all ai-registry ai-hermes-build ai-hermes-deploy ai-litellm-proxy-deploy ai-hermes-agent-deploy ai-holmes holmes-ui ai-kubernetes-mcp-build kagent litellm-operator envoy-ai-gw cp-isolation security full clean healthcheck node-identity node-stats survey litellm honcho openclaw openclaw-rbac hermes-rbac fix-mac-address gpu-bench gpu-evict gpu-status argo-workflows leloir-build leloir leloir-all leloir-oidc dex nas-admin-build nas-admin-build-logs nas-admin nas-admin-test nas-admin-all longhorn longhorn-bench
 
 help: ## Show this help message (start here if you're new)
 	@echo ""
@@ -149,6 +149,9 @@ ai-build: ## Build all local ARM64 images for the AI stack via kaniko
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-hermes-build,ai-kubernetes-mcp-build
 
 ai-all: ai ai-holmes openclaw kagent ## Deploy the ENTIRE AI Stack (Hermes + HolmesGPT + OpenClaw + Kagent)
+
+harbor: ## Install Harbor registry (self-hosted mirror of GHCR — check ARM64 note in role defaults first)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags harbor
 
 ai-registry: ## Install only Docker registry (5GB PVC, ARM64 compatible)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags ai-registry

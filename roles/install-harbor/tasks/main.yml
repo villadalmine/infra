@@ -1,0 +1,161 @@
+# Harbor via Helm — registry self-hosted, espejo de GHCR (plan de registry 14/07:
+# el build multi-arch vive en GitHub Actions → GHCR canónico → Harbor REPLICA
+# con URL propia; plan B mutuo documentado).
+#
+# Patrón del repo: ClusterIP + HTTPRoute → shared Gateway (.200), TLS del
+# wildcard de cert-manager. PREPARADO, no corrido aún — ver el ⚠ ARM64 en
+# defaults/main.yml antes del primer `make harbor`.
+
+- name: Add Harbor Helm repository
+  kubernetes.core.helm_repository:
+    name: harbor
+    repo_url: https://helm.goharbor.io
+  changed_when: false
+
+- name: Create Harbor namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ harbor_namespace }}"
+
+- name: Install or upgrade Harbor
+  kubernetes.core.helm:
+    name: harbor
+    chart_ref: harbor/harbor
+    chart_version: "{{ harbor_chart_version }}"
+    release_namespace: "{{ harbor_namespace }}"
+    wait: false
+    values:
+      # TLS termina en el Gateway compartido; Harbor sirve HTTP interno.
+      expose:
+        type: clusterIP
+        tls:
+          enabled: false
+        clusterIP:
+          name: harbor
+      externalURL: "{{ harbor_external_url }}"
+      harborAdminPassword: "{{ harbor_admin_password }}"
+      persistence:
+        enabled: true
+        persistentVolumeClaim:
+          registry:
+            storageClass: "{{ harbor_storage_class }}"
+            size: "{{ harbor_registry_storage_size }}"
+          database:
+            storageClass: "{{ harbor_storage_class }}"
+            size: "{{ harbor_db_storage_size }}"
+      # Slim: sin trivy (scanning después si hace falta) — menos RAM en ARM.
+      trivy:
+        enabled: false
+      metrics:
+        enabled: true
+
+- name: Wait for Harbor core rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/harbor-core -n {{ harbor_namespace }} --timeout=300s
+  register: harbor_rollout
+  until: harbor_rollout.rc == 0
+  retries: 3
+  delay: 20
+  changed_when: false
+
+- name: Create HTTPRoute for Harbor UI + registry API
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: harbor
+        namespace: "{{ harbor_namespace }}"
+      spec:
+        parentRefs:
+          - name: cluster-gateway
+            namespace: gateway
+        hostnames:
+          - "{{ harbor_hostname }}"
+        rules:
+          - matches:
+              - path: {type: PathPrefix, value: /}
+            backendRefs:
+              - name: harbor
+                port: 80
+
+# ─── Réplica GHCR → Harbor (pull-based) ───────────────────────────────────────
+# GHCR es el canónico (ahí buildea GitHub Actions); Harbor lo espeja con una
+# replication policy pull. Idempotente vía la API de Harbor (auth admin, el
+# password nunca se imprime: no_log).
+
+- name: Configure GHCR replication
+  when: harbor_configure_replication
+  block:
+    - name: Create destination project ({{ harbor_replication_dest_project }})
+      ansible.builtin.uri:
+        url: "{{ harbor_external_url }}/api/v2.0/projects"
+        method: POST
+        user: admin
+        password: "{{ harbor_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          project_name: "{{ harbor_replication_dest_project }}"
+          public: true
+        status_code: [201, 409]   # 409 = ya existe (idempotente)
+      no_log: true
+
+    - name: Register GHCR as replication endpoint
+      ansible.builtin.uri:
+        url: "{{ harbor_external_url }}/api/v2.0/registries"
+        method: POST
+        user: admin
+        password: "{{ harbor_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          name: ghcr
+          type: github-ghcr
+          url: "{{ harbor_replication_registry_url }}"
+          # Sin credencial: los repos espejados son PÚBLICOS (pull anónimo).
+          insecure: false
+        status_code: [201, 409]
+      no_log: true
+
+    - name: Get GHCR registry id
+      ansible.builtin.uri:
+        url: "{{ harbor_external_url }}/api/v2.0/registries?q=name%3Dghcr"
+        method: GET
+        user: admin
+        password: "{{ harbor_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: harbor_ghcr_registry
+      no_log: true
+
+    - name: Create pull replication policy (GHCR → Harbor)
+      ansible.builtin.uri:
+        url: "{{ harbor_external_url }}/api/v2.0/replication/policies"
+        method: POST
+        user: admin
+        password: "{{ harbor_admin_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          name: ghcr-leloir-mirror
+          src_registry: {id: "{{ (harbor_ghcr_registry.json | first).id }}"}
+          dest_namespace: "{{ harbor_replication_dest_project }}"
+          dest_namespace_replace_count: 1
+          filters:
+            - {type: name, value: "{{ harbor_replication_filter }}"}
+          trigger:
+            type: scheduled
+            trigger_settings: {cron: "0 0 */6 * * *"}   # cada 6 horas
+          enabled: true
+          override: true
+        status_code: [201, 409]
+      no_log: true
