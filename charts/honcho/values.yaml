@@ -26,8 +26,8 @@ llm:
   model: "kimi-free"
   # Embeddings are disabled (EMBED_MESSAGES=false) — no embedding model needed in LiteLLM.
   # To enable: add an embedding model to LiteLLM and set embeddingModel here.
-  embeddingModel: ""
-  embedMessages: "false"
+  embeddingModel: "text-embedding-3-small"
+  embedMessages: "true"
 
 # ── Telemetry (OTEL/CloudEvents → collector) ─────────────────────────────────
 # Honcho has NO Prometheus /metrics endpoint. Observability goes through its

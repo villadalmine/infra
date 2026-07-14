@@ -774,6 +774,13 @@
             authentication:
               mode: required
 
+# Adaptador Honcho→MCP (memoria black-box). Guarded: requiere honcho deployado.
+- name: Deploy leloir-honcho-mcp adapter (Honcho episodic memory for black-box agents)
+  kubernetes.core.k8s:
+    state: present
+    template: honcho-mcp.yaml.j2
+  when: leloir_honcho_mcp_enabled | default(false)
+
 - name: Create HTTPRoute for leloir UI + API
   when: leloir_auth_mode != "oidc"
   kubernetes.core.k8s:

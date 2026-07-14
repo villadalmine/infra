@@ -1,12 +1,15 @@
 # leloir-honcho-mcp — adaptador Honcho REST→MCP (spec-native-memory §Adapter).
-# Corre desde la MISMA imagen del control plane (command override), como el
-# memory-mcp. Da memoria episódica (Honcho) a agentes black-box por la fachada MCP.
-# El gateway lo registra como un MCPServer (transport: mcp) por-tenant.
+# Corre desde la imagen del control plane (command override), como memory-mcp.
+# Da memoria episódica (Honcho) a agentes black-box por la fachada MCP gobernada.
+# Desplegado EN ns honcho (donde vive honcho-secrets → sin copia cross-ns).
+# El gateway lo registra como MCPServer (transport: mcp) por-tenant.
+# PROBADO VIVO 14/07: capture_incident → recall_incident devuelve el incidente.
+# Requiere: honcho deployado (make honcho) con EMBED_MESSAGES=true (search semántico).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: leloir-honcho-mcp
-  namespace: "{{ leloir_namespace }}"
+  namespace: honcho
   labels: {app: leloir-honcho-mcp}
 spec:
   replicas: 1
@@ -14,12 +17,14 @@ spec:
   template:
     metadata: {labels: {app: leloir-honcho-mcp}}
     spec:
+      nodeSelector: {storage: rk1-longhorn}   # la registry interna sólo resuelve en rk1
       containers:
         - name: honcho-mcp
           image: "{{ leloir_image }}"
           command: ["/leloir-honcho-mcp"]
           env:
-            - {name: HONCHO_BASE_URL, value: "http://honcho-api.honcho.svc.cluster.local:8000"}
+            # OJO: el puerto del Service honcho-api es 80 (no 8000, que es el container).
+            - {name: HONCHO_BASE_URL, value: "http://honcho-api.honcho.svc.cluster.local:80"}
             - {name: LELOIR_HONCHO_ADDR, value: ":8090"}
             # El MISMO AUTH_JWT_SECRET con el que Honcho firma (para mint del admin JWT).
             - name: HONCHO_JWT_SECRET
@@ -35,12 +40,11 @@ apiVersion: v1
 kind: Service
 metadata:
   name: leloir-honcho-mcp
-  namespace: "{{ leloir_namespace }}"
+  namespace: honcho
 spec:
   selector: {app: leloir-honcho-mcp}
   ports: [{name: http, port: 8090, targetPort: 8090}]
-# NOTA: el Secret honcho-secrets vive en ns honcho → para el secretKeyRef cross-ns,
-# el rol debe copiar AUTH_JWT_SECRET a un Secret en ns leloir antes de aplicar esto
-# (o mover honcho-mcp al ns honcho). Wiring del gateway: agregar a servers[] del
-# tenant que quiera memoria Honcho:  {name: honcho, tenant: <t>, transport: mcp,
-# endpoint: http://leloir-honcho-mcp.leloir.svc.cluster.local:8090/}
+# Wiring del gateway: agregar a servers[] del/los tenant(s) que quieran memoria Honcho:
+#   {name: honcho, tenant: <t>, transport: mcp,
+#    endpoint: http://leloir-honcho-mcp.honcho.svc.cluster.local:8090/,
+#    toolAllowlist: [recall_incident, capture_incident]}
