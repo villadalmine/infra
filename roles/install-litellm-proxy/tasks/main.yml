@@ -29,6 +29,13 @@
         HOLMES_OPENROUTER_API_KEY: "{{ holmes_openrouter_api_key | default('') }}"
         KAGENT_OPENROUTER_API_KEY: "{{ kagent_openrouter_api_key | default('') }}"
         OPENCLAW_OPENROUTER_API_KEY: "{{ openclaw_openrouter_api_key | default('') }}"
+        # Key DEDICADA del control plane de Leloir (creada con LELOIR-SK, nombre
+        # "leloir-controlplane" en OpenRouter) → atribución propia, NO comparte la key
+        # "openclaw" (antes HOLMES_/KAGENT_/OPENCLAW_ eran la MISMA key física = todo
+        # el tráfico de Leloir salía como "openclaw"). Los LiteLLMModel de leloir-llm
+        # apuntan a esta key. TODO: setear leloir_openrouter_api_key en el vault; hasta
+        # entonces cae a la key holmes/compartida para no romper (transicional).
+        LELOIR_OPENROUTER_API_KEY: "{{ leloir_openrouter_api_key | default(holmes_openrouter_api_key) | default('') }}"
   # Always create secret — pod references it unconditionally.
   # Keys are empty strings when secrets.yml is missing (local-only mode).
 
