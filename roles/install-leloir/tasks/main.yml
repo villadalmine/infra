@@ -392,12 +392,12 @@
         - apiGroups: ["leloir.dev"]
           # skillsources: la resolución de skills (route.skills → SkillRef con
           # contenido) los lee del namespace de la ruta al lanzar la investigación.
-          resources: ["tenants", "alertroutes", "agentregistrations", "tenantbudgets", "mcpservers", "investigations", "scheduledinvestigations", "skillsources"]
+          resources: ["tenants", "alertroutes", "agentregistrations", "tenantbudgets", "mcpservers", "investigations", "scheduledinvestigations", "skillsources", "notificationchannels"]
           verbs: ["get", "list", "watch"]
         - apiGroups: ["leloir.dev"]
           # El reconciler escribe health/conditions de vuelta al .status de cada CRD
           # (agentregistrations/status faltaba → health no persistía).
-          resources: ["investigations/status", "scheduledinvestigations/status", "agentregistrations/status", "tenants/status", "alertroutes/status", "mcpservers/status", "tenantbudgets/status"]
+          resources: ["investigations/status", "scheduledinvestigations/status", "agentregistrations/status", "tenants/status", "alertroutes/status", "mcpservers/status", "tenantbudgets/status", "notificationchannels/status"]
           verbs: ["get", "update", "patch"]
         # Modo 2 containment (spec-m13.4): el containment.Applier genera SA + RBAC
         # NAMESPACED (RoleBinding, no ClusterRoleBinding) + egress-lock + patchea el

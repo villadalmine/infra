@@ -40,6 +40,21 @@ spec:
                   type: string
                   enum: [teams, slack, telegram, webhook, pagerduty, opsgenie]
 
+                # --- Lifecycle event subscription (additive, 2026-07-14) ---
+                events:
+                  type: array
+                  description: >
+                    Lifecycle events this channel subscribes to. Empty = all.
+                    Known events: investigation.completed, investigation.failed,
+                    approval.pending, approval.decided.
+                  items:
+                    type: string
+                    enum:
+                      - investigation.completed
+                      - investigation.failed
+                      - approval.pending
+                      - approval.decided
+
                 # --- Microsoft Teams ---
                 teams:
                   type: object
