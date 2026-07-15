@@ -293,10 +293,18 @@
 
           modelProvider:
             models:
+              # demo-model → upstream rk1-npu-local. OJO: rk1-npu-local es el modelName
+              # de un LiteLLMModel APLICADO A MANO (orphan de fase0, no lo crea ningún
+              # rol todavía — TODO: codificar el bootstrap del LiteLLMInstance+Model
+              # leloir-llm en Ansible) que HOY sirve openrouter/anthropic/claude-sonnet-5
+              # (decisión 15/07: TODO el stack — demo + tests — en Sonnet-5, no free/gemini;
+              # el nombre "rk1-npu-local" es legacy y engañoso → renombrar al codificar).
+              # Pricing REAL de Sonnet ($3/$15 por 1M) → el metering/budget es exacto.
+              # maxTokensPerCall 1024 (era 400) para que Sonnet responda completo sin truncar.
               - id: demo-model
                 upstream: rk1-npu-local
-                pricing: {inputPer1M: 0.15, outputPer1M: 0.60}
-                maxTokensPerCall: 400
+                pricing: {inputPer1M: 3.0, outputPer1M: 15.0}
+                maxTokensPerCall: 1024
             routing: {default: demo-model}
 
           tenantBudgets:
@@ -363,7 +371,10 @@
               agentName: holmesgpt
               enabled: true
               priority: 1
-              timeoutMinutes: 10
+              # 20 min (era 10): Sonnet-5 tiene más latencia por llamada que Gemini
+              # Flash; un loop de varias iteraciones + tools necesita colchón para no
+              # fallar por timeout de investigación (decisión 15/07, todo-Sonnet).
+              timeoutMinutes: 20
 
 # ─── ServiceAccount + RBAC del control plane (m15/m16) ───────────────────────
 # El watcher necesita leloir.dev cluster-wide + Deployments (source rollout);
