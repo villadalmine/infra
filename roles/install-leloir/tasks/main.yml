@@ -6,6 +6,15 @@
 # Applied once so the cluster can accept Leloir resources before ArgoCD syncs.
 # After this, the ArgoCD Application below takes over ongoing management.
 
+# Carga los secretos del rol (leloir_oidc_client_secret, admin_email, y overrides
+# como leloir_auth_mode). defaults/secrets.yml NO se auto-carga (Ansible sólo lee
+# defaults/main.yml) → include_vars explícito, mismo patrón que install-litellm-proxy.
+# Sin esto el path OIDC del rol quedaba con client-secret vacío (nunca se ejercitó).
+- name: Load Leloir role secrets (oidc client-secret, auth_mode override)
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/../roles/install-leloir/defaults/secrets.yml"
+  failed_when: false
+
 - name: Apply Leloir CRDs (bootstrap)
   ansible.builtin.command:
     cmd: kubectl apply -k {{ role_path }}/files/crds/
