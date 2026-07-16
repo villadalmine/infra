@@ -126,3 +126,16 @@ leloir_git_raw: "https://raw.githubusercontent.com/villadalmine/leloir/main"
 # LLM broker (spec-m15/m16): instancia litellm gestionada por el operator
 leloir_litellm_namespace: ai
 leloir_litellm_instance: leloir-llm
+# Backend LLM propio de Leloir (LiteLLMInstance + LiteLLMModel del litellm-operator).
+# Nada versátil hardcodeado: el modelo upstream, la key y el tag son variables.
+# Decisión 15/07: TODO el stack corre en claude-sonnet-5 (no free/gemini).
+leloir_litellm_image_repo: ghcr.io/berriai/litellm-database
+leloir_litellm_image_tag: v1.91.0
+leloir_llm_upstream_model: "openrouter/anthropic/claude-sonnet-5"
+# Key OpenRouter DEDICADA de Leloir en el secret litellm-secrets (atribución propia,
+# NO la compartida "openclaw"). Ver leloir_openrouter_api_key en el vault.
+leloir_llm_openrouter_key_name: LELOIR_OPENROUTER_API_KEY
+# El modelName legacy "rk1-npu-local" es engañoso (sirve sonnet-5) — var para migrar.
+leloir_llm_model_alias: rk1-npu-local
+leloir_llm_request_timeout: 600      # Sonnet-5 tiene más latencia que gemini-flash
+leloir_llm_redis_host: redis.redis-system.svc.cluster.local

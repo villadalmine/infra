@@ -147,6 +147,97 @@
   delay: 10
   changed_when: false
 
+# ─── Backend LLM de Leloir: LiteLLMInstance + LiteLLMModel (litellm-operator) ──
+# ANTES eran orphans manuales de fase0 (ningún rol los creaba → no reproducibles en
+# cluster limpio). Codificados 16/07 con el estado deseado EXACTO que corre en prod
+# (idempotente: un redeploy es no-op, no reinicia el pod). Depende de install-litellm-proxy
+# (crea litellm-secrets + litellm-db-credentials) y del litellm-operator (CRDs palena.ai).
+# generalSettings.backgroundHealthChecks corta el ruido de /health del operator (~$5/día).
+# Ambos LiteLLMModel sirven claude-sonnet-5 vía la key DEDICADA de Leloir (atribución propia).
+
+- name: Leloir LiteLLMInstance (litellm propio, gestionado por el operator)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: litellm.palena.ai/v1alpha1
+      kind: LiteLLMInstance
+      metadata:
+        name: "{{ leloir_litellm_instance }}"
+        namespace: "{{ leloir_litellm_namespace }}"
+        labels: { "app.kubernetes.io/part-of": leloir }
+      spec:
+        image: { repository: "{{ leloir_litellm_image_repo }}", tag: "{{ leloir_litellm_image_tag }}", pullPolicy: IfNotPresent }
+        replicas: 1
+        service: { port: 4000, type: ClusterIP }
+        masterKey: { autoGenerate: true }
+        database:
+          external:
+            connectionSecretRef: { name: litellm-db-credentials, key: DATABASE_URL }
+        extraEnvVars:
+          - { name: DISABLE_SCHEMA_UPDATE, value: "True" }   # evita el cuelgue prisma al arrancar
+        caching:
+          enabled: true
+          type: redis
+          mode: default_on
+          ttl: 600
+          supportedCallTypes: [completion, acompletion]
+          redis: { host: "{{ leloir_llm_redis_host }}", port: 6379 }
+        routerSettings:
+          timeout: "{{ leloir_llm_request_timeout }}"   # 600s: Sonnet-5 más lento
+          numRetries: 2
+          allowedFails: 3
+          cooldownTime: 30
+        # HA + degradación: el modelo primario cae al fallback (ambos sonnet-5 hoy).
+        fallbacks:
+          maxFallbacks: 2
+          modelFallbacks:
+            - { model: "{{ leloir_llm_model_alias }}", fallbacks: [flagship-fallback] }
+        # backgroundHealthChecks: /health devuelve CACHEADO → el operator no dispara
+        # una completion paga por modelo en cada poll (fix 16/07, ~$5/día de ahorro).
+        generalSettings:
+          backgroundHealthChecks: true
+          healthCheckInterval: 600
+        resources:
+          requests: { cpu: "2", memory: 10Gi }
+          limits: { cpu: "4", memory: 12Gi }
+
+- name: Leloir LiteLLMModel — primario ({{ leloir_llm_model_alias }} → sonnet-5)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: litellm.palena.ai/v1alpha1
+      kind: LiteLLMModel
+      metadata:
+        name: "{{ leloir_litellm_instance }}-demo-model"
+        namespace: "{{ leloir_litellm_namespace }}"
+        labels: { "app.kubernetes.io/part-of": leloir }
+      spec:
+        instanceRef: { name: "{{ leloir_litellm_instance }}" }
+        modelName: "{{ leloir_llm_model_alias }}"
+        litellmParams:
+          model: "{{ leloir_llm_upstream_model }}"
+          apiKeySecretRef: { name: litellm-secrets, key: "{{ leloir_llm_openrouter_key_name }}" }
+          dropParams: true
+          timeout: "{{ leloir_llm_request_timeout }}"
+
+- name: Leloir LiteLLMModel — fallback (flagship-fallback → sonnet-5)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: litellm.palena.ai/v1alpha1
+      kind: LiteLLMModel
+      metadata:
+        name: "{{ leloir_litellm_instance }}-flagship-fallback"
+        namespace: "{{ leloir_litellm_namespace }}"
+        labels: { "app.kubernetes.io/part-of": leloir }
+      spec:
+        instanceRef: { name: "{{ leloir_litellm_instance }}" }
+        modelName: flagship-fallback
+        litellmParams:
+          model: "{{ leloir_llm_upstream_model }}"
+          apiKeySecretRef: { name: litellm-secrets, key: "{{ leloir_llm_openrouter_key_name }}" }
+          dropParams: true
+
 # ─── OIDC secret (solo cuando auth.mode == "oidc") ────────────────────────────
 # Debe contener el mismo valor que dex-leloir-client.client-secret en namespace dex.
 # Generar con: openssl rand -base64 32
