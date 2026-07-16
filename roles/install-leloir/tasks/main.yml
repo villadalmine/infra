@@ -23,6 +23,30 @@
 
 # ─── GitOps — ArgoCD Application ──────────────────────────────────────────────
 
+# Credencial del repo PRIVADO para ArgoCD. Sin esto los Application quedan en
+# sync=Unknown ("authentication required: Repository not found") — descubierto 16/07:
+# ArgoCD NUNCA había tenido acceso (el app de CRDs también estaba roto; las CRDs las
+# aplica el `kubectl apply -k` de arriba, no ArgoCD). El token sale de `gh auth token`
+# (mismo patrón que install-leloir-image). Nunca se imprime.
+- name: Create ArgoCD repository credential for the private leloir repo
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: leloir-repo-creds
+        namespace: argocd
+        labels:
+          argocd.argoproj.io/secret-type: repository
+      type: Opaque
+      stringData:
+        type: git
+        url: https://github.com/villadalmine/leloir.git
+        username: x-access-token
+        password: "{{ lookup('pipe', 'gh auth token') }}"
+  no_log: true
+
 - name: Apply Leloir CRDs ArgoCD Application
   kubernetes.core.k8s:
     state: present
