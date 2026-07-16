@@ -19,6 +19,15 @@
     state: present
     src: "{{ role_path }}/files/argocd/leloir-crds-app.yaml"
 
+# En modo oidc, el control plane (CM/Deployment/Service/HTTPRoute) lo gestiona ArgoCD
+# via el chart deploy/homelab/leloir (que ya soporta el split-horizon de OIDC). Los
+# secretos (client-secret, CA, DSN) los crea Ansible más abajo; el chart los referencia.
+- name: Apply Leloir control-plane ArgoCD Application (oidc mode)
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/argocd/leloir-controlplane-app.yaml"
+  when: leloir_auth_mode == "oidc"
+
 - name: Create leloir namespace
   kubernetes.core.k8s:
     definition:
@@ -255,6 +264,36 @@
       stringData:
         client-secret: "{{ leloir_oidc_client_secret }}"
   when: leloir_auth_mode == "oidc"
+
+# OIDC split-horizon (docs/OIDC_SETUP.md): el CP valida el issuer HTTPS (Dex tras el
+# gateway) cuyo cert lo firma cluster-home-ca (CA privada). Un Secret sólo se monta
+# desde su MISMO ns → copiamos la CA al ns leloir. Idempotente (SSA).
+- name: Read cluster-home-ca (issuer CA) from its source namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ leloir_oidc_ca_source_name }}"
+    namespace: "{{ leloir_oidc_ca_source_ns }}"
+  register: leloir_oidc_ca_src
+  when: leloir_auth_mode == "oidc" and leloir_oidc_ca_secret | length > 0
+  no_log: true
+
+- name: Copy the issuer CA into the leloir namespace (for auth.oidc.caFile)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ leloir_oidc_ca_secret }}"
+        namespace: "{{ leloir_namespace }}"
+      type: Opaque
+      data:
+        ca.crt: "{{ leloir_oidc_ca_src.resources[0].data['ca.crt'] }}"
+  when: >
+    leloir_auth_mode == "oidc" and leloir_oidc_ca_secret | length > 0
+    and leloir_oidc_ca_src.resources | default([]) | length > 0
+  no_log: true
 
 # ─── Control plane config + deployment ───────────────────────────────────────
 # En modo "oidc" estas tres resources (ConfigMap, Deployment, Service, HTTPRoute)

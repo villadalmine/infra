@@ -26,6 +26,12 @@ leloir_oidc_client_secret: ""
 leloir_oidc_redirect_url: "https://leloir.cluster.home/auth/callback"
 # Email del admin (gets "admin" role in Leloir) — set in defaults/secrets.yml
 leloir_oidc_admin_email: ""
+# OIDC split-horizon (ver docs/OIDC_SETUP.md): el CP valida el issuer HTTPS que usa
+# cluster-home-ca (CA privada). El rol copia esa CA al ns leloir como este Secret; el
+# chart lo monta (auth.oidc.caSecret) y setea caFile. Vacío = no copiar (issuer público).
+leloir_oidc_ca_secret: "leloir-oidc-ca"
+leloir_oidc_ca_source_ns: "cert-manager"     # ns donde vive cluster-home-ca
+leloir_oidc_ca_source_name: "cluster-home-ca"
 
 # Path al homelab-appset.yaml — ArgoCD gestiona Dex + Leloir via Helm cuando mode=oidc
 # Apunta al repo leloir clonado localmente (el mismo que se usa para make leloir-build)

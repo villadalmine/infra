@@ -1,0 +1,34 @@
+# ArgoCD Application del CONTROL PLANE de Leloir (modo oidc).
+#
+# En modo "oidc" el ConfigMap/Deployment/Service/HTTPRoute del control plane los
+# gestiona ArgoCD via el Helm chart `deploy/homelab/leloir` (NO Ansible). El chart
+# ya soporta el split-horizon de OIDC (auth.oidc.caSecret + hostAliases + caFile) —
+# ver docs/OIDC_SETUP.md. Los secretos (client-secret, CA, DSN de Postgres) los crea
+# Ansible en el ns leloir; el chart sólo los referencia.
+#
+# El rol install-leloir aplica este Application SÓLO cuando leloir_auth_mode == "oidc".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: leloir-controlplane
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/villadalmine/leloir.git
+    targetRevision: main
+    path: deploy/homelab/leloir
+    helm:
+      # El chart trae sus values (auth.mode=oidc, split-horizon). Overrides por-cluster
+      # (issuer/clientId/adminEmails/hostAlias IP) se pueden poner acá con parameters.
+      releaseName: leloir
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: leloir
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
