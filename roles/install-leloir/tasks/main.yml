@@ -208,7 +208,7 @@
       apiVersion: litellm.palena.ai/v1alpha1
       kind: LiteLLMModel
       metadata:
-        name: "{{ leloir_litellm_instance }}-demo-model"
+        name: "{{ leloir_litellm_instance }}-{{ leloir_llm_model_alias }}"
         namespace: "{{ leloir_litellm_namespace }}"
         labels: { "app.kubernetes.io/part-of": leloir }
       spec:
@@ -338,7 +338,7 @@
               namespace: "{{ leloir_litellm_namespace }}"
               instanceName: "{{ leloir_litellm_instance }}"
               endpoint: "http://{{ leloir_litellm_instance }}.{{ leloir_litellm_namespace }}.svc.cluster.local:4000"
-              models: [rk1-npu-local]
+              models: ["{{ leloir_llm_model_alias }}"]   # allowlist de las virtual keys por-tenant
             envoyAIGateway:
               namespace: "{{ leloir_litellm_namespace }}"
               gatewayName: "leloir-ai-gw"
@@ -384,16 +384,15 @@
 
           modelProvider:
             models:
-              # demo-model → upstream rk1-npu-local. OJO: rk1-npu-local es el modelName
-              # de un LiteLLMModel APLICADO A MANO (orphan de fase0, no lo crea ningún
-              # rol todavía — TODO: codificar el bootstrap del LiteLLMInstance+Model
-              # leloir-llm en Ansible) que HOY sirve openrouter/anthropic/claude-sonnet-5
-              # (decisión 15/07: TODO el stack — demo + tests — en Sonnet-5, no free/gemini;
-              # el nombre "rk1-npu-local" es legacy y engañoso → renombrar al codificar).
-              # Pricing REAL de Sonnet ($3/$15 por 1M) → el metering/budget es exacto.
-              # maxTokensPerCall 1024 (era 400) para que Sonnet responda completo sin truncar.
+              # demo-model → upstream = el modelName del LiteLLMModel primario
+              # (leloir_llm_model_alias = "claude-sonnet-5", codificado más arriba en este
+              # mismo rol; sirve openrouter/anthropic/claude-sonnet-5). Decisión 15/07: TODO
+              # el stack — demo + tests — en Sonnet-5, no free/gemini. El nombre honesto
+              # "claude-sonnet-5" es el que aparece en el audit (renombrado 16/07 desde el
+              # legacy engañoso "rk1-npu-local"). Pricing REAL de Sonnet ($3/$15 por 1M) →
+              # metering/budget exacto. maxTokensPerCall 1024 para respuesta completa.
               - id: demo-model
-                upstream: rk1-npu-local
+                upstream: "{{ leloir_llm_model_alias }}"
                 pricing: {inputPer1M: 3.0, outputPer1M: 15.0}
                 maxTokensPerCall: 1024
             routing: {default: demo-model}

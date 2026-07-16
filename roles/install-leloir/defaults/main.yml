@@ -135,7 +135,8 @@ leloir_llm_upstream_model: "openrouter/anthropic/claude-sonnet-5"
 # Key OpenRouter DEDICADA de Leloir en el secret litellm-secrets (atribución propia,
 # NO la compartida "openclaw"). Ver leloir_openrouter_api_key en el vault.
 leloir_llm_openrouter_key_name: LELOIR_OPENROUTER_API_KEY
-# El modelName legacy "rk1-npu-local" es engañoso (sirve sonnet-5) — var para migrar.
-leloir_llm_model_alias: rk1-npu-local
+# modelName del LiteLLMModel primario = el modelo REAL (honestidad del audit: 16/07 se
+# renombró el legacy engañoso "rk1-npu-local" → "claude-sonnet-5"; el audit muestra este nombre).
+leloir_llm_model_alias: claude-sonnet-5
 leloir_llm_request_timeout: 600      # Sonnet-5 tiene más latencia que gemini-flash
 leloir_llm_redis_host: redis.redis-system.svc.cluster.local
