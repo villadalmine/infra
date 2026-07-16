@@ -124,6 +124,13 @@ leloir_gateway_servers:
     transport: mcp
     endpoint: http://leloir-memory-mcp.leloir.svc.cluster.local:8090/mcp
     toolAllowlist: [remember, recall, forget]
+  # Honcho (memoria episódica para el black-box de mode2, vía la fachada MCP).
+  # Codificado 16/07 (estaba vivo pero no en el rol → make leloir lo revertía).
+  - name: honcho
+    tenant: demo-mode2
+    transport: mcp
+    endpoint: http://leloir-honcho-mcp.honcho.svc.cluster.local:8090/
+    toolAllowlist: [recall_incident, capture_incident]
 
 # Observabilidad (ServiceMonitor + dashboards Grafana)
 leloir_monitoring_namespace: monitoring
