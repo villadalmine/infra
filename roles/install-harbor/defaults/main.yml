@@ -1,10 +1,10 @@
 # Harbor — registry self-hosted con réplica automática desde GHCR.
 #
-# ⚠ ARM64: verificar ANTES de correr que la versión pineada publique imágenes
-# linux/arm64 (`docker manifest inspect goharbor/harbor-core:v<X>` o el chart
-# values `image.tag`). Históricamente Harbor fue amd64-only; si la versión no
-# tiene arm64, alternativas livianas multi-arch: `registry:2` (sin UI) o
-# `zot` (OCI-nativo, tiene sync/mirroring — candidato ideal para espejo puro).
+# ⚠ VERIFICADO 16/07: Harbor es AMD64-ONLY (goharbor/harbor-core v2.11-2.13 = manifest
+# simple, sin arm64). El cluster es 100% arm64 → NO correr `make harbor` (no arranca).
+# Alternativas verificadas multi-arch (arm64 ✅): `zot` (ghcr.io/project-zot/zot — OCI-nativo,
+# con sync/mirror, RECOMENDADO) o `registry:2` (simple, sin UI). El build multi-arch vive en
+# GitHub Actions → GHCR canónico → el mirror in-cluster sería zot replicando desde GHCR.
 harbor_chart_version: "1.18.0"   # chart goharbor/harbor — chequear con: helm search repo harbor/harbor --versions | head -3
 harbor_namespace: harbor
 harbor_hostname: "harbor.cluster.home"
