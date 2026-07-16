@@ -1,0 +1,36 @@
+# Values del chart dexidp/dex (v{{ dex_chart_version }}) — connector staticPasswords.
+# Deployado + VERIFICADO vivo 16/07 (headless password-grant OK). Reproduce con:
+#   helm upgrade --install dex dexidp/dex -n dex --create-namespace \
+#     --version {{ dex_chart_version }} -f <este archivo renderizado>
+# Los secretos (hash del usuario, client-secret) vienen del vault (gitignored).
+# GitHub connector = variante DEFERIDA (backlog): agregar `connectors: [{type: github,...}]`.
+image:
+  repository: ghcr.io/dexidp/dex
+replicaCount: 1
+config:
+  issuer: https://{{ dex_hostname }}
+  storage:
+    type: kubernetes
+    config:
+      inCluster: true
+  web:
+    http: 0.0.0.0:5556
+  # ROPC password grant → permite verificar el login HEADLESS (sin browser).
+  oauth2:
+    passwordConnector: local
+  enablePasswordDB: true
+  staticPasswords:
+    - email: admin@leloir.local
+      hash: "{{ dex_static_admin_hash }}"      # bcrypt de dex_static_admin_password
+      username: admin
+      userID: "leloir-admin-0001"
+  staticClients:
+    - id: "{{ dex_leloir_client_id }}"
+      name: Leloir
+      secret: "{{ dex_leloir_client_secret }}"
+      redirectURIs:
+        - https://{{ dex_leloir_redirect_uri }}
+service:
+  ports:
+    http:
+      port: 5556
