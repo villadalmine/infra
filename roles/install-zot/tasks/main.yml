@@ -1,0 +1,168 @@
+# install-zot — despliega zot (registry OCI arm64) que espeja GHCR. Ver defaults/main.yml.
+# PREPARADO, no corrido aún. Requiere: cluster-gateway + cert-manager wildcard (*.cluster.home)
+# + longhorn. El password del admin va por env ZOT_ADMIN_PASSWORD (o el vault), nunca en git.
+
+- name: Create zot namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ zot_namespace }}"
+
+# htpasswd (bcrypt) para PUSH. El pull es anónimo (accessControl abajo). password_hash
+# requiere passlib; si no está, generar a mano: `htpasswd -bBn <user> <pass>` y pegarlo.
+- name: Create zot htpasswd Secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: zot-htpasswd
+        namespace: "{{ zot_namespace }}"
+      type: Opaque
+      stringData:
+        htpasswd: "{{ zot_admin_user }}:{{ zot_admin_password | password_hash('bcrypt') }}"
+  no_log: true
+
+- name: Create zot config ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: zot-config
+        namespace: "{{ zot_namespace }}"
+      data:
+        config.json: |
+          {
+            "distSpecVersion": "1.1.1",
+            "storage": { "rootDirectory": "/var/lib/registry", "gc": true, "dedupe": true },
+            "http": {
+              "address": "0.0.0.0",
+              "port": "5000",
+              "auth": { "htpasswd": { "path": "/secret/htpasswd" } },
+              "accessControl": {
+                "repositories": { "**": { "anonymousPolicy": ["read"],
+                  "policies": [ { "users": ["{{ zot_admin_user }}"], "actions": ["read","create","update","delete"] } ] } }
+              }
+            },
+            "log": { "level": "info" },
+            "extensions": {
+              "sync": {
+                "enable": true,
+                "registries": [ {
+                  "urls": ["{{ zot_sync_source_url }}"],
+                  "onDemand": {{ zot_sync_on_demand | lower }},
+                  "pollInterval": "{{ zot_sync_poll_interval }}",
+                  "tlsVerify": true,
+                  "content": [ { "prefix": "{{ zot_sync_prefix }}" } ]
+                } ]
+              }
+            }
+          }
+
+- name: Create zot data PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: zot-data
+        namespace: "{{ zot_namespace }}"
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: "{{ zot_storage_class }}"
+        resources:
+          requests:
+            storage: "{{ zot_storage_size }}"
+
+- name: Deploy zot
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: zot
+        namespace: "{{ zot_namespace }}"
+        labels: {app: zot}
+      spec:
+        replicas: 1
+        selector: {matchLabels: {app: zot}}
+        strategy: {type: Recreate}   # RWO PVC → no dos pods a la vez
+        template:
+          metadata:
+            labels: {app: zot}
+            annotations:
+              checksum/config: "{{ lookup('kubernetes.core.k8s', kind='ConfigMap', resource_name='zot-config', namespace=zot_namespace) | default({}) | to_json | hash('sha1') }}"
+          spec:
+            nodeSelector: {kubernetes.io/arch: arm64}
+            containers:
+              - name: zot
+                image: "{{ zot_image }}"
+                args: ["serve", "/etc/zot/config.json"]
+                ports:
+                  - {name: http, containerPort: 5000}
+                volumeMounts:
+                  - {name: config, mountPath: /etc/zot, readOnly: true}
+                  - {name: htpasswd, mountPath: /secret, readOnly: true}
+                  - {name: data, mountPath: /var/lib/registry}
+                livenessProbe:
+                  httpGet: {path: /v2/, port: 5000}
+                  initialDelaySeconds: 10
+                readinessProbe:
+                  httpGet: {path: /v2/, port: 5000}
+                  initialDelaySeconds: 5
+                resources: "{{ zot_resources }}"
+            volumes:
+              - {name: config, configMap: {name: zot-config}}
+              - {name: htpasswd, secret: {secretName: zot-htpasswd}}
+              - {name: data, persistentVolumeClaim: {claimName: zot-data}}
+
+- name: Create zot Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: zot
+        namespace: "{{ zot_namespace }}"
+      spec:
+        selector: {app: zot}
+        ports:
+          - {name: http, port: 5000, targetPort: 5000}
+
+- name: Create zot HTTPRoute (registry.cluster.home → cluster-gateway)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: zot
+        namespace: "{{ zot_namespace }}"
+      spec:
+        parentRefs:
+          - {name: cluster-gateway, namespace: gateway}
+        hostnames:
+          - "{{ zot_hostname }}"
+        rules:
+          - matches:
+              - {path: {type: PathPrefix, value: /}}
+            backendRefs:
+              - {name: zot, port: 5000}
+
+- name: Wait for zot rollout
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/zot -n {{ zot_namespace }} --timeout=180s
+  register: zot_rollout
+  until: zot_rollout.rc == 0
+  retries: 3
+  delay: 15
+  changed_when: false

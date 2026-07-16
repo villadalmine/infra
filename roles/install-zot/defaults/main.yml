@@ -1,0 +1,30 @@
+# install-zot — registry OCI in-cluster (arm64-nativo) que REPLICA desde GHCR.
+#
+# Decisión 16/07 (ver install-harbor): Harbor es amd64-only → descartado en este cluster
+# arm64. zot es OCI-nativo, liviano (1 binario), multi-arch (linux/arm64 verificado) y
+# tiene `sync` (mirror/pull) — reemplaza el replication de Harbor. Modelo:
+#   GitHub Actions (build multi-arch) → GHCR (canónico) → zot (espejo in-cluster, URL propia).
+# Pull anónimo (read) permitido; push requiere auth (htpasswd). PREPARADO, deploy = `make zot`.
+
+zot_namespace: zot
+zot_hostname: "registry.cluster.home"
+# Imagen multi-arch verificada (arm64 ✅). Verificar la última estable antes de subir:
+#   curl -s "https://ghcr.io/token?scope=repository:project-zot/zot:pull" ... /manifests/<tag>
+zot_image: "ghcr.io/project-zot/zot:v2.1.3"
+
+zot_storage_class: "longhorn"
+zot_storage_size: "50Gi"
+
+# Sync desde GHCR (el canónico). content.prefix acota qué repos se espejan.
+zot_sync_source_url: "https://ghcr.io"
+zot_sync_prefix: "villadalmine/**"
+zot_sync_poll_interval: "6h"
+zot_sync_on_demand: true        # además del poll, tira on-demand al primer pull
+
+# Auth: usuario admin para PUSH (el pull es anónimo). Password por env/vault (nunca acá).
+zot_admin_user: "admin"
+zot_admin_password: "{{ lookup('env', 'ZOT_ADMIN_PASSWORD') | default('zot-CHANGE-ME', true) }}"
+
+zot_resources:
+  requests: {cpu: "50m", memory: "128Mi"}
+  limits:   {cpu: "1",   memory: "512Mi"}

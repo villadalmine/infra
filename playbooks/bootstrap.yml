@@ -166,6 +166,8 @@
       tags: [ai-kubernetes-mcp-build]
     - role: install-harbor
       tags: [harbor]
+    - role: install-zot
+      tags: [zot]
     - role: install-letta
       tags: [letta]
     - role: install-mem0

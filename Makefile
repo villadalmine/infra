@@ -153,6 +153,9 @@ ai-all: ai ai-holmes openclaw kagent ## Deploy the ENTIRE AI Stack (Hermes + Hol
 harbor: ## Install Harbor registry (self-hosted mirror of GHCR — check ARM64 note in role defaults first)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags harbor
 
+zot: ## Install zot registry (arm64-native OCI mirror of GHCR — set ZOT_ADMIN_PASSWORD; recomendado sobre Harbor)
+	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags zot
+
 letta: ## Install Letta memory server (memory-OS agent, Postgres-only — benchmark alt to Honcho)
 	$(ANSIBLE) $(BOOTSTRAP) -i $(INVENTORY) --tags letta
 
